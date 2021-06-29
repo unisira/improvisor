@@ -49,7 +49,7 @@ Routine Description:
     __writecr4(Cr4.Value);
 
     IA32_FEATURE_CONTROL_MSR FeatureControl = (IA32_FEATURE_CONTROL_MSR){
-        .Value = __rdmsr(IA32_FEATURE_CONTROL)
+        .Value = __readmsr(IA32_FEATURE_CONTROL)
     };
 
     if (FeatureControl.Lock == 0)
@@ -82,8 +82,8 @@ VmxApplyCr0Restrictions(
     _In_ UINT64 Cr0
 )
 {
-    Cr0 |= __rdmsr(IA32_VMX_CR0_FIXED0);
-    Cr0 &= __rdmsr(IA32_VMX_CR0_FIXED1); 
+    Cr0 |= __readmsr(IA32_VMX_CR0_FIXED0);
+    Cr0 &= __readmsr(IA32_VMX_CR0_FIXED1); 
 
     return Cr0;
 }
@@ -93,8 +93,8 @@ VmxApplyCr4Restrictions(
     _In_ UINT64 Cr4
 )
 {
-    Cr4 |= __rdmsr(IA32_VMX_CR4_FIXED0);
-    Cr4 &= __rdmsr(IA32_VMX_CR4_FIXED1);
+    Cr4 |= __readmsr(IA32_VMX_CR4_FIXED0);
+    Cr4 &= __readmsr(IA32_VMX_CR4_FIXED1);
 
     return Cr4;
 }
