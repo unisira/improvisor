@@ -55,7 +55,7 @@ Routine Description:
         ImpDebugPrint("Failed to spawn VCPU on core #%d... (%x)\n", Params.FaultyCoreId, Status);
         
         VcpuDelegateParams.Status = STATUS_SUCCESS;
-        Status = VmmSpawnVcpuDelegates(VcpuShutdownPerCpu, &VcpuDelegateParams);
+        Status = VmmSpawnVcpuDelegates(VcpuShutdownPerCpu, &Params);
         if (!NT_SUCCESS(Status))
         {
             ImpDebugPrint("Failed to shutdown active VCPUs, core #%d encountered an error... (%x)\n", Params.FaultyCoreId, Status);
