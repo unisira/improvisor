@@ -59,7 +59,7 @@ Routine Description:
         if (!NT_SUCCESS(Status))
         {
             ImpDebugPrint("Failed to shutdown active VCPUs, core #%d encountered an error... (%x)\n", Params.FaultyCoreId, Status);
-	        KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_FAILED_SHUTDOWN, 0, 0, 0, 0);
+            KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_FAILED_SHUTDOWN, Params.FaultyCoreId, Status, 0, 0);
         }
 
         goto panic;
