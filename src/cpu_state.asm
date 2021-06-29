@@ -5,7 +5,6 @@ _Rax QWORD ?
 _Rbx QWORD ?
 _Rcx QWORD ?
 _Rdx QWORD ?
-_Rsp QWORD ?
 _Rsi QWORD ?
 _Rdi QWORD ?
 _R8 QWORD ?
@@ -20,6 +19,8 @@ _Rbp QWORD ?
 _Rsp QWORD ?
 _Rip QWORD ?
 _MxCsr DWORD ?
+_Align1 DWORD ?
+_Align2 DWORD ?
 _Xmm0 XMMWORD ?
 _Xmm1 XMMWORD ?
 _Xmm2 XMMWORD ?
