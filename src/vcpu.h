@@ -3,6 +3,7 @@
 
 #include "improvisor.h"
 #include "vmx.h"
+#include "cpu.h"
 
 typedef struct _VCPU_DELEGATE_PARAMS
 {
@@ -36,6 +37,7 @@ typedef struct _VCPU
     UINT64 VmcsPhysical;
     UINT64 VmxonPhysical;
     BOOL IsLaunched;
+    CPU_STATE LaunchState;
     struct _VMM_CONTEXT* Vmm; 
 } VCPU, PVCPU;
 
