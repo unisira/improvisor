@@ -65,7 +65,7 @@ Routine Description:
         goto panic;
     }
 
-    ImpDebugPrint("Successfully launched hypervisor on %d cores...\n", VcpuDelegateParams.ActiveVcpuCount);
+    ImpDebugPrint("Successfully launched hypervisor on %d cores...\n", Params.ActiveVcpuCount);
 
     return STATUS_SUCCESS;
 

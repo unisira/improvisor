@@ -1,3 +1,4 @@
+#include "arch/cpuid.h"
 #include "vcpu.h"
 
 VMEXIT_HANDLER VcpuUnknownExitReason;
@@ -168,6 +169,7 @@ Routine Description:
     // Control flow is restored here upon successful virtualisation of the CPU
     if (Vcpu->IsLaunched)
     {
+        InterlockedIncrement(Params->ActiveVcpuCount);
         ImpDebugPrint("VCPU #%d is now running...\n", Vcpu->Id);
         return;
     }
@@ -263,7 +265,7 @@ Routine Description:
 --*/
 {
     // TODO: Shutdown entire hypervisor from here
-    ImpDebugPrint("Unknown VM-exit reason on VCPU #%d...\n", Vcpu->Id, )
+    ImpDebugPrint("Unknown VM-exit reason on VCPU #%d...\n", Vcpu->Id);
 	KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_UNHANDLED_VMEXIT_REASON, 0, 0, 0, 0);
 }
 
