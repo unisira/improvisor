@@ -4,6 +4,8 @@
 #include <wdm.h>
 #include <ntddk.h>
 #include <stdarg.h>
+#include <intrin.h>
+#include <winnt.h>
 
 #define POOL_TAG 'IMPV'
 
