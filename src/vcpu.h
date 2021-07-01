@@ -8,6 +8,40 @@
 typedef struct _GUEST_STATE
 {
     UINT64 Rax;
+    UINT64 Rbx;
+    UINT64 Rcx;
+    UINT64 Rdx;
+    UINT64 Rsi;
+    UINT64 Rdi;
+    UINT64 R8;
+    UINT64 R9;
+    UINT64 R10;
+    UINT64 R11;
+    UINT64 R12;
+    UINT64 R13;
+    UINT64 R14;
+    UINT64 R15;
+    UINT64 Rip;
+    UINT32 MxCsr;
+    UINT32 _Align1;
+    UINT64 _Align2;
+    M128A Xmm0;
+    M128A Xmm1;
+    M128A Xmm2;
+    M128A Xmm3;
+    M128A Xmm4;
+    M128A Xmm5;
+    M128A Xmm6;
+    M128A Xmm7;
+    M128A Xmm8;
+    M128A Xmm9;
+    M128A Xmm10;
+    M128A Xmm11;
+    M128A Xmm12;
+    M128A Xmm13;
+    M128A Xmm14;
+    M128A Xmm15;
+    UINT64 RFlags;
 } GUEST_STATE, *PGUEST_STATE;
 
 typedef struct _VCPU_DELEGATE_PARAMS
@@ -28,6 +62,11 @@ typedef union _VCPU_STACK
     } Cache;
 } VCPU_STACK, *PVCPU_STACK;
 
+typedef struct _TSC_INFO
+{
+    UINT64 VmEntryLatency;
+} TSC_INFO, *PTSC_INFO;
+
 typedef struct _VCPU
 {
     UINT8 Id;
@@ -44,6 +83,7 @@ typedef struct _VCPU
     BOOLEAN IsLaunched;
     CPU_STATE LaunchState;
     VMX_STATE Vmx;
+    TSC_INFO TscInfo;
     struct _VMM_CONTEXT* Vmm; 
 } VCPU, *PVCPU;
 
