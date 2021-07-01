@@ -1,5 +1,29 @@
 #include "vmm.h"
 
+NTSTATUS
+VmmEnsureFeatureSupport(VOID);
+
+NTSTATUS
+VmmPrepareCpuResources(
+    _Inout_ PVMM_CONTEXT VmmContext
+);
+
+NTSTATUS
+VmmPrepareSystemResources(
+    _Inout_ PVMM_CONTEXT VmmContext
+);
+
+NTSTATUS
+VmmSpawnVcpuDelegates(
+    _In_ PVOID Func,
+    _In_ PVCPU_DELEGATE_PARAMS Param
+);
+
+VOID
+VmmFreeResources(
+    _In_ PVMM_CONTEXT VmmContext
+);
+
 NTSTATUS 
 VmmStartHypervisor(VOID)
 /*++
@@ -54,12 +78,12 @@ Routine Description:
     {
         ImpDebugPrint("Failed to spawn VCPU on core #%d... (%x)\n", Params.FaultyCoreId, Status);
         
-        VcpuDelegateParams.Status = STATUS_SUCCESS;
+        Params.Status = STATUS_SUCCESS;
         Status = VmmSpawnVcpuDelegates(VcpuShutdownPerCpu, &Params);
         if (!NT_SUCCESS(Status))
         {
             ImpDebugPrint("Failed to shutdown active VCPUs, core #%d encountered an error... (%x)\n", Params.FaultyCoreId, Status);
-            KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_FAILED_SHUTDOWN, Params.FaultyCoreId, Status, 0, 0);
+            KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_FAILED_SHUTDOWN, Params.FaultyCoreId, Status, 0);
         }
 
         goto panic;
@@ -89,7 +113,7 @@ Routine Description:
 --*/
 {
     NTSTATUS Status = STATUS_SUCCESS;
-    ULONG CpuCount = VmmContext->CpuCount;
+    UINT8 CpuCount = VmmContext->CpuCount;
 
     VmmContext->VcpuTable = (PVCPU)ExAllocatePoolWithTag(NonPagedPool, sizeof(VCPU) * CpuCount, POOL_TAG);
     if (VmmContext->VcpuTable == NULL)
@@ -98,7 +122,7 @@ Routine Description:
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    for (ULONG i = 0; i < CpuCount; i++)
+    for (UINT8 i = 0; i < CpuCount; i++)
     {
         Status = VcpuSetup(&VmmContext->VcpuTable[i], i);
         if (!NT_SUCCESS(Status))
@@ -108,7 +132,7 @@ Routine Description:
         }
     }
 
-    return Status
+    return Status;
 }
 
 NTSTATUS
@@ -141,7 +165,7 @@ Routine Description:
 
     KeIpiGenericCall(Worker, Context);
 
-    return Param.Status;
+    return Param->Status;
 }
 
 VOID
@@ -157,18 +181,3 @@ Routine Description:
     return;
 }
 
-NTSTATUS
-VmmEnsureFeatureSupport(VOID)
-/*++
-Routine Description:
-    Checks if all the features required for this hypervisor are present and useable on the current hardware
---*/
-{
-    NTSTATUS Status = STATUS_SUCCESS;
-    
-    // TODO: Check EPT feature support here in the future, maybe MTRR support too?
-    if (!VmxCheckSupport())
-        return STATUS_NOT_SUPPORTED;
-
-    return Status;
-}

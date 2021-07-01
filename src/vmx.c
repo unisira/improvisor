@@ -1,4 +1,5 @@
 #include "improvisor.h"
+#include "arch/cpuid.h"
 #include "arch/msr.h"
 #include "vmx.h"
 
@@ -14,7 +15,7 @@ Routine Description:
         return NULL;
 
     IA32_VMX_BASIC_MSR VmxCap = (IA32_VMX_BASIC_MSR){
-        .Value = __rdmsr(IA32_VMX_BASIC)
+        .Value = __readmsr(IA32_VMX_BASIC)
     };
 
     VmxRegion->VmcsRevisionId = VmxCap.VmcsRevisionId; 
@@ -22,7 +23,7 @@ Routine Description:
     return VmxRegion;
 }
 
-BOOL
+BOOLEAN
 VmxCheckSupport(VOID)
 /*++
 Routine Description:
@@ -32,7 +33,7 @@ Routine Description:
     return ArchCheckFeatureFlag(X86_FEATURE_VMX); 
 }
 
-BOOL
+BOOLEAN
 VmxEnableVmxon(VOID)
 /*++
 Routine Description:
@@ -57,24 +58,12 @@ Routine Description:
         FeatureControl.VmxonOutsideSmx = TRUE;
         FeatureControl.Lock = TRUE;
 
-        __wrmsr(IA32_FEATURE_CONTROL, FeatureControl.Value);
+        __writemsr(IA32_FEATURE_CONTROL, FeatureControl.Value);
 
         return TRUE;
     }
 
-    return FeatureControl.VmxonOutisdeSmx == 1;
-}
-
-VOID
-VmxRestrictControlRegisters(VOID)
-/*++
-Routine Description:
-    Applies restrictions on the CR0 and CR4 registers to prepare this CPU
-    for VMX operation. See Intel SDM Vol.3 Chapter 23.8
---*/
-{
-    __writecr0(VmxApplyCR0Restrictions(__readcr0());
-    __writecr4(VmxApplyCR4Restrictions(__readcr4());
+    return FeatureControl.VmxonOutsideSmx == 1;
 }
 
 UINT64
@@ -97,6 +86,18 @@ VmxApplyCr4Restrictions(
     Cr4 &= __readmsr(IA32_VMX_CR4_FIXED1);
 
     return Cr4;
+}
+
+VOID
+VmxRestrictControlRegisters(VOID)
+/*++
+Routine Description:
+    Applies restrictions on the CR0 and CR4 registers to prepare this CPU
+    for VMX operation. See Intel SDM Vol.3 Chapter 23.8
+--*/
+{
+    __writecr0(VmxApplyCr0Restrictions(__readcr0()));
+    __writecr4(VmxApplyCr4Restrictions(__readcr4()));
 }
 
 UINT64
@@ -128,27 +129,13 @@ Routine Description:
 }
 
 VOID
-VmxInjectEvent(
-    _In_ APIC_EXCEPTION_VECTOR Vector,
-    _In_ X86_INTERRUPT_TYPE Type,
-    _In_ ULONG ErrCode
-)
-/*++
-Routine Description:
-    Injects a VMX event into the guest, such as an exception or interrupt
---*/
-{
-    return;
-}
-
-VOID
 VmxAdvanceGuest(VOID)
 /*++
 Routine Description:
     Advances the guest's RIP to the next instruction
 --*/
 {
-    VmxWrite(GUEST_RIP, VmxRead(GUEST_RIP) + VmxRead(VMEXIT_INSTRUCTION_LENGTH))
+    VmxWrite(GUEST_RIP, VmxRead(GUEST_RIP) + VmxRead(VMEXIT_INSTRUCTION_LENGTH));
 }
 
 
