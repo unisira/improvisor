@@ -1,17 +1,17 @@
 #ifndef IMP_SPINLOCK_H
 #define IMP_SPINLOCK_H
 
-typedef SPINLOCK volatile LONG;
-typedef PSPINLOCK SPINLOCK*;
+typedef volatile LONG SPINLOCK;
+typedef SPINLOCK* PSPINLOCK;
 
 VOID
 SpinLock(
-    _Inout_ PSPINLOCK Lock;
+    _Inout_ PSPINLOCK Lock
 );
 
 VOID
 SpinUnlock(
-    _Inout_ PSPINLOCK Lock;
+    _Inout_ PSPINLOCK Lock
 );
 
 #endif
