@@ -17,7 +17,9 @@ Routine Description:
     MaxAcceptableAddr.QuadPart = ~0ULL;
 
     Address = MmAllocateContiguousMemory(Size, MaxAcceptableAddr);
-
+    if (Address == NULL)
+        return NULL;
+	
     RtlSecureZeroMemory(Address, Size);
 
     return Address;
@@ -53,5 +55,5 @@ Routine Description:
 	va_end(Args);
 #else
     DbgPrint(Str, ...);
-#end
+#endif
 }
