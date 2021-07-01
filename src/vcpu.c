@@ -1,12 +1,25 @@
 #include "arch/cpuid.h"
+#include "arch/msr.h"
 #include "vcpu.h"
+#include "vmm.h"
+
 
 VMEXIT_HANDLER VcpuUnknownExitReason;
 VMEXIT_HANDLER VcpuHandleCpuid;
 
-static VMEXIT_HANDLER ExitHandlers[] = {
+static const VMEXIT_HANDLER* ExitHandlers[] = {
     VcpuUnknownExitReason
 };
+
+PVCPU_STACK
+VcpuGetStack(VOID);
+
+VOID
+VcpuToggleExitOnMsr(
+    _Inout_ PVCPU Vcpu,
+    _In_ UINT32 Msr,
+    _In_ MSR_ACCESS Access
+);
 
 VOID
 VcpuHandleExit(
@@ -17,7 +30,7 @@ VcpuHandleExit(
 NTSTATUS
 VcpuSetup(
     _Inout_ PVCPU Vcpu,
-    _In_ UINT8 Id,
+    _In_ UINT8 Id
 )
 /*++
 Routine Description:
@@ -57,7 +70,7 @@ Routine Description:
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    Vcpu->Stack.Cache.Vcpu = Vcpu;
+    Vcpu->Stack->Cache.Vcpu = Vcpu;
 
     RtlInitializeBitMap(
             &Vcpu->MsrLoReadBitmap, 
@@ -79,7 +92,9 @@ Routine Description:
             Vcpu->MsrBitmap + VMX_MSR_WRITE_BITMAP_OFFS + VMX_MSR_HI_BITMAP_OFFS, 
             1024 * 8);
 
-    VcpuToggleExitOnMsr(Vcpu, IA32_FEATURE_CONTROL);
+    VcpuToggleExitOnMsr(Vcpu, IA32_FEATURE_CONTROL, MSR_READ);
+
+    return STATUS_SUCCESS;
 }
 
 DECLSPEC_NORETURN
@@ -132,8 +147,8 @@ Routine Description:
         return STATUS_INVALID_PARAMETER;
     }
 
-    VmxWrite(HOST_RSP, &Vcpu->Stack.Data + KERNEL_STACK_SIZE - sizeof(Vcpu->Stack.Cache));
-    VmxWrite(GUEST_RSP, &Vcpu->Stack.Data + KERNEL_STACK_SIZE - sizeof(Vcpu->Stack.Cache));
+    VmxWrite(HOST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE - sizeof(Vcpu->Stack->Cache));
+    VmxWrite(GUEST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE - sizeof(Vcpu->Stack->Cache));
 
     VmxWrite(HOST_RIP, (UINTPTR)__vmexit_entry);
     VmxWrite(GUEST_RIP, (UINTPTR)VcpuLaunch); 
@@ -162,14 +177,14 @@ Routine Description:
     ULONG CpuId = KeGetCurrentProcessorNumber();
     PVCPU Vcpu = &Params->VmmContext->VcpuTable[CpuId];
     
-    Vcpu->VmmContext = Params->VmmContext;
+    Vcpu->Vmm = Params->VmmContext;
 
     CpuSaveState(&Vcpu->LaunchState);
 
     // Control flow is restored here upon successful virtualisation of the CPU
     if (Vcpu->IsLaunched)
     {
-        InterlockedIncrement(Params->ActiveVcpuCount);
+        InterlockedIncrement(&Params->ActiveVcpuCount);
         ImpDebugPrint("VCPU #%d is now running...\n", Vcpu->Id);
         return;
     }
@@ -212,7 +227,7 @@ Routine Description:
 {
     ULONG CpuId = KeGetCurrentProcessorNumber(); 
 
-    if (Params->VmmContext->VcpuTable[CpuId]->IsLaunched)
+    if (Params->VmmContext->VcpuTable[CpuId].IsLaunched)
         __vmcall(VMCALL_SHUTDOWN_VCPU);        
 }
 
@@ -220,7 +235,7 @@ VOID
 VcpuToggleExitOnMsr(
     _Inout_ PVCPU Vcpu,
     _In_ UINT32 Msr,
-    _In_ MSR_ACCESS Access,
+    _In_ MSR_ACCESS Access
 )
 /*++
 Routine Description:
@@ -266,7 +281,7 @@ Routine Description:
 {
     // TODO: Shutdown entire hypervisor from here
     ImpDebugPrint("Unknown VM-exit reason on VCPU #%d...\n", Vcpu->Id);
-	KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_UNHANDLED_VMEXIT_REASON, 0, 0, 0, 0);
+	KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_UNKNOWN_VMEXIT_REASON, 0, 0, 0);
 }
 
 DECLSPEC_NORETURN
@@ -296,15 +311,46 @@ Routine Description:
     Loads the VCPU with new data post VM-exit and calls the correct VM-exit handler 
 --*/
 {
-    VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
-
     Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
     Vcpu->Vmx.ExitReason = VmxRead(VMEXIT_REASON);
 
-    Status = ExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState); 
+    VMM_EVENT_STATUS Status = ExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState); 
 
-    GuestState->Rip = (UINTPTR)VcpuResume;
+    GuestState->Rip = (UINT64)VcpuResume;
 
     if (Status == VMM_EVENT_CONTINUE)
-        VmxAdvanceRip();
+        VmxAdvanceGuestRip();
+}
+
+VMM_EVENT_STATUS
+VcpuHandleCpuid(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+/*++
+Routine Description:
+    Emulates the CPUID instruction.
+--*/
+{
+    X86_CPUID_ARGS CpuidArgs = (X86_CPUID_ARGS){
+        .Eax = (UINT32)GuestState->Rax,
+        .Ebx = (UINT32)GuestState->Rbx,
+        .Ecx = (UINT32)GuestState->Rcx,
+        .Edx = (UINT32)GuestState->Rdx,
+    };
+
+    CpuidEmulateGuestCall(&CpuidArgs);
+
+    GuestState->Rax = CpuidArgs.Eax;
+    GuestState->Rbx = CpuidArgs.Ebx;
+    GuestState->Rcx = CpuidArgs.Ecx;
+    GuestState->Rdx = CpuidArgs.Edx;
+
+    VmxToggleControl(&Vcpu->VmxState, VMX_CTL_VMX_PREEMPTION_TIMER);
+    VmxToggleControl(&Vcpu->VmxState, VMX_CTL_RDTSC_EXITING);
+
+    // Set the VMX preemption timer to a relatively low value taking the VM entry latency into account
+    VmxWrite(GUEST_VMX_PREEMPTION_TIMER, Vcpu->TscInfo.VmEntryLatency + 500);
+
+    return VMM_EVENT_CONTINUE;
 }
