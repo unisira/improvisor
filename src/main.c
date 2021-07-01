@@ -1,5 +1,5 @@
-#include <wdm.h>
-#include <ntddk.h>
+#include "improvisor.h"
+#include "vmm.h"
 
 // Define for WINDBG usage & hot loading & unloading
 #define _DEBUG
@@ -18,7 +18,7 @@ DriverEntry(
     IN PUNICODE_STRING RegistryPath
 )
 {
-    UNUSED_PARAMETER(RegistryPath);
+    UNREFERENCED_PARAMETER(RegistryPath);
 
 #ifdef _DEBUG 
     // Set our driver unload routine so we can unload the driver for debugging
