@@ -16,6 +16,29 @@ typedef struct _VMX_REGION
     UINT8 Data[0x1000 - sizeof(UINT64)];
 } VMX_REGION, *PVMX_REGION;
 
+typedef union _VMX_EXIT_REASON
+{
+    UINT32 Value;
+
+	struct
+	{
+        UINT16 BasicExitReason;
+        UINT32 Null : 1;
+        UINT32 Reserved1 : 7;
+        UINT32 EnclaveModeExit : 1;
+        UINT32 PendingMTFExit : 1;
+        UINT32 VmxRootExit : 1;
+        UINT32 Reserved2 : 1;
+        UINT32 VmEntryFailure : 1;
+	};
+} VMX_EXIT_REASON, *PVMX_EXIT_REASON;
+
+typedef struct _VMX_STATE
+{
+    UINT64 GuestRip;
+    VMX_EXIT_REASON ExitReason;
+} VMX_STATE, * PVMX_STATE;
+
 typedef enum _VMX_CONTROL_FIELD
 {
     VMX_PINBASED_CTLS,
@@ -91,12 +114,6 @@ typedef enum _VMCS
 	CONTROL_VMFUNC_CONTROLS = 0x00002018,
 	CONTROL_EPT_POINTER = 0x0000201A,
 } VMCS, *PVMCS;
-
-typedef struct _VMX_STATE
-{
-    UINT64 GuestRip;
-    UINT16 BasicExitReason;
-} VMX_STATE, *PVMX_STATE;
 
 PVMX_REGION
 VmxAllocateRegion(VOID);
