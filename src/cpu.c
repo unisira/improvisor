@@ -1,12 +1,12 @@
 #include "cpu.h"
 
-EXTERN
+EXTERN_C
 VOID
 __cpu_save_state(
     _Out_ PCPU_STATE
 );
 
-EXTERN
+EXTERN_C
 DECLSPEC_NORETURN
 VOID
 __cpu_restore_state(
