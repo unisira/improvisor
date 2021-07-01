@@ -3,6 +3,9 @@
 #include "vcpu.h"
 #include "vmm.h"
 
+EXTERN_C
+VOID
+__vmexit_entry(VOID);
 
 VMEXIT_HANDLER VcpuUnknownExitReason;
 VMEXIT_HANDLER VcpuHandleCpuid;
@@ -147,11 +150,11 @@ Routine Description:
         return STATUS_INVALID_PARAMETER;
     }
 
-    VmxWrite(HOST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE - sizeof(Vcpu->Stack->Cache));
-    VmxWrite(GUEST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE - sizeof(Vcpu->Stack->Cache));
+    VmxWrite(HOST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
+    VmxWrite(GUEST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
 
-    VmxWrite(HOST_RIP, (UINTPTR)__vmexit_entry);
-    VmxWrite(GUEST_RIP, (UINTPTR)VcpuLaunch); 
+    VmxWrite(HOST_RIP, (UINT64)__vmexit_entry);
+    VmxWrite(GUEST_RIP, (UINT64)VcpuLaunch);
 
     Vcpu->IsLaunched = TRUE;
 
@@ -312,7 +315,7 @@ Routine Description:
 --*/
 {
     Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
-    Vcpu->Vmx.ExitReason = VmxRead(VMEXIT_REASON);
+    Vcpu->Vmx.ExitReason.Value = VmxRead(VMEXIT_REASON);
 
     VMM_EVENT_STATUS Status = ExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState); 
 
