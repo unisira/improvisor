@@ -1,6 +1,6 @@
-#include "arch/cpuid.h"
 #include "arch/msr.h"
 #include "vcpu.h"
+#include "cpuid.h"
 #include "vmm.h"
 
 EXTERN_C
@@ -349,8 +349,8 @@ Routine Description:
     GuestState->Rcx = CpuidArgs.Ecx;
     GuestState->Rdx = CpuidArgs.Edx;
 
-    VmxToggleControl(&Vcpu->VmxState, VMX_CTL_VMX_PREEMPTION_TIMER);
-    VmxToggleControl(&Vcpu->VmxState, VMX_CTL_RDTSC_EXITING);
+    VmxToggleControl(&Vcpu->Vmx, VMX_CTL_VMX_PREEMPTION_TIMER);
+    VmxToggleControl(&Vcpu->Vmx, VMX_CTL_RDTSC_EXITING);
 
     // Set the VMX preemption timer to a relatively low value taking the VM entry latency into account
     VmxWrite(GUEST_VMX_PREEMPTION_TIMER, Vcpu->TscInfo.VmEntryLatency + 500);
