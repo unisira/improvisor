@@ -20,7 +20,7 @@ _Rsp QWORD ?
 _Rip QWORD ?
 _MxCsr DWORD ?
 _Align1 DWORD ?
-_Align2 DWORD ?
+_Align2 QWORD ?
 _Xmm0 XMMWORD ?
 _Xmm1 XMMWORD ?
 _Xmm2 XMMWORD ?
@@ -123,3 +123,5 @@ __cpu_restore_state PROC
     mov rax, [rcx].CPU_STATE._Rax 
     ret
 __cpu_restore_state ENDP
+
+END
