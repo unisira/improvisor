@@ -1,11 +1,7 @@
 #ifndef IMP_CPU_H
 #define IMP_CPU_H
 
-typedef struct _M128
-{
-    UINT64 Lower;
-    UINT64 Upper;
-} M128, *PM128
+#include <wdm.h>
 
 typedef struct _CPU_STATE
 {
@@ -29,24 +25,24 @@ typedef struct _CPU_STATE
     UINT32 MxCsr;
     UINT32 _Align1;
     UINT64 _Align2;
-    M128 Xmm0;
-    M128 Xmm1;
-    M128 Xmm2;
-    M128 Xmm3;
-    M128 Xmm4;
-    M128 Xmm5;
-    M128 Xmm6;
-    M128 Xmm7;
-    M128 Xmm8;
-    M128 Xmm9;
-    M128 Xmm10;
-    M128 Xmm11;
-    M128 Xmm12;
-    M128 Xmm13;
-    M128 Xmm14;
-    M128 Xmm15;
+    M128A Xmm0;
+    M128A Xmm1;
+    M128A Xmm2;
+    M128A Xmm3;
+    M128A Xmm4;
+    M128A Xmm5;
+    M128A Xmm6;
+    M128A Xmm7;
+    M128A Xmm8;
+    M128A Xmm9;
+    M128A Xmm10;
+    M128A Xmm11;
+    M128A Xmm12;
+    M128A Xmm13;
+    M128A Xmm14;
+    M128A Xmm15;
     UINT64 RFlags;
-} CPU_STATE, PCPU_STATE;
+} CPU_STATE, *PCPU_STATE;
 
 VOID
 CpuSaveState(
