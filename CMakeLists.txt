@@ -18,4 +18,4 @@ wdk_add_driver(improvisor
     src/main.c
     )
 
-target_include_directories(improvisor PUBLIC .)
+target_include_directories(improvisor INTERFACE .)
