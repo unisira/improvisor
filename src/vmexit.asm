@@ -55,6 +55,23 @@ __vmexit_entry PROC
 	mov [rsp].GUEST_STATE._R13, r13
 	mov [rsp].GUEST_STATE._R14, r14
 	mov [rsp].GUEST_STATE._R15, r15
+	mov [rsp].GUEST_STATE._Xmm0, xmm0
+	mov [rsp].GUEST_STATE._Xmm1, xmm1
+	mov [rsp].GUEST_STATE._Xmm2, xmm2
+	mov [rsp].GUEST_STATE._Xmm3, xmm3
+	mov [rsp].GUEST_STATE._Xmm4, xmm4
+	mov [rsp].GUEST_STATE._Xmm5, xmm5
+	mov [rsp].GUEST_STATE._Xmm6, xmm6
+	mov [rsp].GUEST_STATE._Xmm7, xmm7
+	mov [rsp].GUEST_STATE._Xmm8, xmm8
+	mov [rsp].GUEST_STATE._Xmm9, xmm9
+	mov [rsp].GUEST_STATE._Xmm10, xmm10
+	mov [rsp].GUEST_STATE._Xmm11, xmm11
+	mov [rsp].GUEST_STATE._Xmm12, xmm12
+	mov [rsp].GUEST_STATE._Xmm13, xmm13
+	mov [rsp].GUEST_STATE._Xmm14, xmm14
+	mov [rsp].GUEST_STATE._Xmm15, xmm15
+
 	mov rax, [rsp]
 	mov [rsp].GUEST_STATE._Rip, rax
 	stmxcsr [rsp].GUEST_STATE._MxCsr
@@ -82,6 +99,22 @@ __vmexit_entry PROC
 	mov r13, [rsp].GUEST_STATE._R13
 	mov r14, [rsp].GUEST_STATE._R14
 	mov r15, [rsp].GUEST_STATE._R15
+	mov xmm0, [rsp].GUEST_STATE._Xmm0
+	mov xmm1, [rsp].GUEST_STATE._Xmm1
+	mov xmm2, [rsp].GUEST_STATE._Xmm2
+	mov xmm3, [rsp].GUEST_STATE._Xmm3
+	mov xmm4, [rsp].GUEST_STATE._Xmm4
+	mov xmm5, [rsp].GUEST_STATE._Xmm5
+	mov xmm6, [rsp].GUEST_STATE._Xmm6
+	mov xmm7, [rsp].GUEST_STATE._Xmm7
+	mov xmm8, [rsp].GUEST_STATE._Xmm8
+	mov xmm9, [rsp].GUEST_STATE._Xmm9
+	mov xmm10, [rsp].GUEST_STATE._Xmm10
+	mov xmm11, [rsp].GUEST_STATE._Xmm11
+	mov xmm12, [rsp].GUEST_STATE._Xmm12
+	mov xmm13, [rsp].GUEST_STATE._Xmm13
+	mov xmm14, [rsp].GUEST_STATE._Xmm14
+	mov xmm15, [rsp].GUEST_STATE._Xmm15
 	add rsp, SIZEOF GUEST_STATE				; Cleanup stack
 	ret										; Return to GUEST_STATE.Rip
 __vmexit_entry ENDP
