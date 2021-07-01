@@ -20,7 +20,7 @@ typedef struct _VCPU_DELEGATE_PARAMS
 
 typedef union _VCPU_STACK
 {
-    DECLSPEC_ALIGN(0x1000) UINT8 Limit[KERNEL_STACK_SIZE];
+    UINT8 Limit[KERNEL_STACK_SIZE];
 
     struct 
     {
@@ -43,6 +43,7 @@ typedef struct _VCPU
     UINT64 VmxonPhysical;
     BOOLEAN IsLaunched;
     CPU_STATE LaunchState;
+    VMX_STATE Vmx;
     struct _VMM_CONTEXT* Vmm; 
 } VCPU, *PVCPU;
 
