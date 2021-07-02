@@ -1,6 +1,8 @@
 #ifndef IMP_ARCH_MSR_H
 #define IMP_ARCH_MSR_H
 
+#include <ntdef.h>
+
 #define IA32_FEATURE_CONTROL 0x3A
 #define IA32_MTRR_CAPABILITIES 0xFE
 #define IA32_MTRR_DEFAULT_TYPE 0x2FF
