@@ -1,4 +1,3 @@
-.code
 
 CPU_STATE STRUCT
 _Rax QWORD ?
@@ -39,6 +38,8 @@ _Xmm14 XMMWORD ?
 _Xmm15 XMMWORD ?
 _RFlags QWORD ?
 CPU_STATE ENDS
+
+.code
 
 __cpu_save_state PROC
     pushfq
