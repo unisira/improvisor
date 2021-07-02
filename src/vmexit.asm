@@ -79,7 +79,7 @@ __vmexit_entry PROC
 	lea rcx, [rsp+SIZEOF GUEST_STATE-6000h]	; Load the address of the stack cache (PVCPU) into RCX
 	lea rdx, [rsp] 							; Load the address of the GUEST_STATE into RDX
 	sub rsp, 28h							; Allocate shadow stack space
-	call VcpuHandleExit						; Call the VMEXIT handler
+	call VcpuHandleExit						; Call the VM-exit handler
 	add rsp, 28h							; Remove shadow stack space
 	
 	ldmxcsr [rsp].GUEST_STATE._MxCsr

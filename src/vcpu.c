@@ -201,7 +201,7 @@ Routine Description:
         // Shutdown VMX operation on this CPU core if we failed VM launch
         if (Params->Status == STATUS_FATAL_APP_EXIT)
         {
-            ImpDebugPrint("VMLAUNCH failed on VCPU #%d... (%x)", Vcpu->Id, VmxRead(VMEXIT_VM_INSTRUCTION_ERROR));
+            ImpDebugPrint("VMLAUNCH failed on VCPU #%d... (%x)", Vcpu->Id, VmxRead(VM_INSTRUCTION_ERROR));
             __vmx_off();
         }
     }
@@ -297,7 +297,7 @@ Routine Description:
 {
     __vmx_vmresume();
 
-    ImpDebugPrint("VMRESUME failed on VCPU #%d... (%x)\n", VmxRead(VMEXIT_VM_INSTRUCTION_ERROR));
+    ImpDebugPrint("VMRESUME failed on VCPU #%d... (%x)\n", VmxRead(VM_INSTRUCTION_ERROR));
 
     // TODO: Shutdown entire hypervisor from here
     __vmx_off();
@@ -315,7 +315,7 @@ Routine Description:
 --*/
 {
     Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
-    Vcpu->Vmx.ExitReason.Value = VmxRead(VMEXIT_REASON);
+    Vcpu->Vmx.ExitReason.Value = VmxRead(VM_EXIT_REASON);
 
     VMM_EVENT_STATUS Status = ExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState); 
 
@@ -353,7 +353,7 @@ Routine Description:
     VmxToggleControl(&Vcpu->Vmx, VMX_CTL_RDTSC_EXITING);
 
     // Set the VMX preemption timer to a relatively low value taking the VM entry latency into account
-    VmxWrite(GUEST_VMX_PREEMPTION_TIMER, Vcpu->TscInfo.VmEntryLatency + 500);
+    VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, Vcpu->TscInfo.VmEntryLatency + 500);
 
     return VMM_EVENT_CONTINUE;
 }
