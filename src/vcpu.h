@@ -54,7 +54,7 @@ typedef struct _VCPU_DELEGATE_PARAMS
 
 typedef union _VCPU_STACK
 {
-    UINT8 Limit[KERNEL_STACK_SIZE];
+    UINT8 Limit[0x6000];
 
     struct 
     {
