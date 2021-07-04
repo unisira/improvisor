@@ -48,7 +48,7 @@ Routine Description:
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    VmmContext->CpuCount = KeQueryActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+    VmmContext->CpuCount = (UINT8)KeQueryActiveProcessorCount(ALL_PROCESSOR_GROUPS);
 
     ImpDebugPrint("Preparing VMM context at %p for %d cores...\n", VmmContext, VmmContext->CpuCount);
 
@@ -145,6 +145,7 @@ Routine Description:
     and store regions etc.
 --*/ 
 {
+    // TODO: Complete this
     NTSTATUS Status = STATUS_SUCCESS;
 
     return Status;
@@ -164,8 +165,21 @@ Routine Description:
     ULONG_PTR Context               = (ULONG_PTR)Param;
 
     KeIpiGenericCall(Worker, Context);
-
+      
     return Param->Status;
+}
+
+VOID
+VmmShutdownHypervisor(
+    VOID
+)
+/*++
+Routine Description:
+	Shuts down the hypervisor by sending an IPI out to all active processors, and shutting them down individually
+ */
+{
+	// TODO: Complete this
+    return;
 }
 
 VOID
@@ -178,6 +192,23 @@ Routine Description:
     was called.
 --*/
 {
+    // TODO: Complete this
     return;
+}
+
+NTSTATUS
+VmmEnsureFeatureSupport(VOID)
+/*++
+Routine Description:
+    Checks if all the features required for this hypervisor are present and useable on the current hardware
+--*/
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    // TODO: Check EPT feature support here in the future, maybe MTRR support too?
+    if (!VmxCheckSupport())
+        return STATUS_NOT_SUPPORTED;
+
+    return Status;
 }
 
