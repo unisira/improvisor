@@ -207,18 +207,6 @@ Routine Description:
     }
 }
 
-NTSTATUS
-VcpuShutdown(
-    _Inout_ PVCPU Vcpu
-)
-{
-    NTSTATUS Status = STATUS_SUCCESS;
-
-    ImpDebugPrint("Shutting down VCPU #%d...\n", Vcpu->Id);
-
-    return Status;
-}
-
 VOID
 VcpuShutdownPerCpu(
     _Inout_ PVCPU_DELEGATE_PARAMS Params
@@ -228,10 +216,23 @@ Routine Description:
     Checks if this core has been virtualised, and stops VMX operation if so.
 --*/
 {
+    // TODO: Complete this
     ULONG CpuId = KeGetCurrentProcessorNumber(); 
 
+	/*
     if (Params->VmmContext->VcpuTable[CpuId].IsLaunched)
-        __vmcall(VMCALL_SHUTDOWN_VCPU);        
+        __vmcall(HYPERCALL_SHUTDOWN_VCPU);
+    */
+}
+
+PVCPU_STACK
+VcpuGetStack(VOID)
+/*++
+Routine Description:
+	Gets the VCPU_STACK pointer from the top of the host stack
+ */
+{
+    return (PVCPU_STACK)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
 }
 
 VOID
@@ -264,10 +265,8 @@ Routine Description:
             else
                 MsrBitmap = &Vcpu->MsrLoWriteBitmap;
         } break;
-
-    default: ImpDebugPrint("Unknown MSR_ACCESS...\n"); break;
     }
-
+	
     RtlSetBit(MsrBitmap, Msr);
 }
 
@@ -315,7 +314,7 @@ Routine Description:
 --*/
 {
     Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
-    Vcpu->Vmx.ExitReason.Value = VmxRead(VM_EXIT_REASON);
+    Vcpu->Vmx.ExitReason.Value = (UINT32)VmxRead(VM_EXIT_REASON);
 
     VMM_EVENT_STATUS Status = ExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState); 
 
