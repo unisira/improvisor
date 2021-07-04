@@ -1,7 +1,19 @@
 #include "improvisor.h"
 #include "arch/cpuid.h"
 #include "arch/msr.h"
+#include "arch/cr.h"
 #include "vmx.h"
+
+typedef union _VMX_CAPABILITY_MSR
+{
+    UINT64 Value;
+
+	struct
+	{
+        UINT32 OnBits;
+        UINT32 OffBits;
+	};
+} VMX_CAPABILITY_MSR, *PVMX_CAPABILITY_MSR;
 
 PVMX_REGION
 VmxAllocateRegion(VOID)
@@ -128,14 +140,53 @@ Routine Description:
     __vmx_vmwrite(Component, Value);
 }
 
+UINT64
+VmxGetFixedBits(
+    _In_ UINT64 VmxCapability
+)
+/*++
+Routine Description:
+	Calculates the bits that can be modified in a VMX control capability
+--*/
+{
+    VMX_CAPABILITY_MSR Cap = (VMX_CAPABILITY_MSR){
+        .Value = VmxCapability
+    };
+
+    return ~(Cap.OnBits ^ Cap.OffBits);
+}
+
 VOID
-VmxAdvanceGuest(VOID)
+VmxToggleControl(
+    _Inout_ PVMX_STATE Vmx,
+    _In_ VMX_CONTROL Control
+)
+/*++
+Routine Description:
+	Toggles a VMX execution control
+--*/
+{
+	UINT8 ControlField = (UINT8)Control & 0x03;
+
+    PUINT64 TargetControls = &((PUINT64)&Vmx->Controls)[ControlField];
+    UINT64 TargetCap = ((PUINT64)&Vmx->Cap)[ControlField];
+
+    UINT8 ControlBit = (UINT8)((Control & 0xF8));
+
+	if (VmxGetFixedBits(TargetCap) & ControlBit)
+		return;
+	
+    *TargetControls |= !(*TargetControls & ControlBit);
+}
+
+VOID
+VmxAdvanceGuestRip(VOID)
 /*++
 Routine Description:
     Advances the guest's RIP to the next instruction
 --*/
 {
-    VmxWrite(GUEST_RIP, VmxRead(GUEST_RIP) + VmxRead(VMEXIT_INSTRUCTION_LENGTH));
+    VmxWrite(GUEST_RIP, VmxRead(GUEST_RIP) + VmxRead(VM_EXIT_INSTRUCTION_LEN));
 }
 
 

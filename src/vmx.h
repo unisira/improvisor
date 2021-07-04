@@ -37,6 +37,24 @@ typedef struct _VMX_STATE
 {
     UINT64 GuestRip;
     VMX_EXIT_REASON ExitReason;
+
+	struct
+	{
+		UINT64 PinbasedCtls;
+		UINT64 PrimaryProcbasedCtls;
+		UINT64 SecondaryProcbasedCtls;
+		UINT64 VmExitCtls;
+		UINT64 VmEntryCtls;
+	} Controls;
+
+	struct
+	{
+		UINT64 PinbasedCtls;
+		UINT64 PrimaryProcbasedCtls;
+		UINT64 SecondaryProcbasedCtls;
+		UINT64 VmExitCtls;
+		UINT64 VmEntryCtls;
+	} Cap;
 } VMX_STATE, * PVMX_STATE;
 
 typedef enum _VMX_CONTROL_FIELD
