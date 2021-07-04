@@ -3,7 +3,7 @@
 #include "../improvisor.h"
 #include "spinlock.h"
 
-BOOL
+BOOLEAN
 SpinTryLock(
     _Inout_ PSPINLOCK Lock
 )
@@ -40,6 +40,6 @@ Routine Description:
     Unlocks a spinlock
 --*/
 {
-    if (InterlockedCompareExchange(Lock 0, 1) == 0)
+    if (InterlockedCompareExchange(Lock, 0, 1) == 0)
         ImpDebugPrint("WARNING: SpinUnlock called on an already unlocked spinlock...\n");
 }
