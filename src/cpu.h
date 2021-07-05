@@ -44,15 +44,18 @@ typedef struct _CPU_STATE
     UINT64 RFlags;
 } CPU_STATE, *PCPU_STATE;
 
+EXTERN_C
 VOID
-CpuSaveState(
+__cpu_save_state(
     _Out_ PCPU_STATE
 );
 
+EXTERN_C
 DECLSPEC_NORETURN
 VOID
-CpuRestoreState(
+__cpu_restore_state(
     _In_ PCPU_STATE
 );
+
 
 #endif
