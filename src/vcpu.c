@@ -115,7 +115,7 @@ Routine Description:
     Post-VMLAUNCH, sets the CPU's registers and RIP to previous execution.
 --*/
 {
-    CpuRestoreState(&VcpuGetStack()->Cache.Vcpu->LaunchState);
+    __cpu_restore_state(&VcpuGetStack()->Cache.Vcpu->LaunchState);
 }
 
 NTSTATUS
@@ -235,7 +235,7 @@ Routine Description:
     
     Vcpu->Vmm = Params->VmmContext;
 
-    CpuSaveState(&Vcpu->LaunchState);
+    __cpu_save_state(&Vcpu->LaunchState);
 
     // Control flow is restored here upon successful virtualisation of the CPU
     if (Vcpu->IsLaunched)
