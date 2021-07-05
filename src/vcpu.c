@@ -1,3 +1,4 @@
+#include "arch/segment.h"
 #include "arch/msr.h"
 #include "vcpu.h"
 #include "cpuid.h"
@@ -7,10 +8,14 @@ EXTERN_C
 VOID
 __vmexit_entry(VOID);
 
+EXTERN_C
+VOID
+__sgdt(PX86_SYSTEM_DESCRIPTOR);
+
 VMEXIT_HANDLER VcpuUnknownExitReason;
 VMEXIT_HANDLER VcpuHandleCpuid;
 
-static const VMEXIT_HANDLER* ExitHandlers[] = {
+static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason
 };
 
@@ -66,6 +71,8 @@ Routine Description:
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
+    Vcpu->MsrBitmapPhysical = ImpGetPhysicalAddress(Vcpu->MsrBitmap);
+	
     Vcpu->Stack = (PVCPU_STACK)ExAllocatePoolWithTag(NonPagedPool, sizeof(VCPU_STACK), POOL_TAG);
     if (Vcpu->Stack == NULL)
     {
@@ -150,6 +157,52 @@ Routine Description:
         return STATUS_INVALID_PARAMETER;
     }
 
+	// TODO: Define exception bitmap later in vmx.h
+    VmxWrite(CONTROL_EXCEPTION_BITMAP, 0);
+
+	// All page faults should cause VM-exits
+    VmxWrite(CONTROL_PAGE_FAULT_ERROR_CODE_MASK, 0);
+    VmxWrite(CONTROL_PAGE_FAULT_ERROR_CODE_MATCH, 0);
+
+    VmxWrite(CONTROL_MSR_BITMAP_ADDRESS, Vcpu->MsrBitmapPhysical);
+
+	// No nested virtualisation, set invalid VMCS link pointer
+    VmxWrite(GUEST_VMCS_LINK_POINTER, ~0ULL);
+
+    VmxWrite(CONTROL_CR0_READ_SHADOW, __readcr0());
+    VmxWrite(CONTROL_CR0_GUEST_MASK, ~(__readmsr(IA32_VMX_CR0_FIXED0) ^ __readmsr(IA32_VMX_CR0_FIXED1)));
+    VmxWrite(GUEST_CR0, __readcr0());
+    VmxWrite(HOST_CR0, __readcr0());
+
+    VmxWrite(CONTROL_CR4_READ_SHADOW, __readcr4());
+    VmxWrite(CONTROL_CR4_GUEST_MASK, ~(__readmsr(IA32_VMX_CR4_FIXED0) ^ __readmsr(IA32_VMX_CR4_FIXED1)));
+    VmxWrite(GUEST_CR4, __readcr4());
+    VmxWrite(HOST_CR4, __readcr4());
+
+    VmxWrite(GUEST_CR3, __readcr3());
+    VmxWrite(HOST_CR3, Vcpu->Vmm->MmSupport->HostDirectoryPhysical);
+
+    VmxWrite(GUEST_DR7, __readdr(7));
+
+    VmxWrite(GUEST_RFLAGS, Vcpu->LaunchState.RFlags);
+    VmxWrite(GUEST_DEBUGCTL, __readmsr(IA32_DEBUGCTL));
+    VmxWrite(GUEST_SYSENTER_ESP, __readmsr(IA32_SYSENTER_ESP));
+    VmxWrite(GUEST_SYSENTER_EIP, __readmsr(IA32_SYSENTER_EIP));
+    VmxWrite(GUEST_SYSENTER_CS, __readmsr(IA32_SYSENTER_CS));
+
+    X86_SYSTEM_DESCRIPTOR Gdtr, Idtr;
+    __sgdt(&Gdtr);
+    __sidt(&Idtr);
+
+    VmxWrite(GUEST_GDTR_LIMIT, Gdtr.Limit);
+    VmxWrite(GUEST_IDTR_LIMIT, Gdtr.Limit);
+
+    VmxWrite(GUEST_GDTR_BASE, Gdtr.BaseAddress);
+    VmxWrite(HOST_GDTR_BASE, Gdtr.BaseAddress);
+
+    VmxWrite(GUEST_IDTR_BASE, Idtr.BaseAddress);
+    VmxWrite(HOST_IDTR_BASE, Vcpu->Vmm->HostInterruptDescriptor.BaseAddress);
+	
     VmxWrite(HOST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
     VmxWrite(GUEST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
 
@@ -316,7 +369,7 @@ Routine Description:
     Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
     Vcpu->Vmx.ExitReason.Value = (UINT32)VmxRead(VM_EXIT_REASON);
 
-    VMM_EVENT_STATUS Status = ExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState); 
+    VMM_EVENT_STATUS Status = sExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState);
 
     GuestState->Rip = (UINT64)VcpuResume;
 

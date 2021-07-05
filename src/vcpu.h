@@ -80,6 +80,7 @@ typedef struct _VCPU
     PVMX_REGION Vmxon;
     UINT64 VmcsPhysical;
     UINT64 VmxonPhysical;
+    UINT64 MsrBitmapPhysical;
     BOOLEAN IsLaunched;
     CPU_STATE LaunchState;
     VMX_STATE Vmx;
