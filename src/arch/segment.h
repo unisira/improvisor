@@ -1,0 +1,13 @@
+#ifndef IMP_ARCH_SEGMENT_H
+#define IMP_ARCH_SEGMENT_H
+
+#include <ntdef.h>
+
+DECLSPEC_ALIGN(1)
+typedef struct _X86_SYSTEM_DESCRIPTOR
+{
+	UINT16 Limit;
+	UINT64 BaseAddress;
+} X86_SYSTEM_DESCRIPTOR, *PX86_SYSTEM_DESCRIPTOR;
+
+#endif
