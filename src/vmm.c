@@ -208,7 +208,7 @@ Routine Description:
     // TODO: Check EPT feature support here in the future, maybe MTRR support too?
     if (!VmxCheckSupport())
         return STATUS_NOT_SUPPORTED;
-
+   
     return Status;
 }
 
