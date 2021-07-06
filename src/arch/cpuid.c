@@ -11,10 +11,7 @@ Routine Description:
 {
     X86_CPUID_ARGS Args;
 
-    if (FEATURE_HAS_SUBLEAF(Feature))
-        __cpuidex(Args.Data, FEATURE_LEAF(Feature), FEATURE_SUBLEAF(Feature));
-    else
-        __cpuid(Args.Data, FEATURE_LEAF(Feature));
+    __cpuidex(Args.Data, FEATURE_LEAF(Feature), FEATURE_SUBLEAF(Feature));
 
     const UINT32 Reg = Args.Data[FEATURE_REG(Feature)];
 
