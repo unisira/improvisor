@@ -12,6 +12,42 @@ EXTERN_C
 VOID
 __sgdt(PX86_SYSTEM_DESCRIPTOR);
 
+EXTERN_C
+UINT64
+__segmentar(X86_SEGMENT_SELECTOR);
+
+EXTERN_C
+UINT16
+__readldt(VOID);
+
+EXTERN_C
+UINT16
+__readtr(VOID);
+
+EXTERN_C
+UINT16
+__readcs(VOID);
+
+EXTERN_C
+UINT16
+__readss(VOID);
+
+EXTERN_C
+UINT16
+__readds(VOID);
+
+EXTERN_C
+UINT16
+__reades(VOID);
+
+EXTERN_C
+UINT16
+__readfs(VOID);
+
+EXTERN_C
+UINT16
+__readgs(VOID);
+
 VMEXIT_HANDLER VcpuUnknownExitReason;
 VMEXIT_HANDLER VcpuHandleCpuid;
 
@@ -33,6 +69,16 @@ VOID
 VcpuHandleExit(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState
+);
+
+UINT64
+SegmentBaseAddress(
+    _In_ X86_SEGMENT_SELECTOR Selector
+);
+
+UINT32
+SegmentAr(
+    _In_ X86_SEGMENT_SELECTOR Selector
 );
 
 NTSTATUS
@@ -190,7 +236,7 @@ Routine Description:
     VmxWrite(GUEST_SYSENTER_EIP, __readmsr(IA32_SYSENTER_EIP));
     VmxWrite(GUEST_SYSENTER_CS, __readmsr(IA32_SYSENTER_CS));
 
-    X86_SYSTEM_DESCRIPTOR Gdtr, Idtr;
+    X86_PSEUDO_DESCRIPTOR Gdtr = {0}, Idtr = {0};
     __sgdt(&Gdtr);
     __sidt(&Idtr);
 
@@ -202,6 +248,74 @@ Routine Description:
 
     VmxWrite(GUEST_IDTR_BASE, Idtr.BaseAddress);
     VmxWrite(HOST_IDTR_BASE, Vcpu->Vmm->HostInterruptDescriptor.BaseAddress);
+
+    X86_SEGMENT_SELECTOR Segment = {0};
+
+    Segment.Value = __readcs();
+
+    VmxWrite(GUEST_CS_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_CS_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_CS_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_CS_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_CS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+
+    Segment.Value = __readss();
+
+    VmxWrite(GUEST_SS_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_SS_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_SS_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_SS_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_SS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+
+    Segment.Value = __readds();
+
+    VmxWrite(GUEST_DS_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_DS_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_DS_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_DS_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_DS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+
+    Segment.Value = __reades();
+
+    VmxWrite(GUEST_ES_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_ES_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_ES_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_ES_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_ES_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+
+    Segment.Value = __readfs();
+
+    VmxWrite(GUEST_FS_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_FS_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_FS_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_FS_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_FS_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_FS_SELECTOR, Segment.Value& HOST_SEGMENT_SELECTOR_MASK);
+
+    Segment.Value = __readgs();
+
+    VmxWrite(GUEST_GS_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_GS_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_GS_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_GS_BASE, __readmsr(IA32_GS_BASE));
+    VmxWrite(HOST_GS_BASE, __readmsr(IA32_GS_BASE));
+    VmxWrite(HOST_GS_SELECTOR, Segment.Value& HOST_SEGMENT_SELECTOR_MASK);
+
+    Segment.Value = __readldt();
+
+    VmxWrite(GUEST_LDTR_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_LDTR_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_LDTR_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_LDTR_BASE, SegmentBaseAddress(Segment));
+
+    Segment.Value = __readtr();
+
+    VmxWrite(GUEST_TR_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_TR_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_TR_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_TR_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_TR_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_TR_SELECTOR, Segment.Value& HOST_SEGMENT_SELECTOR_MASK);
 	
     VmxWrite(HOST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
     VmxWrite(GUEST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
@@ -249,7 +363,7 @@ Routine Description:
 
     if (!NT_SUCCESS(Params->Status))
     {
-        Params->FaultyCoreId = CpuId;
+        InterlockedExchange(&Params->FaultyCoreId, CpuId);
 
         // Shutdown VMX operation on this CPU core if we failed VM launch
         if (Params->Status == STATUS_FATAL_APP_EXIT)
@@ -387,7 +501,7 @@ Routine Description:
     Emulates the CPUID instruction.
 --*/
 {
-    X86_CPUID_ARGS CpuidArgs = (X86_CPUID_ARGS){
+    X86_CPUID_ARGS CpuidArgs = {
         .Eax = (UINT32)GuestState->Rax,
         .Ebx = (UINT32)GuestState->Rbx,
         .Ecx = (UINT32)GuestState->Rcx,
@@ -408,4 +522,83 @@ Routine Description:
     VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, Vcpu->TscInfo.VmEntryLatency + 500);
 
     return VMM_EVENT_CONTINUE;
+}
+
+PX86_SEGMENT_DESCRIPTOR
+LookupSegmentDescriptor(
+    _In_ X86_SEGMENT_SELECTOR Selector
+)
+/*++
+Routine Description:
+	Looks up a segment descriptor in the GDT using a provided selector
+ */
+{
+    X86_PSEUDO_DESCRIPTOR Gdtr;
+    __sgdt(&Gdtr);
+
+    return &((PX86_SEGMENT_DESCRIPTOR)Gdtr.BaseAddress)[Selector.Index];
+}
+
+UINT64
+SegmentBaseAddress(
+    _In_ X86_SEGMENT_SELECTOR Selector
+)
+/*++
+Routine Description:
+	Calculates the base address of a segment using a segment selector
+ */
+{
+    UINT64 Address = 0;
+
+	// The LDT is unuseable on Windows 10, and the first entry of the GDT isn't used
+    if (Selector.Table != SEGMENT_SELECTOR_TABLE_GDT || Selector.Index == 0)
+        return 0;
+
+    PX86_SEGMENT_DESCRIPTOR Segment = LookupSegmentDescriptor(Selector);
+
+	if (Segment == NULL)
+	{
+        ImpDebugPrint("Invalid segment selector '%i'...\n", Selector.Value);
+        return 0;
+	}
+
+	Address = ((UINT64)Segment->BaseHigh << 24) | 
+				((UINT64)Segment->BaseMiddle << 16) | 
+				((UINT64)Segment->BaseLow & 0xFFFF);
+
+	if (Segment->System == 0)
+	{
+        PX86_SYSTEM_DESCRIPTOR SystemSegment = (PX86_SYSTEM_DESCRIPTOR)Segment;
+        Address |= (UINT64)SystemSegment->BaseUpper << 32;
+	}
+	
+    return Address;
+}
+
+UINT32
+SegmentAr(
+    _In_ X86_SEGMENT_SELECTOR Selector
+)
+/*++
+Routine Description:
+	Gets the access rights of a segment
+ */
+{
+    PX86_SEGMENT_DESCRIPTOR Segment = LookupSegmentDescriptor(Selector);
+
+    if (Segment == NULL)
+    {
+        ImpDebugPrint("Invalid segment selector '%i'...\n", Selector.Value);
+        return 0;
+    }
+	
+    X86_SEGMENT_ACCESS_RIGHTS SegmentAccessRights = {
+        .Value = (UINT32)(__segmentar(Selector) >> 8)
+    };
+
+    SegmentAccessRights.Unusable = !Segment->Present;
+    SegmentAccessRights.Reserved1 = 0;
+    SegmentAccessRights.Reserved2 = 0;
+	
+    return SegmentAccessRights.Value;
 }
