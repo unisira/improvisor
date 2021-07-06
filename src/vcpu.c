@@ -301,33 +301,33 @@ Routine Description:
     VmxWrite(HOST_GS_BASE, __readmsr(IA32_GS_BASE));
     VmxWrite(HOST_GS_SELECTOR, Segment.Value& HOST_SEGMENT_SELECTOR_MASK);
 
-    Segment.Value = __readldt();
+	Segment.Value = __readldt();
 
-    VmxWrite(GUEST_LDTR_SELECTOR, Segment.Value);
-    VmxWrite(GUEST_LDTR_LIMIT, __segmentlimit(Segment.Value));
-    VmxWrite(GUEST_LDTR_ACCESS_RIGHTS, SegmentAr(Segment));
-    VmxWrite(GUEST_LDTR_BASE, SegmentBaseAddress(Segment));
+	VmxWrite(GUEST_LDTR_SELECTOR, Segment.Value);
+	VmxWrite(GUEST_LDTR_LIMIT, __segmentlimit(Segment.Value));
+	VmxWrite(GUEST_LDTR_ACCESS_RIGHTS, SegmentAr(Segment));
+	VmxWrite(GUEST_LDTR_BASE, SegmentBaseAddress(Segment));
 
-    Segment.Value = __readtr();
+	Segment.Value = __readtr();
 
-    VmxWrite(GUEST_TR_SELECTOR, Segment.Value);
-    VmxWrite(GUEST_TR_LIMIT, __segmentlimit(Segment.Value));
-    VmxWrite(GUEST_TR_ACCESS_RIGHTS, SegmentAr(Segment));
-    VmxWrite(GUEST_TR_BASE, SegmentBaseAddress(Segment));
-    VmxWrite(HOST_TR_BASE, SegmentBaseAddress(Segment));
-    VmxWrite(HOST_TR_SELECTOR, Segment.Value& HOST_SEGMENT_SELECTOR_MASK);
+	VmxWrite(GUEST_TR_SELECTOR, Segment.Value);
+	VmxWrite(GUEST_TR_LIMIT, __segmentlimit(Segment.Value));
+	VmxWrite(GUEST_TR_ACCESS_RIGHTS, SegmentAr(Segment));
+	VmxWrite(GUEST_TR_BASE, SegmentBaseAddress(Segment));
+	VmxWrite(HOST_TR_BASE, SegmentBaseAddress(Segment));
+	VmxWrite(HOST_TR_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 	
-    VmxWrite(HOST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
-    VmxWrite(GUEST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
+	VmxWrite(HOST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
+	VmxWrite(GUEST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
 
-    VmxWrite(HOST_RIP, (UINT64)__vmexit_entry);
-    VmxWrite(GUEST_RIP, (UINT64)VcpuLaunch);
+	VmxWrite(HOST_RIP, (UINT64)__vmexit_entry);
+	VmxWrite(GUEST_RIP, (UINT64)VcpuLaunch);
 
-    Vcpu->IsLaunched = TRUE;
+	Vcpu->IsLaunched = TRUE;
 
-    __vmx_vmlaunch();
+	__vmx_vmlaunch();
 
-    return STATUS_FATAL_APP_EXIT;
+	return STATUS_FATAL_APP_EXIT;
 }
 
 VOID
@@ -344,52 +344,52 @@ Routine Description:
     with VCPU_DELEGATE_PARAMS::Status as STATUS_SUCCESS, indicating everything went well
 --*/
 {
-    ULONG CpuId = KeGetCurrentProcessorNumber();
-    PVCPU Vcpu = &Params->VmmContext->VcpuTable[CpuId];
+	ULONG CpuId = KeGetCurrentProcessorNumber();
+	PVCPU Vcpu = &Params->VmmContext->VcpuTable[CpuId];
     
-    Vcpu->Vmm = Params->VmmContext;
+	Vcpu->Vmm = Params->VmmContext;
 
-    __cpu_save_state(&Vcpu->LaunchState);
+	__cpu_save_state(&Vcpu->LaunchState);
 
-    // Control flow is restored here upon successful virtualisation of the CPU
-    if (Vcpu->IsLaunched)
-    {
-        InterlockedIncrement(&Params->ActiveVcpuCount);
-        ImpDebugPrint("VCPU #%d is now running...\n", Vcpu->Id);
-        return;
+	// Control flow is restored here upon successful virtualisation of the CPU
+	if (Vcpu->IsLaunched)
+	{
+		InterlockedIncrement(&Params->ActiveVcpuCount);
+		ImpDebugPrint("VCPU #%d is now running...\n", Vcpu->Id);
+		return;
     }
-    
-    Params->Status = VcpuSpawn(Vcpu);
 
-    if (!NT_SUCCESS(Params->Status))
-    {
-        InterlockedExchange(&Params->FaultyCoreId, CpuId);
+	Params->Status = VcpuSpawn(Vcpu);
 
-        // Shutdown VMX operation on this CPU core if we failed VM launch
-        if (Params->Status == STATUS_FATAL_APP_EXIT)
-        {
-            ImpDebugPrint("VMLAUNCH failed on VCPU #%d... (%x)", Vcpu->Id, VmxRead(VM_INSTRUCTION_ERROR));
-            __vmx_off();
-        }
-    }
+	if (!NT_SUCCESS(Params->Status))
+	{
+		InterlockedExchange(&Params->FaultyCoreId, CpuId);
+
+		// Shutdown VMX operation on this CPU core if we failed VM launch
+		if (Params->Status == STATUS_FATAL_APP_EXIT)
+		{
+			ImpDebugPrint("VMLAUNCH failed on VCPU #%d... (%x)", Vcpu->Id, VmxRead(VM_INSTRUCTION_ERROR));
+			__vmx_off();
+		}
+	}
 }
 
 VOID
 VcpuShutdownPerCpu(
-    _Inout_ PVCPU_DELEGATE_PARAMS Params
+	_Inout_ PVCPU_DELEGATE_PARAMS Params
 )
 /*++
 Routine Description:
-    Checks if this core has been virtualised, and stops VMX operation if so.
+	Checks if this core has been virtualised, and stops VMX operation if so.
 --*/
 {
-    // TODO: Complete this
-    ULONG CpuId = KeGetCurrentProcessorNumber(); 
+	// TODO: Complete this
+	ULONG CpuId = KeGetCurrentProcessorNumber(); 
 
 	/*
-    if (Params->VmmContext->VcpuTable[CpuId].IsLaunched)
-        __vmcall(HYPERCALL_SHUTDOWN_VCPU);
-    */
+	if (Params->VmmContext->VcpuTable[CpuId].IsLaunched)
+		__vmcall(HYPERCALL_SHUTDOWN_VCPU);
+	*/
 }
 
 PVCPU_STACK
@@ -399,14 +399,14 @@ Routine Description:
 	Gets the VCPU_STACK pointer from the top of the host stack
  */
 {
-    return (PVCPU_STACK)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
+	return (PVCPU_STACK)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
 }
 
 VOID
 VcpuToggleExitOnMsr(
-    _Inout_ PVCPU Vcpu,
-    _In_ UINT32 Msr,
-    _In_ MSR_ACCESS Access
+	_Inout_ PVCPU Vcpu,
+	_In_ UINT32 Msr,
+	_In_ MSR_ACCESS Access
 )
 /*++
 Routine Description:
@@ -449,7 +449,7 @@ Routine Description:
 --*/
 {
     // TODO: Shutdown entire hypervisor from here
-    ImpDebugPrint("Unknown VM-exit reason on VCPU #%d...\n", Vcpu->Id);
+	ImpDebugPrint("Unknown VM-exit reason on VCPU #%d...\n", Vcpu->Id);
 	KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_UNKNOWN_VMEXIT_REASON, 0, 0, 0);
 }
 
@@ -546,20 +546,20 @@ SegmentBaseAddress(
 /*++
 Routine Description:
 	Calculates the base address of a segment using a segment selector
- */
+--*/
 {
-    UINT64 Address = 0;
+	UINT64 Address = 0;
 
 	// The LDT is unuseable on Windows 10, and the first entry of the GDT isn't used
-    if (Selector.Table != SEGMENT_SELECTOR_TABLE_GDT || Selector.Index == 0)
-        return 0;
+	if (Selector.Table != SEGMENT_SELECTOR_TABLE_GDT || Selector.Index == 0)
+		return 0;
 
-    PX86_SEGMENT_DESCRIPTOR Segment = LookupSegmentDescriptor(Selector);
+	PX86_SEGMENT_DESCRIPTOR Segment = LookupSegmentDescriptor(Selector);
 
 	if (Segment == NULL)
 	{
-        ImpDebugPrint("Invalid segment selector '%i'...\n", Selector.Value);
-        return 0;
+		ImpDebugPrint("Invalid segment selector '%i'...\n", Selector.Value);
+		return 0;
 	}
 
 	Address = ((UINT64)Segment->BaseHigh << 24) | 
@@ -568,11 +568,11 @@ Routine Description:
 
 	if (Segment->System == 0)
 	{
-        PX86_SYSTEM_DESCRIPTOR SystemSegment = (PX86_SYSTEM_DESCRIPTOR)Segment;
-        Address |= (UINT64)SystemSegment->BaseUpper << 32;
+		PX86_SYSTEM_DESCRIPTOR SystemSegment = (PX86_SYSTEM_DESCRIPTOR)Segment;
+		Address |= (UINT64)SystemSegment->BaseUpper << 32;
 	}
 	
-    return Address;
+	return Address;
 }
 
 UINT32
