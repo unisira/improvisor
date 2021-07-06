@@ -26,7 +26,7 @@ Routine Description:
     if (VmxRegion == NULL)
         return NULL;
 
-    IA32_VMX_BASIC_MSR VmxCap = (IA32_VMX_BASIC_MSR){
+    IA32_VMX_BASIC_MSR VmxCap = {
         .Value = __readmsr(IA32_VMX_BASIC)
     };
 
@@ -61,7 +61,7 @@ Routine Description:
 
     __writecr4(Cr4.Value);
 
-    IA32_FEATURE_CONTROL_MSR FeatureControl = (IA32_FEATURE_CONTROL_MSR){
+    IA32_FEATURE_CONTROL_MSR FeatureControl = {
         .Value = __readmsr(IA32_FEATURE_CONTROL)
     };
 
@@ -149,7 +149,7 @@ Routine Description:
 	Calculates the bits that can be modified in a VMX control capability
 --*/
 {
-    VMX_CAPABILITY_MSR Cap = (VMX_CAPABILITY_MSR){
+    VMX_CAPABILITY_MSR Cap = {
         .Value = VmxCapability
     };
 
