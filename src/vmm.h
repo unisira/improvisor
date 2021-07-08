@@ -12,7 +12,7 @@ typedef struct _VMM_CONTEXT
     UINT8 CpuCount;
     PVCPU VcpuTable;
     PMM_SUPPORT MmSupport;
-    X86_SYSTEM_DESCRIPTOR HostInterruptDescriptor;
+    X86_PSEUDO_DESCRIPTOR HostInterruptDescriptor;
 } VMM_CONTEXT, * PVMM_CONTEXT;
 
 NTSTATUS 
