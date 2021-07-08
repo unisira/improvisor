@@ -9,12 +9,17 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 find_package(WDK REQUIRED)
 
 wdk_add_driver(improvisor
+    src/arch/cpuid.c
     src/util/spinlock.c
     src/improvisor.c
+    src/cpuid.c
     src/vcpu.c
     src/vmm.c
     src/vmx.c
     src/vmexit.asm
+    src/cpu_state.asm
+    src/vmcall.asm
+    src/intrin.asm
     src/main.c
     )
 
