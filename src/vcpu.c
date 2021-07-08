@@ -55,9 +55,6 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
 	VcpuUnknownExitReason
 };
 
-PVCPU_STACK
-VcpuGetStack(VOID);
-
 VOID
 VcpuToggleExitOnMsr(
 	_Inout_ PVCPU Vcpu,
@@ -158,10 +155,12 @@ VOID
 VcpuLaunch(VOID)
 /*++
 Routine Description:
-	Post-VMLAUNCH, sets the CPU's registers and RIP to previous execution.
+	Post-VMLAUNCH, sets the CPU's registers and RIP to previous execution. 
 --*/
 {
-	__cpu_restore_state(&VcpuGetStack()->Cache.Vcpu->LaunchState);
+	PVCPU_STACK Stack = (PVCPU_STACK)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
+	
+	__cpu_restore_state(&Stack->Cache.Vcpu->LaunchState);
 }
 
 NTSTATUS
@@ -390,16 +389,6 @@ Routine Description:
 	if (Params->VmmContext->VcpuTable[CpuId].IsLaunched)
 		__vmcall(HYPERCALL_SHUTDOWN_VCPU);
 	*/
-}
-
-PVCPU_STACK
-VcpuGetStack(VOID)
-/*++
-Routine Description:
-	Gets the VCPU_STACK pointer from the top of the host stack
---*/
-{
-	return (PVCPU_STACK)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
 }
 
 VOID
