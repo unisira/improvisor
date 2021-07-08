@@ -66,7 +66,7 @@ Routine Description:
         goto panic;
     }
 
-    VCPU_DELEGATE_PARAMS Params = (VCPU_DELEGATE_PARAMS){
+    VCPU_DELEGATE_PARAMS Params = {
         .VmmContext = VmmContext,
         .ActiveVcpuCount = 0,
         .FaultyCoreId = -1,
