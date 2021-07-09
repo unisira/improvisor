@@ -94,8 +94,8 @@ Routine Description:
     return STATUS_SUCCESS;
 
 panic:
-    ExFreePoolWithTag(VmmContext, POOL_TAG); 
     VmmFreeResources(VmmContext);
+    ExFreePoolWithTag(VmmContext, POOL_TAG); 
     return Status;
 }
 
