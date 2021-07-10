@@ -157,9 +157,10 @@ Routine Description:
 }
 
 VOID
-VmxToggleControl(
+VmxSetControl(
     _Inout_ PVMX_STATE Vmx,
-    _In_ VMX_CONTROL Control
+    _In_ VMX_CONTROL Control,
+    _In_ BOOLEAN State
 )
 /*++
 Routine Description:
@@ -173,10 +174,13 @@ Routine Description:
 
     UINT8 ControlBit = (UINT8)((Control & 0xF8));
 
-	if (VmxGetFixedBits(TargetCap) & ControlBit)
+	if (VmxGetFixedBits(TargetCap) & (1 << ControlBit))
 		return;
 	
-    *TargetControls |= !(*TargetControls & ControlBit);
+    if (State)
+        *TargetControls |= (1 << ControlBit);
+    else
+        *TargetControls &= ~(1 << ControlBit);
 }
 
 BOOLEAN
@@ -199,7 +203,7 @@ Routine Description:
     if (VmxGetFixedBits(TargetCap) & ControlBit)
         return FALSE;
 
-    return (*TargetControls & ControlBit) != 0;
+    return (*TargetControls & (1 << ControlBit)) != 0;
 }
 
 VOID
