@@ -23,8 +23,6 @@ typedef struct _CPU_STATE
     UINT64 Rsp;
     UINT64 Rip;
     UINT32 MxCsr;
-    UINT32 _Align1;
-    UINT64 _Align2;
     M128A Xmm0;
     M128A Xmm1;
     M128A Xmm2;

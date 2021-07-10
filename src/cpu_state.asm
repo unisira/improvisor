@@ -18,8 +18,6 @@ _Rbp QWORD ?
 _Rsp QWORD ?
 _Rip QWORD ?
 _MxCsr DWORD ?
-_Align1 DWORD ?
-_Align2 QWORD ?
 _Xmm0 XMMWORD ?
 _Xmm1 XMMWORD ?
 _Xmm2 XMMWORD ?
@@ -58,22 +56,22 @@ __cpu_save_state PROC
     mov [rcx].CPU_STATE._R14, r14
     mov [rcx].CPU_STATE._R15, r15
     mov [rcx].CPU_STATE._Rbp, rbp
-    movaps [rcx].CPU_STATE._Xmm0, xmm0
-    movaps [rcx].CPU_STATE._Xmm1, xmm1
-    movaps [rcx].CPU_STATE._Xmm2, xmm2
-    movaps [rcx].CPU_STATE._Xmm3, xmm3
-    movaps [rcx].CPU_STATE._Xmm4, xmm4
-    movaps [rcx].CPU_STATE._Xmm5, xmm5
-    movaps [rcx].CPU_STATE._Xmm6, xmm6
-    movaps [rcx].CPU_STATE._Xmm7, xmm7
-    movaps [rcx].CPU_STATE._Xmm8, xmm8
-    movaps [rcx].CPU_STATE._Xmm9, xmm9
-    movaps [rcx].CPU_STATE._Xmm10, xmm10
-    movaps [rcx].CPU_STATE._Xmm11, xmm11
-    movaps [rcx].CPU_STATE._Xmm12, xmm12
-    movaps [rcx].CPU_STATE._Xmm13, xmm13
-    movaps [rcx].CPU_STATE._Xmm14, xmm14
-    movaps [rcx].CPU_STATE._Xmm15, xmm15
+    movups [rcx].CPU_STATE._Xmm0, xmm0
+    movups [rcx].CPU_STATE._Xmm1, xmm1
+    movups [rcx].CPU_STATE._Xmm2, xmm2
+    movups [rcx].CPU_STATE._Xmm3, xmm3
+    movups [rcx].CPU_STATE._Xmm4, xmm4
+    movups [rcx].CPU_STATE._Xmm5, xmm5
+    movups [rcx].CPU_STATE._Xmm6, xmm6
+    movups [rcx].CPU_STATE._Xmm7, xmm7
+    movups [rcx].CPU_STATE._Xmm8, xmm8
+    movups [rcx].CPU_STATE._Xmm9, xmm9
+    movups [rcx].CPU_STATE._Xmm10, xmm10
+    movups [rcx].CPU_STATE._Xmm11, xmm11
+    movups [rcx].CPU_STATE._Xmm12, xmm12
+    movups [rcx].CPU_STATE._Xmm13, xmm13
+    movups [rcx].CPU_STATE._Xmm14, xmm14
+    movups [rcx].CPU_STATE._Xmm15, xmm15
     stmxcsr [rcx].CPU_STATE._MxCsr
     lea rax, [rsp+8]
     mov [rcx].CPU_STATE._Rsp, rax
@@ -100,22 +98,22 @@ __cpu_restore_state PROC
     mov r14, [rcx].CPU_STATE._R14
     mov r15, [rcx].CPU_STATE._R15
     mov rbp, [rcx].CPU_STATE._Rbp
-    movaps xmm0, [rcx].CPU_STATE._Xmm0
-    movaps xmm1, [rcx].CPU_STATE._Xmm1
-    movaps xmm2, [rcx].CPU_STATE._Xmm2
-    movaps xmm3, [rcx].CPU_STATE._Xmm3
-    movaps xmm4, [rcx].CPU_STATE._Xmm4
-    movaps xmm5, [rcx].CPU_STATE._Xmm5
-    movaps xmm6, [rcx].CPU_STATE._Xmm6
-    movaps xmm7, [rcx].CPU_STATE._Xmm7
-    movaps xmm8, [rcx].CPU_STATE._Xmm8
-    movaps xmm9, [rcx].CPU_STATE._Xmm9
-    movaps xmm10, [rcx].CPU_STATE._Xmm10
-    movaps xmm11, [rcx].CPU_STATE._Xmm11
-    movaps xmm12, [rcx].CPU_STATE._Xmm12
-    movaps xmm13, [rcx].CPU_STATE._Xmm13
-    movaps xmm14, [rcx].CPU_STATE._Xmm14
-    movaps xmm15, [rcx].CPU_STATE._Xmm15
+    movups xmm0, [rcx].CPU_STATE._Xmm0
+    movups xmm1, [rcx].CPU_STATE._Xmm1
+    movups xmm2, [rcx].CPU_STATE._Xmm2
+    movups xmm3, [rcx].CPU_STATE._Xmm3
+    movups xmm4, [rcx].CPU_STATE._Xmm4
+    movups xmm5, [rcx].CPU_STATE._Xmm5
+    movups xmm6, [rcx].CPU_STATE._Xmm6
+    movups xmm7, [rcx].CPU_STATE._Xmm7
+    movups xmm8, [rcx].CPU_STATE._Xmm8
+    movups xmm9, [rcx].CPU_STATE._Xmm9
+    movups xmm10, [rcx].CPU_STATE._Xmm10
+    movups xmm11, [rcx].CPU_STATE._Xmm11
+    movups xmm12, [rcx].CPU_STATE._Xmm12
+    movups xmm13, [rcx].CPU_STATE._Xmm13
+    movups xmm14, [rcx].CPU_STATE._Xmm14
+    movups xmm15, [rcx].CPU_STATE._Xmm15
     ldmxcsr [rcx].CPU_STATE._MxCsr
     popfq
     mov rsp, [rcx].CPU_STATE._Rsp
