@@ -56,16 +56,10 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
 };
 
 VOID
-VcpuToggleControl(
-	_Inout_ PVCPU Vcpu,
-	_In_ VMX_CONTROL Control
-);
-
-VOID
-VcpuCompareToggleControl(
+VcpuSetControl(
 	_Inout_ PVCPU Vcpu,
 	_In_ VMX_CONTROL Control,
-	_In_ BOOLEAN Comparand
+    _In_ BOOLEAN State
 );
 
 VOID
@@ -107,6 +101,8 @@ Routine Description:
 	because VmmStartHypervisor will take care of it
 --*/
 {
+    Vcpu->Id = Id;
+
 	Vcpu->Vmcs = VmxAllocateRegion();
 	if (Vcpu->Vmcs == NULL)
 	{
@@ -166,15 +162,15 @@ Routine Description:
 	VmxSetupVmxState(&Vcpu->Vmx);
 
 	// Make sure the VM enters in IA32e
-	VcpuCompareToggleControl(Vcpu, VMX_CTL_HOST_ADDRESS_SPACE_SIZE, FALSE);
-	VcpuCompareToggleControl(Vcpu, VMX_CTL_GUEST_ADDRESS_SPACE_SIZE, FALSE);
+	VcpuSetControl(Vcpu, VMX_CTL_HOST_ADDRESS_SPACE_SIZE, TRUE);
+	VcpuSetControl(Vcpu, VMX_CTL_GUEST_ADDRESS_SPACE_SIZE, TRUE);
 
-	VcpuCompareToggleControl(Vcpu, VMX_CTL_USE_MSR_BITMAPS, FALSE);
-	VcpuCompareToggleControl(Vcpu, VMX_CTL_SECONDARY_CTLS_ACTIVE, FALSE);
+	VcpuSetControl(Vcpu, VMX_CTL_USE_MSR_BITMAPS, TRUE);
+	VcpuSetControl(Vcpu, VMX_CTL_SECONDARY_CTLS_ACTIVE, TRUE);
 
-	VcpuCompareToggleControl(Vcpu, VMX_CTL_ENABLE_RDTSCP, FALSE);
-	VcpuCompareToggleControl(Vcpu, VMX_CTL_ENABLE_XSAVES_XRSTORS, FALSE);
-	VcpuCompareToggleControl(Vcpu, VMX_CTL_ENABLE_INVPCID, FALSE);
+	VcpuSetControl(Vcpu, VMX_CTL_ENABLE_RDTSCP, TRUE);
+	VcpuSetControl(Vcpu, VMX_CTL_ENABLE_XSAVES_XRSTORS, TRUE);
+	VcpuSetControl(Vcpu, VMX_CTL_ENABLE_INVPCID, TRUE);
 	
 	VcpuToggleExitOnMsr(Vcpu, IA32_FEATURE_CONTROL, MSR_READ);
 
@@ -205,7 +201,7 @@ Routine Description:
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 
-	ImpDebugPrint("Spawning VCPU #%d...", Vcpu->Id);
+	ImpDebugPrint("Spawning VCPU #%d...\n", Vcpu->Id);
 
 	VmxRestrictControlRegisters();
 
@@ -256,7 +252,8 @@ Routine Description:
 	VmxWrite(HOST_CR4, __readcr4());
 
 	VmxWrite(GUEST_CR3, __readcr3());
-	VmxWrite(HOST_CR3, Vcpu->Vmm->MmSupport->HostDirectoryPhysical);
+	VmxWrite(HOST_CR3, __readcr3());
+    //VmxWrite(HOST_CR3, Vcpu->Vmm->MmSupport->HostDirectoryPhysical);
 
 	VmxWrite(GUEST_DR7, __readdr(7));
 
@@ -359,7 +356,7 @@ Routine Description:
 
 	__vmx_vmlaunch();
 
-	return STATUS_FATAL_APP_EXIT;
+	return STATUS_APP_INIT_FAILURE;
 }
 
 VOID
@@ -398,9 +395,9 @@ Routine Description:
 		InterlockedExchange(&Params->FaultyCoreId, CpuId);
 
 		// Shutdown VMX operation on this CPU core if we failed VM launch
-		if (Params->Status == STATUS_FATAL_APP_EXIT)
+		if (Params->Status == STATUS_APP_INIT_FAILURE)
 		{
-			ImpDebugPrint("VMLAUNCH failed on VCPU #%d... (%x)", Vcpu->Id, VmxRead(VM_INSTRUCTION_ERROR));
+			ImpDebugPrint("VMLAUNCH failed on VCPU #%d... (%x)\n", Vcpu->Id, VmxRead(VM_INSTRUCTION_ERROR));
 			__vmx_off();
 		}
 	}
@@ -425,31 +422,17 @@ Routine Description:
 }
 
 VOID
-VcpuToggleControl(
-	_Inout_ PVCPU Vcpu,
-	_In_ VMX_CONTROL Control
-)
-/*++
-Routine Description:
-	Toggles a VM execution control for a VCPU
- */
-{
-	VmxToggleControl(&Vcpu->Vmx, Control);
-}
-
-VOID
-VcpuCompareToggleControl(
+VcpuSetControl(
 	_Inout_ PVCPU Vcpu,
 	_In_ VMX_CONTROL Control,
-	_In_ BOOLEAN Comparand
+    _In_ BOOLEAN State
 )
 /*++
 Routine Description:
-	Compares the state of the control to `Comparand`, and toggles it if so
---*/
+	Sets the state of a VM execution control for a VCPU
+ */
 {
-	if (VmxGetControlBit(&Vcpu->Vmx, Control) == Comparand)
-		VmxToggleControl(&Vcpu->Vmx, Control);
+	VmxSetControl(&Vcpu->Vmx, Control, State);
 }
 
 VOID
@@ -583,8 +566,8 @@ Routine Description:
 	GuestState->Rcx = CpuidArgs.Ecx;
 	GuestState->Rdx = CpuidArgs.Edx;
 
-	VcpuToggleControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER);
-	VcpuToggleControl(Vcpu, VMX_CTL_RDTSC_EXITING);
+	VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
+	VcpuSetControl(Vcpu, VMX_CTL_RDTSC_EXITING, TRUE);
 
 	// Set the VMX preemption timer to a relatively low value taking the VM entry latency into account
 	VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, Vcpu->TscInfo.VmEntryLatency + 500);
@@ -599,12 +582,12 @@ LookupSegmentDescriptor(
 /*++
 Routine Description:
 	Looks up a segment descriptor in the GDT using a provided selector
- */
+--*/
 {
 	X86_PSEUDO_DESCRIPTOR Gdtr;
 	__sgdt(&Gdtr);
 
-	return &((PX86_SEGMENT_DESCRIPTOR)Gdtr.BaseAddress)[Selector.Index];
+    return (PX86_SEGMENT_DESCRIPTOR)(Gdtr.BaseAddress + Selector.Index * sizeof(X86_SEGMENT_DESCRIPTOR));
 }
 
 UINT64
