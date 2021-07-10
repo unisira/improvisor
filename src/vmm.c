@@ -34,12 +34,14 @@ Routine Description:
 {
     NTSTATUS Status = STATUS_SUCCESS;
 
+    /*
     Status = VmmEnsureFeatureSupport();
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("VMX, or another feature required is not supported on this system...\n");
         return Status;
     }
+    */
 
     PVMM_CONTEXT VmmContext = (PVMM_CONTEXT)ExAllocatePoolWithTag(NonPagedPool, sizeof(VMM_CONTEXT), POOL_TAG);
     if (VmmContext == NULL)
@@ -48,7 +50,7 @@ Routine Description:
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    VmmContext->CpuCount = (UINT8)KeQueryActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+    VmmContext->CpuCount = (UINT8)KeQueryActiveProcessorCountEx(ALL_PROCESSOR_GROUPS);
 
     ImpDebugPrint("Preparing VMM context at %p for %d cores...\n", VmmContext, VmmContext->CpuCount);
 
@@ -122,6 +124,9 @@ Routine Description:
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
+    // TODO: This can be removed and put inside a pool allocation wrapper function
+    RtlSecureZeroMemory(VmmContext->VcpuTable, sizeof(VCPU) * CpuCount);
+
     for (UINT8 i = 0; i < CpuCount; i++)
     {
         Status = VcpuSetup(&VmmContext->VcpuTable[i], i);
@@ -161,7 +166,7 @@ Routine Description:
     Spawns a delegate on each CPU core responsible for setting up/shutting down each VCPU
 --*/ 
 {
-    PKIPI_BROADCAST_WORKER Worker   = (PKIPI_BROADCAST_WORKER)&Func;
+    PKIPI_BROADCAST_WORKER Worker   = (PKIPI_BROADCAST_WORKER)Func;
     ULONG_PTR Context               = (ULONG_PTR)Param;
 
     KeIpiGenericCall(Worker, Context);
