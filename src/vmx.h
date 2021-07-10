@@ -7,7 +7,10 @@
 #define VMX_MSR_HI_BITMAP_OFFS 1024
 
 #define ENCODE_VMX_CONTROL(Field, Position) \
-    (UINT64)(((UINT64)Position << 3) | (UINT64)Field)
+    ( \
+      (((Field)     & 0x03) << 0) | \
+      (((Position)  & 0x1F) << 3)   \
+    ) 
 
 typedef struct _VMX_REGION
 {
@@ -344,15 +347,10 @@ VmxWrite(
 );
 
 VOID
-VmxToggleControl(
+VmxSetControl(
     _Inout_ PVMX_STATE Vmx,
-    _In_ VMX_CONTROL Control
-);
-
-BOOLEAN
-VmxGetControlBit(
-	_Inout_ PVMX_STATE Vmx,
-	_In_ VMX_CONTROL Control
+    _In_ VMX_CONTROL Control,
+    _In_ BOOLEAN State
 );
 
 VOID
