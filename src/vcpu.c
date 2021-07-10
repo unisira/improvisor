@@ -56,6 +56,24 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
 };
 
 VOID
+VcpuToggleControl(
+	_Inout_ PVCPU Vcpu,
+	_In_ VMX_CONTROL Control
+);
+
+VOID
+VcpuCompareToggleControl(
+	_Inout_ PVCPU Vcpu,
+	_In_ VMX_CONTROL Control,
+	_In_ BOOLEAN Comparand
+);
+
+VOID
+VcpuCommitVmxState(
+	_Inout_ PVCPU Vcpu
+);
+
+VOID
 VcpuToggleExitOnMsr(
 	_Inout_ PVCPU Vcpu,
 	_In_ UINT32 Msr,
@@ -145,6 +163,19 @@ Routine Description:
 			Vcpu->MsrBitmap + VMX_MSR_WRITE_BITMAP_OFFS + VMX_MSR_HI_BITMAP_OFFS, 
 			1024 * 8);
 
+	VmxSetupVmxState(&Vcpu->Vmx);
+
+	// Make sure the VM enters in IA32e
+	VcpuCompareToggleControl(Vcpu, VMX_CTL_HOST_ADDRESS_SPACE_SIZE, FALSE);
+	VcpuCompareToggleControl(Vcpu, VMX_CTL_GUEST_ADDRESS_SPACE_SIZE, FALSE);
+
+	VcpuCompareToggleControl(Vcpu, VMX_CTL_USE_MSR_BITMAPS, FALSE);
+	VcpuCompareToggleControl(Vcpu, VMX_CTL_SECONDARY_CTLS_ACTIVE, FALSE);
+
+	VcpuCompareToggleControl(Vcpu, VMX_CTL_ENABLE_RDTSCP, FALSE);
+	VcpuCompareToggleControl(Vcpu, VMX_CTL_ENABLE_XSAVES_XRSTORS, FALSE);
+	VcpuCompareToggleControl(Vcpu, VMX_CTL_ENABLE_INVPCID, FALSE);
+	
 	VcpuToggleExitOnMsr(Vcpu, IA32_FEATURE_CONTROL, MSR_READ);
 
 	return STATUS_SUCCESS;
@@ -315,6 +346,8 @@ Routine Description:
 	VmxWrite(GUEST_TR_BASE, SegmentBaseAddress(Segment));
 	VmxWrite(HOST_TR_BASE, SegmentBaseAddress(Segment));
 	VmxWrite(HOST_TR_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+
+	VcpuCommitVmxState(Vcpu);
 	
 	VmxWrite(HOST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
 	VmxWrite(GUEST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
@@ -389,6 +422,50 @@ Routine Description:
 	if (Params->VmmContext->VcpuTable[CpuId].IsLaunched)
 		__vmcall(HYPERCALL_SHUTDOWN_VCPU);
 	*/
+}
+
+VOID
+VcpuToggleControl(
+	_Inout_ PVCPU Vcpu,
+	_In_ VMX_CONTROL Control
+)
+/*++
+Routine Description:
+	Toggles a VM execution control for a VCPU
+ */
+{
+	VmxToggleControl(&Vcpu->Vmx, Control);
+}
+
+VOID
+VcpuCompareToggleControl(
+	_Inout_ PVCPU Vcpu,
+	_In_ VMX_CONTROL Control,
+	_In_ BOOLEAN Comparand
+)
+/*++
+Routine Description:
+	Compares the state of the control to `Comparand`, and toggles it if so
+--*/
+{
+	if (VmxGetControlBit(&Vcpu->Vmx, Control) == Comparand)
+		VmxToggleControl(&Vcpu->Vmx, Control);
+}
+
+VOID
+VcpuCommitVmxState(
+	_Inout_ PVCPU Vcpu
+)
+/*++
+Routine Description:
+	Updates the VM execution control VMCS components with the VMX state
+--*/
+{
+	VmxWrite(CONTROL_PINBASED_CONTROLS, Vcpu->Vmx.Controls.PinbasedCtls);
+	VmxWrite(CONTROL_PRIMARY_PROCBASED_CONTROLS, Vcpu->Vmx.Controls.PrimaryProcbasedCtls);
+	VmxWrite(CONTROL_SECONDARY_PROCBASED_CONTROLS, Vcpu->Vmx.Controls.SecondaryProcbasedCtls);
+	VmxWrite(CONTROL_VMENTRY_CONTROLS, Vcpu->Vmx.Controls.VmEntryCtls);
+	VmxWrite(CONTROL_VMEXIT_CONTROLS, Vcpu->Vmx.Controls.VmExitCtls);
 }
 
 VOID
@@ -476,6 +553,8 @@ Routine Description:
 
 	GuestState->Rip = (UINT64)VcpuResume;
 
+	VcpuCommitVmxState(Vcpu);
+
 	if (Status == VMM_EVENT_CONTINUE)
 		VmxAdvanceGuestRip();
 }
@@ -504,8 +583,8 @@ Routine Description:
 	GuestState->Rcx = CpuidArgs.Ecx;
 	GuestState->Rdx = CpuidArgs.Edx;
 
-	VmxToggleControl(&Vcpu->Vmx, VMX_CTL_VMX_PREEMPTION_TIMER);
-	VmxToggleControl(&Vcpu->Vmx, VMX_CTL_RDTSC_EXITING);
+	VcpuToggleControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER);
+	VcpuToggleControl(Vcpu, VMX_CTL_RDTSC_EXITING);
 
 	// Set the VMX preemption timer to a relatively low value taking the VM entry latency into account
 	VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, Vcpu->TscInfo.VmEntryLatency + 500);
