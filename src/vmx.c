@@ -149,7 +149,7 @@ Routine Description:
 	Calculates the bits that can be modified in a VMX control capability
 --*/
 {
-    VMX_CAPABILITY_MSR Cap = {
+    const VMX_CAPABILITY_MSR Cap = {
         .Value = VmxCapability
     };
 
@@ -178,6 +178,74 @@ Routine Description:
 	
     *TargetControls |= !(*TargetControls & ControlBit);
 }
+
+BOOLEAN
+VmxGetControlBit(
+    _Inout_ PVMX_STATE Vmx,
+    _In_ VMX_CONTROL Control
+)
+/*++
+Routine Description:
+	Returns the state of a VMX control
+--*/
+{
+    UINT8 ControlField = (UINT8)Control & 0x03;
+
+    PUINT64 TargetControls = &((PUINT64)&Vmx->Controls)[ControlField];
+    UINT64 TargetCap = ((PUINT64)&Vmx->Cap)[ControlField];
+
+    UINT8 ControlBit = (UINT8)((Control & 0xF8));
+
+    if (VmxGetFixedBits(TargetCap) & ControlBit)
+        return FALSE;
+
+    return (*TargetControls & ControlBit) != 0;
+}
+
+VOID
+VmxSetupVmxState(
+    _Inout_ PVMX_STATE Vmx
+)
+{
+    const IA32_VMX_BASIC_MSR VmxCap = {
+        .Value = __readmsr(IA32_VMX_BASIC)
+    };
+
+    VMX_CAPABILITY_MSR PinbasedCap = {
+		.Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_PINBASED_CTLS) : __readmsr(IA32_VMX_PINBASED_CTLS)
+    };
+
+    VMX_CAPABILITY_MSR PrimProcbasedCap = {
+        .Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_PROCBASED_CTLS) : __readmsr(IA32_VMX_PROCBASED_CTLS)
+    };
+
+    VMX_CAPABILITY_MSR SecProcbasedCap = {
+        .Value = __readmsr(IA32_VMX_PROCBASED_CTLS2)
+    };
+
+    VMX_CAPABILITY_MSR VmEntryCap = {
+        .Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_ENTRY_CTLS) : __readmsr(IA32_VMX_ENTRY_CTLS)
+    };
+
+    VMX_CAPABILITY_MSR VmExitCap = {
+        .Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_EXIT_CTLS) : __readmsr(IA32_VMX_EXIT_CTLS)
+    };
+
+    *Vmx = (VMX_STATE){
+        .Cap.PinbasedCtls = PinbasedCap.Value,
+        .Cap.PrimaryProcbasedCtls = PrimProcbasedCap.Value,
+        .Cap.SecondaryProcbasedCtls = SecProcbasedCap.Value,
+        .Cap.VmEntryCtls = VmEntryCap.Value,
+        .Cap.VmExitCtls = VmExitCap.Value,
+
+        .Controls.PinbasedCtls = PinbasedCap.OnBits,
+        .Controls.PrimaryProcbasedCtls = PrimProcbasedCap.OnBits,
+        .Controls.SecondaryProcbasedCtls = SecProcbasedCap.OnBits,
+        .Controls.VmEntryCtls = VmEntryCap.OnBits,
+        .Controls.VmExitCtls = VmExitCap.OnBits,
+    };
+}
+
 
 VOID
 VmxAdvanceGuestRip(VOID)
