@@ -169,18 +169,46 @@ Routine Description:
 {
 	UINT8 ControlField = (UINT8)Control & 0x03;
 
-    PUINT64 TargetControls = &((PUINT64)&Vmx->Controls)[ControlField];
-    UINT64 TargetCap = ((PUINT64)&Vmx->Cap)[ControlField];
+    PUINT64 TargetControls = NULL;
+    UINT64 TargetCap = 0;
+	
+    switch (ControlField)
+    {
+    case VMX_PINBASED_CTLS:
+        TargetControls = &Vmx->Controls.PinbasedCtls;
+        TargetCap = Vmx->Cap.PinbasedCtls;
+        break;
+
+    case VMX_PRIM_PROCBASED_CTLS:
+        TargetControls = &Vmx->Controls.PrimaryProcbasedCtls;
+        TargetCap = Vmx->Cap.PrimaryProcbasedCtls;
+        break;
+
+    case VMX_SEC_PROCBASED_CTLS:
+        TargetControls = &Vmx->Controls.SecondaryProcbasedCtls;
+        TargetCap = Vmx->Cap.SecondaryProcbasedCtls;
+        break;
+
+    case VMX_EXIT_CTLS:
+        TargetControls = &Vmx->Controls.VmExitCtls;
+        TargetCap = Vmx->Cap.VmExitCtls;
+        break;
+
+    case VMX_ENTRY_CTLS:
+        TargetControls = &Vmx->Controls.VmEntryCtls;
+        TargetCap = Vmx->Cap.VmEntryCtls;
+        break;
+    }
 
     UINT8 ControlBit = (UINT8)((Control & 0xF8));
 
-	if (VmxGetFixedBits(TargetCap) & (1 << ControlBit))
+	if (VmxGetFixedBits(TargetCap) & (1ULL << ControlBit))
 		return;
 	
     if (State)
-        *TargetControls |= (1 << ControlBit);
+        *TargetControls |= (1ULL << ControlBit);
     else
-        *TargetControls &= ~(1 << ControlBit);
+        *TargetControls &= ~(1ULL << ControlBit);
 }
 
 BOOLEAN
