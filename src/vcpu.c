@@ -172,8 +172,6 @@ Routine Description:
 	VcpuSetControl(Vcpu, VMX_CTL_ENABLE_XSAVES_XRSTORS, TRUE);
 	VcpuSetControl(Vcpu, VMX_CTL_ENABLE_INVPCID, TRUE);
 	
-	VcpuToggleExitOnMsr(Vcpu, IA32_FEATURE_CONTROL, MSR_READ);
-
 	return STATUS_SUCCESS;
 }
 
