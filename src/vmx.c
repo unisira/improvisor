@@ -200,7 +200,7 @@ Routine Description:
         break;
     }
 
-    UINT8 ControlBit = (UINT8)((Control & 0xF8));
+    UINT8 ControlBit = (UINT8)((Control >> 3) & 0x1F);
 
 	if (VmxGetFixedBits(TargetCap) & (1ULL << ControlBit))
 		return;
