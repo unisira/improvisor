@@ -167,7 +167,7 @@ Routine Description:
 	Toggles a VMX execution control
 --*/
 {
-	UINT8 ControlField = (UINT8)Control & 0x03;
+	UINT8 ControlField = (UINT8)Control & 0x07;
 
     PUINT64 TargetControls = NULL;
     UINT64 TargetCap = 0;
@@ -221,14 +221,42 @@ Routine Description:
 	Returns the state of a VMX control
 --*/
 {
-    UINT8 ControlField = (UINT8)Control & 0x03;
+    UINT8 ControlField = (UINT8)Control & 0x07;
 
-    PUINT64 TargetControls = &((PUINT64)&Vmx->Controls)[ControlField];
-    UINT64 TargetCap = ((PUINT64)&Vmx->Cap)[ControlField];
+    PUINT64 TargetControls = NULL;
+    UINT64 TargetCap = 0;
 
-    UINT8 ControlBit = (UINT8)((Control & 0xF8));
+    switch (ControlField)
+    {
+    case VMX_PINBASED_CTLS:
+        TargetControls = &Vmx->Controls.PinbasedCtls;
+        TargetCap = Vmx->Cap.PinbasedCtls;
+        break;
 
-    if (VmxGetFixedBits(TargetCap) & ControlBit)
+    case VMX_PRIM_PROCBASED_CTLS:
+        TargetControls = &Vmx->Controls.PrimaryProcbasedCtls;
+        TargetCap = Vmx->Cap.PrimaryProcbasedCtls;
+        break;
+
+    case VMX_SEC_PROCBASED_CTLS:
+        TargetControls = &Vmx->Controls.SecondaryProcbasedCtls;
+        TargetCap = Vmx->Cap.SecondaryProcbasedCtls;
+        break;
+
+    case VMX_EXIT_CTLS:
+        TargetControls = &Vmx->Controls.VmExitCtls;
+        TargetCap = Vmx->Cap.VmExitCtls;
+        break;
+
+    case VMX_ENTRY_CTLS:
+        TargetControls = &Vmx->Controls.VmEntryCtls;
+        TargetCap = Vmx->Cap.VmEntryCtls;
+        break;
+    }
+
+    UINT8 ControlBit = (UINT8)((Control >> 3) & 0x1F);
+	
+    if (VmxGetFixedBits(TargetCap) & (1 << ControlBit))
         return FALSE;
 
     return (*TargetControls & (1 << ControlBit)) != 0;
@@ -277,7 +305,6 @@ VmxSetupVmxState(
         .Controls.VmExitCtls = VmExitCap.OnBits,
     };
 }
-
 
 VOID
 VmxAdvanceGuestRip(VOID)
