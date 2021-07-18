@@ -10,7 +10,7 @@ __vmexit_entry(VOID);
 
 EXTERN_C
 VOID
-__sgdt(PX86_SYSTEM_DESCRIPTOR);
+__sgdt(PX86_PSEUDO_DESCRIPTOR);
 
 EXTERN_C
 UINT64
@@ -50,9 +50,80 @@ __readgs(VOID);
 
 VMEXIT_HANDLER VcpuUnknownExitReason;
 VMEXIT_HANDLER VcpuHandleCpuid;
+VMEXIT_HANDLER VcpuHandleInvalidGuestState;
+VMEXIT_HANDLER VcpuHandleCrAccess;
 
 static VMEXIT_HANDLER* sExitHandlers[] = {
-	VcpuUnknownExitReason
+	VcpuUnknownExitReason, 			// Exception or non-maskable interrupt (NMI)
+	VcpuUnknownExitReason, 			// External interrupt
+	VcpuUnknownExitReason, 			// Triple fault
+	VcpuUnknownExitReason, 			// INIT signal
+	VcpuUnknownExitReason, 			// Start-up IPI (SIPI)
+	VcpuUnknownExitReason, 			// I/O system-management interrupt (SMI)
+	VcpuUnknownExitReason, 			// Other SMI
+	VcpuUnknownExitReason, 			// Interrupt window
+	VcpuUnknownExitReason, 			// NMI window
+	VcpuUnknownExitReason, 			// Task switch
+	VcpuHandleCpuid,				// CPUID
+	VcpuUnknownExitReason, 			// GETSEC
+	VcpuUnknownExitReason, 			// HLT
+	VcpuUnknownExitReason, 			// INVD
+	VcpuUnknownExitReason, 			// INVLPG
+	VcpuUnknownExitReason, 			// RDPMC
+	VcpuUnknownExitReason, 			// RDTSC
+	VcpuUnknownExitReason, 			// RSM
+	VcpuUnknownExitReason, 			// VMCALL
+	VcpuUnknownExitReason, 			// VMCLEAR
+	VcpuUnknownExitReason, 			// VMLAUNCH
+	VcpuUnknownExitReason, 			// VMPTRLD
+	VcpuUnknownExitReason, 			// VMPTRST
+	VcpuUnknownExitReason, 			// VMREAD
+	VcpuUnknownExitReason, 			// VMRESUME
+	VcpuUnknownExitReason, 			// VMWRITE
+	VcpuUnknownExitReason, 			// VMXOFF
+	VcpuUnknownExitReason, 			// VMXON
+	VcpuHandleCrAccess, 			// Control-register accesses
+	VcpuUnknownExitReason, 			// MOV DR
+	VcpuUnknownExitReason,			// I/O instruction
+	VcpuUnknownExitReason,			// RDMSR
+	VcpuUnknownExitReason,			// WRMSR
+	VcpuHandleInvalidGuestState,	// VM-entry failure due to invalid guest state
+	VcpuUnknownExitReason, 			// VM-entry failure due to MSR loading
+	NULL,
+	VcpuUnknownExitReason, 			// MWAIT
+	VcpuUnknownExitReason, 			// Monitor trap flag
+	NULL,
+	VcpuUnknownExitReason, 			// MONITOR
+	VcpuUnknownExitReason, 			// PAUSE
+	VcpuUnknownExitReason, 			// VM-entry failure due to machine-check event
+	NULL,
+	VcpuUnknownExitReason, 			// TPR below threshold
+	VcpuUnknownExitReason, 			// APIC access
+	VcpuUnknownExitReason, 			// Virtualized EOI
+	VcpuUnknownExitReason, 			// Access to GDTR or IDTR
+	VcpuUnknownExitReason, 			// Access to LDTR or TR
+	VcpuUnknownExitReason, 			// EPT violation
+	VcpuUnknownExitReason, 			// EPT misconfiguration
+	VcpuUnknownExitReason, 			// INVEPT
+	VcpuUnknownExitReason, 			// RDTSCP
+	VcpuUnknownExitReason, 			// VMX-preemption timer expired
+	VcpuUnknownExitReason, 			// INVVPID
+	VcpuUnknownExitReason, 			// WBINVD or WBNOINVD
+	VcpuUnknownExitReason, 			// XSETBV
+	VcpuUnknownExitReason, 			// APIC write
+	VcpuUnknownExitReason, 			// RDRAND
+	VcpuUnknownExitReason, 			// INVPCID
+	VcpuUnknownExitReason, 			// VMFUNC
+	VcpuUnknownExitReason, 			// ENCLS
+	VcpuUnknownExitReason, 			// RDSEED
+	VcpuUnknownExitReason, 			// Page-modification log full
+	VcpuUnknownExitReason, 			// XSAVES
+	VcpuUnknownExitReason, 			// XRSTORS
+	NULL,
+	VcpuUnknownExitReason, 			// SPP-related event
+	VcpuUnknownExitReason, 			// UMWAIT
+	VcpuUnknownExitReason, 			// TPAUSE
+	VcpuUnknownExitReason, 			// LOADIWKEY
 };
 
 VOID
@@ -183,7 +254,9 @@ Routine Description:
 	Post-VMLAUNCH, sets the CPU's registers and RIP to previous execution. 
 --*/
 {
-	PVCPU_STACK Stack = (PVCPU_STACK)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
+	__debugbreak();
+	
+	PVCPU_STACK Stack = *(PVCPU_STACK*)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
 	
 	__cpu_restore_state(&Stack->Cache.Vcpu->LaunchState);
 }
@@ -266,13 +339,14 @@ Routine Description:
 	__sidt(&Idtr);
 
 	VmxWrite(GUEST_GDTR_LIMIT, Gdtr.Limit);
-	VmxWrite(GUEST_IDTR_LIMIT, Gdtr.Limit);
+	VmxWrite(GUEST_IDTR_LIMIT, Idtr.Limit);
 
 	VmxWrite(GUEST_GDTR_BASE, Gdtr.BaseAddress);
 	VmxWrite(HOST_GDTR_BASE, Gdtr.BaseAddress);
 
 	VmxWrite(GUEST_IDTR_BASE, Idtr.BaseAddress);
-	VmxWrite(HOST_IDTR_BASE, Vcpu->Vmm->HostInterruptDescriptor.BaseAddress);
+	VmxWrite(HOST_IDTR_BASE, Idtr.BaseAddress);
+	//VmxWrite(HOST_IDTR_BASE, Vcpu->Vmm->HostInterruptDescriptor.BaseAddress);
 
 	X86_SEGMENT_SELECTOR Segment = {0};
 
@@ -315,7 +389,7 @@ Routine Description:
 	VmxWrite(GUEST_FS_ACCESS_RIGHTS, SegmentAr(Segment));
 	VmxWrite(GUEST_FS_BASE, SegmentBaseAddress(Segment));
 	VmxWrite(HOST_FS_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_FS_SELECTOR, Segment.Value& HOST_SEGMENT_SELECTOR_MASK);
+	VmxWrite(HOST_FS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
 	Segment.Value = __readgs();
 
@@ -324,7 +398,7 @@ Routine Description:
 	VmxWrite(GUEST_GS_ACCESS_RIGHTS, SegmentAr(Segment));
 	VmxWrite(GUEST_GS_BASE, __readmsr(IA32_GS_BASE));
 	VmxWrite(HOST_GS_BASE, __readmsr(IA32_GS_BASE));
-	VmxWrite(HOST_GS_SELECTOR, Segment.Value& HOST_SEGMENT_SELECTOR_MASK);
+	VmxWrite(HOST_GS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
 	Segment.Value = __readldt();
 
@@ -344,14 +418,14 @@ Routine Description:
 
 	VcpuCommitVmxState(Vcpu);
 	
-	VmxWrite(HOST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
-	VmxWrite(GUEST_RSP, &Vcpu->Stack->Limit + KERNEL_STACK_SIZE);
+	VmxWrite(HOST_RSP, (UINT64)(Vcpu->Stack->Limit + KERNEL_STACK_SIZE));
+	VmxWrite(GUEST_RSP, (UINT64)(Vcpu->Stack->Limit + KERNEL_STACK_SIZE));
 
 	VmxWrite(HOST_RIP, (UINT64)__vmexit_entry);
 	VmxWrite(GUEST_RIP, (UINT64)VcpuLaunch);
 
 	Vcpu->IsLaunched = TRUE;
-
+	
 	__vmx_vmlaunch();
 
 	return STATUS_APP_INIT_FAILURE;
@@ -377,7 +451,7 @@ Routine Description:
 	Vcpu->Vmm = Params->VmmContext;
 
 	__cpu_save_state(&Vcpu->LaunchState);
-
+	
 	// Control flow is restored here upon successful virtualisation of the CPU
 	if (Vcpu->IsLaunched)
 	{
@@ -447,6 +521,7 @@ Routine Description:
 	VmxWrite(CONTROL_SECONDARY_PROCBASED_CONTROLS, Vcpu->Vmx.Controls.SecondaryProcbasedCtls);
 	VmxWrite(CONTROL_VMENTRY_CONTROLS, Vcpu->Vmx.Controls.VmEntryCtls);
 	VmxWrite(CONTROL_VMEXIT_CONTROLS, Vcpu->Vmx.Controls.VmExitCtls);
+	VmxWrite(CONTROL_TERTIARY_PROCBASED_CONTROLS, 0);
 }
 
 VOID
@@ -485,22 +560,6 @@ Routine Description:
 }
 
 DECLSPEC_NORETURN
-VMM_EVENT_STATUS
-VcpuUnknownExitReason(
-	_Inout_ PVCPU Vcpu,
-	_Inout_ PGUEST_STATE GuestState
-)
-/*++
-Routine Description:
-	Handles any unknown/unhandled VM-exit reasons
---*/
-{
-	// TODO: Shutdown entire hypervisor from here
-	ImpDebugPrint("Unknown VM-exit reason on VCPU #%d...\n", Vcpu->Id);
-	KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_UNKNOWN_VMEXIT_REASON, 0, 0, 0);
-}
-
-DECLSPEC_NORETURN
 VOID
 VcpuResume(VOID)
 /*++
@@ -510,7 +569,7 @@ Routine Description:
 {
 	__vmx_vmresume();
 
-	ImpDebugPrint("VMRESUME failed on VCPU #%d... (%x)\n", VmxRead(VM_INSTRUCTION_ERROR));
+	ImpDebugPrint("VMRESUME failed... (%x)\n", VmxRead(VM_INSTRUCTION_ERROR));
 
 	// TODO: Shutdown entire hypervisor from here
 	__vmx_off();
@@ -526,7 +585,7 @@ VcpuHandleExit(
 Routine Description:
 	Loads the VCPU with new data post VM-exit and calls the correct VM-exit handler 
 --*/
-{
+{	
 	Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
 	Vcpu->Vmx.ExitReason.Value = (UINT32)VmxRead(VM_EXIT_REASON);
 
@@ -538,6 +597,24 @@ Routine Description:
 
 	if (Status == VMM_EVENT_CONTINUE)
 		VmxAdvanceGuestRip();
+}
+
+DECLSPEC_NORETURN
+VMM_EVENT_STATUS
+VcpuUnknownExitReason(
+	_Inout_ PVCPU Vcpu,
+	_Inout_ PGUEST_STATE GuestState
+)
+/*++
+Routine Description:
+	Handles any unknown/unhandled VM-exit reasons
+--*/
+{
+	UNREFERENCED_PARAMETER(GuestState);
+
+	// TODO: Shutdown entire hypervisor from here
+	ImpDebugPrint("Unknown VM-exit reason (%d) on VCPU #%d...\n", Vcpu->Vmx.ExitReason.BasicExitReason, Vcpu->Id);
+	KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_UNKNOWN_VMEXIT_REASON, 0, 0, 0);
 }
 
 VMM_EVENT_STATUS
@@ -570,6 +647,32 @@ Routine Description:
 	// Set the VMX preemption timer to a relatively low value taking the VM entry latency into account
 	VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, Vcpu->TscInfo.VmEntryLatency + 500);
 
+	return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleInvalidGuestState(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+/*++
+Routine Description:
+    Emulates the checks made on the guest state outlined in the Intel SDM Vol. 3 Chapter 26.3.1
+--*/
+{
+	UNREFERENCED_PARAMETER(GuestState);
+	
+	ImpDebugPrint("[%02X] VM-entry failed due to invalid guest state...\n", Vcpu->Id);
+	
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleCrAccess(
+	_Inout_ PVCPU Vcpu,
+	_Inout_ PGUEST_STATE GuestState
+)
+{
 	return VMM_EVENT_CONTINUE;
 }
 
@@ -607,14 +710,14 @@ Routine Description:
 
 	if (Segment == NULL)
 	{
-		ImpDebugPrint("Invalid segment selector '%i'...\n", Selector.Value);
+		ImpDebugPrint("Invalid segment selector '%u'...\n", Selector.Value);
 		return 0;
 	}
 
-	Address = ((UINT64)Segment->BaseHigh << 24) | 
-				((UINT64)Segment->BaseMiddle << 16) | 
-				((UINT64)Segment->BaseLow & 0xFFFF);
-
+	Address = (((UINT64)Segment->BaseHigh << 24) | 
+			   ((UINT64)Segment->BaseMiddle << 16) | 
+			   ((UINT64)Segment->BaseLow));
+	
 	if (Segment->System == 0)
 	{
 		PX86_SYSTEM_DESCRIPTOR SystemSegment = (PX86_SYSTEM_DESCRIPTOR)Segment;
