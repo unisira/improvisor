@@ -253,9 +253,7 @@ VcpuLaunch(VOID)
 Routine Description:
 	Post-VMLAUNCH, sets the CPU's registers and RIP to previous execution. 
 --*/
-{
-	__debugbreak();
-	
+{	
 	PVCPU_STACK Stack = *(PVCPU_STACK*)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
 	
 	__cpu_restore_state(&Stack->Cache.Vcpu->LaunchState);
