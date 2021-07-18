@@ -8,7 +8,7 @@
 
 #define ENCODE_VMX_CONTROL(Field, Position) \
     ( \
-      (((Field)     & 0x03) << 0) | \
+      (((Field)     & 0x07) << 0) | \
       (((Position)  & 0x1F) << 3)   \
     ) 
 
@@ -351,11 +351,6 @@ VmxSetControl(
     _Inout_ PVMX_STATE Vmx,
     _In_ VMX_CONTROL Control,
     _In_ BOOLEAN State
-);
-
-VOID
-VmxApplyControlCapabilities(
-	_Inout_ PVMX_STATE Vmx
 );
 
 VOID
