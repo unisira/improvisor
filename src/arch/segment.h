@@ -9,12 +9,13 @@
 // For the host segments, the RPL should be 0 so that on VM-exit the CPL becomes 0.
 #define HOST_SEGMENT_SELECTOR_MASK (~0x03ULL)
 
-DECLSPEC_ALIGN(1)
+#pragma pack(push, 1)
 typedef struct _X86_PSEUDO_DESCRIPTOR
 {
 	UINT16 Limit;
 	UINT64 BaseAddress;
 } X86_PSEUDO_DESCRIPTOR, *PX86_PSEUDO_DESCRIPTOR;
+#pragma pack(pop)
 
 typedef union _X86_SEGMENT_SELECTOR
 {
@@ -30,48 +31,38 @@ typedef union _X86_SEGMENT_SELECTOR
 
 typedef struct _X86_SEGMENT_DESCRIPTOR
 {
-	UINT64 Value;
+    UINT16 LimitLow;
+	UINT16 BaseLow;
+	UINT32 BaseMiddle : 8;
+	UINT32 Type : 4;
+	UINT32 System : 1;
+	UINT32 Dpl : 2;
+	UINT32 Present : 1;
+	UINT32 LimitHigh : 4;
+	UINT32 OsDefined : 1;
+	UINT32 Long : 1;
+	UINT32 DefaultOperationSize : 1;
+	UINT32 Granularity : 1;
+	UINT32 BaseHigh : 8;
+} X86_SEGMENT_DESCRIPTOR, *PX86_SEGMENT_DESCRIPTOR;
 
-	struct
-	{
-		UINT16 LimitLow;
-		UINT16 BaseLow;
-		UINT32 BaseMiddle : 8;
-		UINT32 Type : 4;
-		UINT32 DescriptorType : 1;
-		UINT32 Dpl : 2;
-		UINT32 Present : 1;
-		UINT32 LimitHigh : 4;
-		UINT32 System : 1;
-		UINT32 Long : 1;
-		UINT32 DefaultOperationSize : 1;
-		UINT32 Granularity : 1;
-		UINT32 BaseHigh : 8;
-	};
-} X86_SEGMENT_DESCRIPTOR, * PX86_SEGMENT_DESCRIPTOR;
-
-typedef union _X86_SYSTEM_DESCRIPTOR
+typedef struct _X86_SYSTEM_DESCRIPTOR
 {
-	UINT64 Value;
-
-	struct
-	{
-		UINT16 LimitLow;
-		UINT16 BaseLow;
-		UINT32 BaseMiddle : 8;
-		UINT32 Type : 4;
-		UINT32 DescriptorType : 1;
-		UINT32 Dpl : 2;
-		UINT32 Present : 1;
-		UINT32 LimitHigh : 4;
-		UINT32 System : 1;
-		UINT32 Long : 1;
-		UINT32 DefaultOperationSize : 1;
-		UINT32 Granularity : 1;
-		UINT32 BaseHigh : 8;
-		UINT32 BaseUpper;
-		UINT32 Reserved;
-	};
+    UINT16 LimitLow;
+	UINT16 BaseLow;
+	UINT32 BaseMiddle : 8;
+	UINT32 Type : 4;
+	UINT32 DescriptorType : 1;
+	UINT32 Dpl : 2;
+	UINT32 Present : 1;
+	UINT32 LimitHigh : 4;
+	UINT32 System : 1;
+	UINT32 Long : 1;
+	UINT32 DefaultOperationSize : 1;
+	UINT32 Granularity : 1;
+	UINT32 BaseHigh : 8;
+	UINT32 BaseUpper;
+	UINT32 Reserved;
 } X86_SYSTEM_DESCRIPTOR, *PX86_SYSTEM_DESCRIPTOR;
 
 typedef union _X86_SEGMENT_ACCESS_RIGHTS
@@ -81,7 +72,7 @@ typedef union _X86_SEGMENT_ACCESS_RIGHTS
 	struct
 	{
 		UINT32 Type : 4;
-		UINT32 DescriptorType : 1;
+		UINT32 System : 1;
 		UINT32 Dpl : 2;
 		UINT32 Present : 1;
 		UINT32 Reserved1 : 4;
