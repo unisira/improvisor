@@ -36,6 +36,23 @@ typedef union _VMX_EXIT_REASON
 	};
 } VMX_EXIT_REASON, *PVMX_EXIT_REASON;
 
+typedef union _VMX_MOV_CR_EXIT_QUALIFICATION
+{
+    UINT64 Value;
+
+    struct
+    {
+        UINT64 ControlRegisterId : 4;
+        UINT64 AccessType : 2;
+        UINT64 LMSWOperandType : 1;
+        UINT64 Reserved1 : 1;
+        UINT64 RegisterId : 4;
+        UINT64 Reserved2 : 4;
+        UINT64 LMSWSourceData : 16;
+        UINT32 Reserved3;
+    }
+} VMX_MOV_CR_EXIT_QUALIFICATION, *PVMX_MOV_CR_EXIT_QUALIFICATION;
+
 typedef struct _VMX_STATE
 {
     UINT64 GuestRip;
@@ -68,6 +85,20 @@ typedef enum _VMX_CONTROL_FIELD
     VMX_EXIT_CTLS,
     VMX_ENTRY_CTLS
 } VMX_CONTROL_FIELD, * PVMX_CONTROL_FIELD;
+
+typedef enum _VMX_CR_ACCESS_TYPE
+{
+    CR_ACCESS_WRITE,
+    CR_ACCESS_READ,
+    CR_ACCESS_CTLS,
+    CR_ACCESS_LMSW
+} VMX_CR_ACCESS_TYPE, *PVMX_CR_ACCESS_TYPE;
+
+typedef enum _VMX_LMSW_OP_TYPE
+{
+    OP_REGISTER,
+    OP_MEMORY
+} VMX_LMSW_OP_TYPE, *PVMX_LMSW_OP_TYPE;
 
 typedef enum _VMX_CONTROL
 {
