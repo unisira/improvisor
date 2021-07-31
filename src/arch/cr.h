@@ -3,6 +3,11 @@
 
 #include <ntdef.h>
 
+#define CR4_RESERVED_BITMASK (0xFFFFFFFFFE088000)
+#define CR0_RESERVED_BITMASK (0xFFFFFFFF1FFAFFC0)
+#define CR0_PE_PG_BITMASK (0x80000001)
+#define CR0_CD_NW_BITMASK (0x60000000)
+
 typedef union _X86_CR0
 {
 	UINT64 Value;
