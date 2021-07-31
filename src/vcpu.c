@@ -1,5 +1,6 @@
 #include "arch/segment.h"
 #include "arch/msr.h"
+#include "arch/cr.h"
 #include "vcpu.h"
 #include "cpuid.h"
 #include "vmm.h"
@@ -133,6 +134,12 @@ VcpuSetControl(
     _In_ BOOLEAN State
 );
 
+BOOLEAN
+VcpuIsControlSupported(
+    _Inout_ PVCPU Vcpu,
+    _In_ VMX_CONTROL Control,
+);
+
 VOID
 VcpuCommitVmxState(
 	_Inout_ PVCPU Vcpu
@@ -232,6 +239,10 @@ Routine Description:
 
 	VmxSetupVmxState(&Vcpu->Vmx);
 
+    // VM-entry cannot change CR0.CD or CR0.NW
+    Vcpu->Cr0ShadowableBits = ~(__readmsr(IA32_VMX_CR0_FIXED0) ^ __readmsr(IA32_VMX_CR0_FIXED1));
+    Vcpu->Cr4ShadowableBits = ~(__readmsr(IA32_VMX_CR4_FIXED0) ^ __readmsr(IA32_VMX_CR4_FIXED1));
+
 	// Make sure the VM enters in IA32e
 	VcpuSetControl(Vcpu, VMX_CTL_HOST_ADDRESS_SPACE_SIZE, TRUE);
 	VcpuSetControl(Vcpu, VMX_CTL_GUEST_ADDRESS_SPACE_SIZE, TRUE);
@@ -242,7 +253,10 @@ Routine Description:
 	VcpuSetControl(Vcpu, VMX_CTL_ENABLE_RDTSCP, TRUE);
 	VcpuSetControl(Vcpu, VMX_CTL_ENABLE_XSAVES_XRSTORS, TRUE);
 	VcpuSetControl(Vcpu, VMX_CTL_ENABLE_INVPCID, TRUE);
-	
+
+    // Save GUEST_EFER on VM-exit
+    VcpuSetControl(Vcpu, VMX_CTL_SAVE_EFER_ON_EXIT, TRUE);
+
 	return STATUS_SUCCESS;
 }
 
@@ -253,7 +267,7 @@ VcpuLaunch(VOID)
 Routine Description:
 	Post-VMLAUNCH, sets the CPU's registers and RIP to previous execution. 
 --*/
-{	
+{
 	PVCPU_STACK Stack = *(PVCPU_STACK*)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
 	
 	__cpu_restore_state(&Stack->Cache.Vcpu->LaunchState);
@@ -311,12 +325,12 @@ Routine Description:
 	VmxWrite(GUEST_VMCS_LINK_POINTER, ~0ULL);
 
 	VmxWrite(CONTROL_CR0_READ_SHADOW, __readcr0());
-	VmxWrite(CONTROL_CR0_GUEST_MASK, ~(__readmsr(IA32_VMX_CR0_FIXED0) ^ __readmsr(IA32_VMX_CR0_FIXED1)));
+	VmxWrite(CONTROL_CR0_GUEST_MASK, Vcpu->Cr0ShadowableBits);
 	VmxWrite(GUEST_CR0, __readcr0());
 	VmxWrite(HOST_CR0, __readcr0());
 
 	VmxWrite(CONTROL_CR4_READ_SHADOW, __readcr4());
-	VmxWrite(CONTROL_CR4_GUEST_MASK, ~(__readmsr(IA32_VMX_CR4_FIXED0) ^ __readmsr(IA32_VMX_CR4_FIXED1)));
+	VmxWrite(CONTROL_CR4_GUEST_MASK, Vcpu->Cr4ShadowableBits);
 	VmxWrite(GUEST_CR4, __readcr4());
 	VmxWrite(HOST_CR4, __readcr4());
 
@@ -665,13 +679,375 @@ Routine Description:
     return VMM_EVENT_CONTINUE;
 }
 
+PUINT64
+LookupTargetReg(
+    _In_ PGUEST_STATE GuestState,
+    _In_ UINT64 RegisterId
+)
+/*++
+Routine Description:
+    Converts a register to a pointer to the corresponding register inside a GUEST_STATE structure 
+--*/
+{
+    static const UINT64 sRegIdToGuestStateOffs[] = {
+        /* RAX */ offsetof(GUEST_STATE, Rax),
+        /* RCX */ offsetof(GUEST_STATE, Rcx),
+        /* RDX */ offsetof(GUEST_STATE, Rdx),
+        /* RBX */ offsetof(GUEST_STATE, Rbx),
+        /* RSP */ 0,
+        /* RBB */ 0,
+        /* RSI */ offsetof(GUEST_STATE, Rsi),
+        /* RDI */ offsetof(GUEST_STATE, Rdi),
+        /* R8  */ offsetof(GUEST_STATE, R8),
+        /* R9  */ offsetof(GUEST_STATE, R9),
+        /* R10 */ offsetof(GUEST_STATE, R10),
+        /* R11 */ offsetof(GUEST_STATE, R11),
+        /* R12 */ offsetof(GUEST_STATE, R12),
+        /* R13 */ offsetof(GUEST_STATE, R13),
+        /* R14 */ offsetof(GUEST_STATE, R14),
+        /* R15 */ offsetof(GUEST_STATE, R15)
+    };
+
+	return (PUINT64)((UINT64)GuestState + sRegIdToGuestStateOffs[RegisterId]);
+}
+
+VMM_EVENT_STATUS
+VcpuHandleCrRead(
+    _In_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState,
+    _In_ VMX_MOV_CR_EXIT_QUALIFICATION ExitQual
+)
+{
+    UINT64 ControlRegister = 0;
+    switch (ExitQual.ControlRegisterId)
+    {
+    case 3: ControlRegister = VmxRead(GUEST_CR3); break; 
+    case 8: ControlRegister = __readcr8(); break; 
+    }
+
+    // Write to GUEST_RSP if the target register was RSP instead of the RSP inside of GUEST_STATE
+    if (ExitQual.ControlRegisterId == 4 /* RSP */)
+        VmxWrite(GUEST_RSP, ControlRegister);
+    else
+    {
+        *LookupTargetReg(GuestState, ExitQual.RegisterId) = ControlRegister;
+    }
+
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuUpdateGuestCr(
+	_In_ UINT64 ControlReg,
+	_In_ UINT64 NewValue,
+	_In_ UINT64 DifferentBits,
+	_In_ VMCS CrEncoding,
+	_In_ VMCS RsEncoding,
+	_In_ UINT64 ShadowableBits,
+	_In_ UINT64 ReservedBits
+)
+/*++
+Routine Description:
+    Updates a guest CR and its read shadow, making sure that all bits inside of the guest/host mask are
+    handled properly. TODO: Support for bits that will never change, and bits that can change in both and
+    are just in the guest/host mask to intercept people changing them (TRAP and FIXED)
+--*/
+{
+	UINT64 ReadShadow = VmxRead(RsEncoding);
+
+	// Inject #GP(0) if there was an attempt to modify a reserved bit
+	if (DifferentBits & ReservedBits)
+	{
+		// TODO: Inject #GP(0) here
+		return VMM_EVENT_INTERRUPT;
+	}
+	
+	// Bits which can be updated inside of the read shadow TODO: (TRAP | SHADOWABLE)
+	const UINT64 RsUpdateableBits = ShadowableBits;
+
+	ReadShadow &= ~(DifferentBits & RsUpdateableBits);
+	ReadShadow |= (NewValue & RsUpdateableBits);
+
+	VmxWrite(RsEncoding, ReadShadow);
+
+	// Bits which can be updated inside of the read shadow TODO: ~(SHADOWABLE | FIXED) 
+	const UINT64 CrUpdateableBits = ~ShadowableBits;
+
+	ControlReg &= ~(DifferentBits & CrUpdateableBits);
+	ControlReg |= (NewValue & CrUpdateableBits);
+
+	VmxWrite(CrEncoding, ControlReg);
+
+	return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleCrWrite(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState,
+    _In_ VMX_MOV_CR_EXIT_QUALIFICATION ExitQual
+)
+/*++
+Routine Description:
+    Emulates a write to a control register, as well as emulating changes in any bits that are
+    required by VMX operation
+--*/
+{
+    VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
+
+    const UINT64 NewValue = *LookupTargetReg(GuestState, ExitQual.RegisterId);
+
+    switch (ExitQual.ControlRegisterId)
+    {
+    case 0:
+        {
+			UINT64 ControlRegister = VmxRead(GUEST_CR0);
+			UINT64 ShadowableBits = Vcpu->Cr0ShadowableBits;     		
+
+			const X86_CR0 DifferentBits = {
+				.Value = NewValue ^ ControlRegister
+			};
+    	
+            const X86_CR0 NewCr = {
+                .Value = NewValue
+            };
+
+            BOOLEAN PagingDisabled = (DifferentBits.Paging && NewCr.Paging == 0);
+            BOOLEAN ProtectedModeDisabled = (DifferentBits.ProtectedMode && NewCr.ProtectedMode == 0);
+
+            // VM-entry requires CR0.PG and CR0.PE to be enabled without unrestricted guest
+            if (PagingDisabled || ProtectedModeDisabled)
+            {
+                if (Vcpu->Vmm->UseUnrestrictedGuests && 
+                    VcpuIsControlSupported(Vcpu, VMX_CTL_UNRESTRICTED_GUEST)) 
+                {
+                    // TODO: Create identity map CR3
+                    VcpuSetControl(Vcpu, VMX_CTL_UNRESTRICTED_GUEST, TRUE);
+
+                    // Remove CR0.PG and CR0.PE from the shadowable bits bitmask, as they can now be modified
+                    ShadowableBits &= ~CR0_PE_PG_BITMASK;
+                    
+                    Vcpu->UnrestrictedGuest = TRUE;
+                }
+                else
+                {
+                    // TODO: Shutdown the VMM and report to the client what happened.
+                    return VMM_EVENT_ABORT;
+                }
+            }
+
+            // Disable unrestricted guest if paging is enabled again
+            if (!PagingDisabled && ProtectedModeDisabled == 0)
+            {
+                VcpuSetControl(Vcpu, VMX_CTL_UNRESTRICTED_GUEST, FALSE);
+                Vcpu->UnrestrictedGuest = FALSE;
+            }
+
+            // Handle invalid states of CR0.PE and CR0.PG when unrestricted guest is on
+            if (Vcpu->UnrestrictedGuest)
+            {
+                if (NewCr.Paging && !NewCr.ProtectedMode)
+                {
+                    VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+                    return VMM_EVENT_INTERRUPT;
+                }
+
+                X86_CR4 Cr4 = {
+                    .Value = VmxRead(GUEST_CR4)
+                };
+
+                if (DifferentBits.Paging && !NewCr.Paging && Cr4.PCIDEnable)
+                {
+                    VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+                    return VMM_EVENT_INTERRUPT;
+                }
+
+                // If CR0.PG is changed to a 0, all TLBs are invalidated
+                if (DifferentBits.Paging && !NewCr.Paging)
+                    VmxInvvpid(VPID_INV_SINGLE_CTX, 1);
+            }
+            
+            // If CR0.PG has been changed, update IA32_EFER.LMA
+            if (DifferentBits.Paging)
+            {
+                IA32_EFER Efer = {
+                    .Value = VmxRead(GUEST_EFER)
+                };
+
+                // IA32_EFER.LMA = CR0.PG & IA32_EFER.LME, VM-entry sets IA32_EFER.LMA for the guest
+                // from the guest address space size control
+                VcpuSetControl(Vcpu, VMX_CTL_GUEST_ADDRESS_SPACE_SIZE, (Efer.LongModeEnable && NewCr.Paging));
+            
+                X86_CR4 Cr4 = {
+                    .Value = VmxRead(GUEST_CR4)
+                };
+
+                // If CR0.PG has been enabled, we must check if we are in PAE paging
+                if (NewCr.Paging && !Efer.LongModeEnable && Cr4.PhysicalAddressExtensions)
+                {
+                    // TODO: Setup PDPTR in VMCS
+                }
+            }
+
+            if (!NewCr.CacheDisable && NewCr.NotWriteThrough)
+            {
+                VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+                return VMM_EVENT_INTERRUPT;
+            }
+
+			Status = VcpuUpdateGuestCr(
+				ControlRegister,			// Control registers current value
+				NewValue,					// The value being written
+				DifferentBits.Value,		// Bits which have been modified
+				GUEST_CR0,					// The VMCS encoding for the CR
+				CONTROL_CR0_READ_SHADOW,	// The VMCS encoding for the CR's read shadow
+				ShadowableBits,				// Host-maskable bits (bits that can be changed in the read shadow)
+				CR0_RESERVED_BITMASK		// Reserved bits in the CR which shouldn't be set
+			);
+
+            // If something went wrong updating the guest's CR, return now
+            if (Status != VMM_EVENT_CONTINUE)
+                return Status;
+
+            // TODO: Remove this and emulate instead
+    		// If NW or CD has been modified, instead of emulating the effects of these bits, instead 
+            // remove all changes to any host-owned bits in the register writing to CR0 then return 
+            // VMM_EVENT_INTERRUPT so the instruction gets executed upon VM-entry but doesn't cause an exit
+    		// NOTE: This is kinda dangerous but I'm lazy and dont want to emulate CD or NW but i will in the 
+            // future.
+			if (DifferentBits.NotWriteThrough ||
+				DifferentBits.CacheDisable)
+			{
+				const PUINT64 TargetReg = LookupTargetReg(GuestState, ExitQual.RegisterId);
+
+				// Reset any host owned bits to the CR value 
+				*TargetReg &= ~(DifferentBits.Value & HostOwnedBits);
+				*TargetReg |= ControlRegister & HostOwnedBits;
+
+                // TODO: Enable MTF interrupt and push a pending CR spoof
+				return VMM_EVENT_INTERRUPT;
+			}
+        } break;
+
+    case 3:
+        {
+            // TODO: Validate CR3 value
+            VmxWrite(GUEST_CR3, NewValue);
+        } break;
+
+    case 4:
+        {
+			UINT64 ControlRegister = VmxRead(GUEST_CR4);
+			UINT64 ShadowableBits = Vcpu->Cr4ShadowableBits;
+    		
+			const X86_CR4 DifferentBits = {
+				.Value = NewValue ^ ControlRegister
+			};
+            
+            const X86_CR4 NewCr = {
+                .Value = NewValue
+            };
+
+            // TODO: Check CR4.VMXE being set, make sure its 0 in the read shadow and inject #UD upon trying
+            // to change it
+
+            const IA32_EFER Efer = {
+                .Value = VmxRead(GUEST_EFER)
+            };
+
+            if (DifferentBits.PCIDEnable && NewCr.PCIDEnable == 1 && 
+                ((VmxRead(GUEST_CR3) & 0xFFF) != 0 || (Efer.LongModeActive == 0)))
+            {
+                VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+                return VMM_EVENT_INTERRUPT;
+            }
+
+            if (DifferentBits.PhysicalAddressExtension && NewCr.PhysicalAddressExtension == 0 && 
+                Efer.LongModeEnabled)
+            {
+                VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+                return VMM_EVENT_INTERRUPT;
+            }
+ 
+            Status = VcpuUpdateGuestCr(
+                ControlRegister,
+                NewValue,
+                DifferentBits.Value,
+                GUEST_CR4,
+                CONTROL_CR4_READ_SHADOW,
+                HostOwnedBits,
+                CR4_RESERVED_BITMASK
+            );
+
+            if (DifferentBits.GlobalPageEnable ||
+                DifferentBits.PhysicalAddressExtension ||
+                (DifferentBits.PCIDEnable && NewCr.PCIDEnable == 0) ||
+                (DifferentBits.SmepEnable && NewCr.SmepEnable == 1)
+                VmxInvvpid(VPID_INV_SINGLE_CTX, 1);
+        } break;
+
+    case 8:
+        {
+            // TODO: Validate CR8 value
+            __writecr8(NewValue);
+        } break;
+    }
+
+    return Status;
+}
+
+VMM_EVENT_STATUS
+VcpuEmulateCLTS(
+	_Inout_ PVCPU Vcpu,
+	_In_ VMX_MOV_CR_EXIT_QUALIFICATION ExitQual
+)
+{
+    X86_CR0 Cr0 = {
+        .Value = VmxRead(GUEST_CR0)
+    };
+
+    Cr0.TaskSwitched = FALSE;
+
+    VmxWrite(GUEST_CR0, Cr0.Value);
+
+	return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuEmulateLMSW(
+	_Inout_ PVCPU Vcpu,
+	_In_ VMX_MOV_CR_EXIT_QUALIFICATION ExitQual
+)
+{
+    // TODO: Finish this
+	return VMM_EVENT_CONTINUE;
+}
+
 VMM_EVENT_STATUS
 VcpuHandleCrAccess(
 	_Inout_ PVCPU Vcpu,
 	_Inout_ PGUEST_STATE GuestState
 )
 {
-	return VMM_EVENT_CONTINUE;
+    // Update read shadow with whatever 
+    // update actual register with things that are allowed
+    // inject exception on attempt to enable VMXE which is P
+
+    VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
+
+    VMX_MOV_CR_EXIT_QUALIFICATION ExitQual = {
+        .Value = VmxRead(VM_EXIT_QUALIFICATION)
+    };
+
+    switch (ExitQual.AccessType)
+    {
+    case CR_ACCESS_READ: Status = VcpuHandleCrRead(Vcpu, GuestState, ExitQual); break;
+    case CR_ACCESS_WRITE: Status = VcpuHandleCrWrite(Vcpu, GuestState, ExitQual); break;
+    case CR_ACCESS_CTLS: Status = VcpuEmulateCLTS(Vcpu, ExitQual); break;
+    case CR_ACCESS_LMSW: Status = VcpuEmulateLMSW(Vcpu, ExitQual); break;
+    }
+
+	return Status;
 }
 
 PX86_SEGMENT_DESCRIPTOR
@@ -732,7 +1108,7 @@ SegmentAr(
 /*++
 Routine Description:
 	Gets the access rights of a segment
- */
+--*/
 {
 	PX86_SEGMENT_DESCRIPTOR Segment = LookupSegmentDescriptor(Selector);
 

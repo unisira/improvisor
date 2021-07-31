@@ -6,9 +6,11 @@
 #include "cpu.h"
 
 // Emulation was successful, continue execution
-#define VMM_EVENT_CONTINUE 0x00000000
+#define VMM_EVENT_CONTINUE (0x00000000)
 // An interrupt/exception was injected into the guest
-#define VMM_EVENT_INTERRUPT 0x00000001
+#define VMM_EVENT_INTERRUPT (0x00000001)
+// The hypervisor encountered an error and should shut down immediately
+#define VMM_EVENT_ABORT (0x00000002)
 
 #pragma pack(push, 1)
 typedef struct _GUEST_STATE
@@ -92,6 +94,9 @@ typedef struct _VCPU
     CPU_STATE LaunchState;
     VMX_STATE Vmx;
     TSC_INFO TscInfo;
+    UINT64 Cr0ShadowableBits;
+    UINT64 Cr4ShadowableBits;
+    BOOLEAN UnrestrictedGuest;
     struct _VMM_CONTEXT* Vmm; 
 } VCPU, *PVCPU;
 
