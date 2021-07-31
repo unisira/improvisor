@@ -74,4 +74,19 @@ typedef union _IA32_VMX_BASIC_MSR
     };
 } IA32_VMX_BASIC_MSR, *PIA32_VMX_BASIC_MSR;
 
+typedef union _IA32_EFER
+{
+    UINT64 Value;
+
+    struct
+    {
+        UINT64 SyscallEnable : 1;
+        UINT64 Reserved1 : 1;
+        UINT64 LongModeEnable : 1;
+        UINT64 LongModeActive : 1;
+        UINT64 ExecuteDisable : 1;
+        UINT64 Reserved3 : 52;
+    };
+} IA32_EFER, *PIA32_EFER;
+
 #endif
