@@ -153,6 +153,8 @@ Routine Description:
     // TODO: Complete this
     NTSTATUS Status = STATUS_SUCCESS;
 
+    VmmContext->UseUnrestrictedGuests = FALSE;
+
     return Status;
 }
 
