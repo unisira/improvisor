@@ -40,18 +40,32 @@ typedef union _VMX_MOV_CR_EXIT_QUALIFICATION
 {
     UINT64 Value;
 
+	struct
+	{
+		UINT64 ControlRegisterId : 4;
+		UINT64 AccessType : 2;
+		UINT64 LMSWOperandType : 1;
+		UINT64 Reserved1 : 1;
+		UINT64 RegisterId : 4;
+		UINT64 Reserved2 : 4;
+		UINT64 LMSWSourceData : 16;
+		UINT32 Reserved3;
+	};
+} VMX_MOV_CR_EXIT_QUALIFICATION, *PVMX_MOV_CR_EXIT_QUALIFICATION;
+
+typedef union _VMX_INTERRUPT_INFO
+{
+    UINT32 Value;
+
     struct
     {
-        UINT64 ControlRegisterId : 4;
-        UINT64 AccessType : 2;
-        UINT64 LMSWOperandType : 1;
-        UINT64 Reserved1 : 1;
-        UINT64 RegisterId : 4;
-        UINT64 Reserved2 : 4;
-        UINT64 LMSWSourceData : 16;
-        UINT32 Reserved3;
-    }
-} VMX_MOV_CR_EXIT_QUALIFICATION, *PVMX_MOV_CR_EXIT_QUALIFICATION;
+        UINT32 Vector: 8;
+        UINT32 Type : 3;
+        UINT32 DeliverErrorCode : 1;
+        UINT32 Reserved1: 19;
+        UINT32 Valid : 1;
+    };
+} VMX_ENTRY_INTERRUPT_INFO, *PVMX_ENTRY_INTERRUPT_INFO;
 
 typedef struct _VMX_STATE
 {
@@ -200,7 +214,7 @@ typedef enum _VMCS
 	CONTROL_VMENTRY_MSR_LOAD_COUNT = 0x00004014,
 	CONTROL_VMENTRY_INTERRUPT_INFO = 0x00004016,
 	CONTROL_VMENTRY_EXCEPTION_ERROR_CODE = 0x00004018,
-	CONTROL_VMENTRY_INSTRUCTION_LENGTH = 0x0000401A,
+	CONTROL_VMENTRY_INSTRUCTION_LEN = 0x0000401A,
 	CONTROL_SECONDARY_PROCBASED_CONTROLS = 0x0000401E,
 	CONTROL_PLE_GAP = 0x00004020,
 	CONTROL_PLE_WINDOW = 0x00004022,
@@ -353,9 +367,6 @@ VmxCheckSupport(VOID);
 BOOLEAN
 VmxEnableVmxon(VOID);
 
-VOID
-VmxRestrictControlRegisters(VOID);
-
 UINT64
 VmxApplyCr0Restrictions(
     _In_ UINT64 Cr0
@@ -364,6 +375,16 @@ VmxApplyCr0Restrictions(
 UINT64
 VmxApplyCr4Restrictions(
     _In_ UINT64 Cr4
+);
+
+VOID
+VmxRestrictControlRegisters(VOID);
+
+VOID
+VmxInjectEvent(
+    _In_ X86_EXCEPTION Vector,
+    _In_ X86_INTERRUPT_TYPE Type,
+    _In_ UINT16 ErrorCode
 );
 
 UINT64
@@ -382,6 +403,12 @@ VmxSetControl(
     _Inout_ PVMX_STATE Vmx,
     _In_ VMX_CONTROL Control,
     _In_ BOOLEAN State
+);
+
+BOOLEAN
+VmxIsControlSupported(
+    _Inout_ PVMX_STATE Vmx,
+    _In_ VMX_CONTROL Control
 );
 
 VOID

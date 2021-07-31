@@ -1,4 +1,5 @@
 #include "improvisor.h"
+#include "arch/interrupt.h"
 #include "arch/cpuid.h"
 #include "arch/msr.h"
 #include "arch/cr.h"
@@ -112,6 +113,72 @@ Routine Description:
     __writecr4(VmxApplyCr4Restrictions(__readcr4()));
 }
 
+BOOLEAN
+VmxShouldPushErrorCode(
+    _In_ VMX_ENTRY_INTERRUPT_INFO Interrupt
+)
+/*++
+Routine Description:
+    Checks if the current interrupt should push an error code onto the interrupt trap frame. See the Intel SDM
+    Vol. 3 Chapter 26.2.1.3 where these checks are described
+--*/
+{
+    if (Interrupt.Type != INTERRUPT_TYPE_HARDWARE_EXCEPTION)
+        return FALSE;
+
+    IA32_VMX_BASIC_MSR VmxCap = {
+        .Value = __readmsr(IA32_VMX_BASIC)
+    };
+
+    if (VmxCap.NoErrCodeRequirement)
+        return FALSE;
+
+    X86_CR0 Cr0 = {
+        .Value = VmxRead(GUEST_CR0)
+    };
+
+    if (!Cr0.ProtectedMode)
+        return FALSE;
+
+    if (Interrupt.Vector != EXCEPTION_DOUBLE_FAULT ||
+        Interrupt.Vector != EXCEPTION_INVALID_TSS ||
+        Interrupt.Vector != EXCEPTION_SEGMENT_NOT_PRESENT ||
+        Interrupt.Vector != EXCEPTION_STACK_SEGMENT_FAULT ||
+        Interrupt.Vector != EXCEPTION_GENERAL_PROTECTION_FAULT ||
+        Interrupt.Vector != EXCEPTION_PAGE_FAULT ||
+        Interrupt.Vector != EXCEPTION_ALIGNMENT_CHECK)
+        return FALSE;
+
+    return TRUE;
+}
+
+VOID
+VmxInjectEvent(
+    _In_ X86_EXCEPTION Vector,
+    _In_ X86_INTERRUPT_TYPE Type,
+    _In_ UINT16 ErrorCode
+)
+/*++
+Routine Description:
+    Injects a VMX event by filling out the VM-entry interrupt information VMCS component 
+--*/
+{
+    VMX_ENTRY_INTERRUPT_INFO Interrupt = {0};
+
+    Interrupt.Valid = TRUE;
+    Interrupt.Vector = Vector;
+    Interrupt.Type = Type;
+    Interrupt.DeliverErrorCode = VmxShouldPushErrorCode(Interrupt);
+
+    VmxWrite(CONTROL_VMENTRY_EXCEPTION_ERROR_CODE, ErrorCode);
+    VmxWrite(CONTROL_VMENTRY_INTERRUPT_INFO, Interrupt.Value);
+
+    if (Interrupt.Type == INTERRUPT_TYPE_SOFTWARE_EXCEPTION ||
+        Interrupt.Type == INTERRUPT_TYPE_SOFTWARE_INTERRUPT ||
+        Interrupt.Type == INTERRUPT_TYPE_PRIVILEGED_SOFTWARE_INTERRUPT)
+        VmxWrite(CONTROL_VMENTRY_INSTRUCTION_LEN, VmxRead(VM_EXIT_INSTRUCTION_LEN));
+}
+
 UINT64
 VmxRead(
     _In_ VMCS Component
@@ -212,60 +279,41 @@ Routine Description:
 }
 
 BOOLEAN
-VmxGetControlBit(
+VmxIsControlSupported(
     _Inout_ PVMX_STATE Vmx,
     _In_ VMX_CONTROL Control
 )
 /*++
 Routine Description:
-	Returns the state of a VMX control
+    Checks VMX control capability MSRs to see if a VMX control is supported
 --*/
 {
-    UINT8 ControlField = (UINT8)Control & 0x07;
+	UINT8 ControlField = (UINT8)Control & 0x07;
 
-    PUINT64 TargetControls = NULL;
-    UINT64 TargetCap = 0;
+    UINT64 ControlCap = 0;
 
     switch (ControlField)
     {
-    case VMX_PINBASED_CTLS:
-        TargetControls = &Vmx->Controls.PinbasedCtls;
-        TargetCap = Vmx->Cap.PinbasedCtls;
-        break;
-
-    case VMX_PRIM_PROCBASED_CTLS:
-        TargetControls = &Vmx->Controls.PrimaryProcbasedCtls;
-        TargetCap = Vmx->Cap.PrimaryProcbasedCtls;
-        break;
-
-    case VMX_SEC_PROCBASED_CTLS:
-        TargetControls = &Vmx->Controls.SecondaryProcbasedCtls;
-        TargetCap = Vmx->Cap.SecondaryProcbasedCtls;
-        break;
-
-    case VMX_EXIT_CTLS:
-        TargetControls = &Vmx->Controls.VmExitCtls;
-        TargetCap = Vmx->Cap.VmExitCtls;
-        break;
-
-    case VMX_ENTRY_CTLS:
-        TargetControls = &Vmx->Controls.VmEntryCtls;
-        TargetCap = Vmx->Cap.VmEntryCtls;
-        break;
+    case VMX_PINBASED_CTLS: ControlCap = Vmx->Cap.PinbasedCtls; break;
+    case VMX_PRIM_PROCBASED_CTLS: ControlCap = Vmx->Cap.PrimaryProcbasedCtls; break;
+    case VMX_SEC_PROCBASED_CTLS: ControlCap = Vmx->Cap.SecondaryProcbasedCtls; break;
+    case VMX_EXIT_CTLS: ControlCap = Vmx->Cap.VmExitCtls; break;
+    case VMX_ENTRY_CTLS: ControlCap = Vmx->Cap.VmEntryCtls; break;
     }
 
     UINT8 ControlBit = (UINT8)((Control >> 3) & 0x1F);
-	
-    if (VmxGetFixedBits(TargetCap) & (1 << ControlBit))
-        return FALSE;
 
-    return (*TargetControls & (1 << ControlBit)) != 0;
+    return (VmxGetFixedBits(ControlCap) & (1ULL << ControlBit)) != 0;
 }
 
 VOID
 VmxSetupVmxState(
     _Inout_ PVMX_STATE Vmx
 )
+/*++
+Routine Description:
+    Initialises the VMX state's controls and capability fields to default values for VMX operation
+--*/
 {
     const IA32_VMX_BASIC_MSR VmxCap = {
         .Value = __readmsr(IA32_VMX_BASIC)
