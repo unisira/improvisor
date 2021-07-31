@@ -55,82 +55,82 @@ VMEXIT_HANDLER VcpuHandleInvalidGuestState;
 VMEXIT_HANDLER VcpuHandleCrAccess;
 
 static VMEXIT_HANDLER* sExitHandlers[] = {
-	VcpuUnknownExitReason, 			// Exception or non-maskable interrupt (NMI)
-	VcpuUnknownExitReason, 			// External interrupt
-	VcpuUnknownExitReason, 			// Triple fault
-	VcpuUnknownExitReason, 			// INIT signal
-	VcpuUnknownExitReason, 			// Start-up IPI (SIPI)
-	VcpuUnknownExitReason, 			// I/O system-management interrupt (SMI)
-	VcpuUnknownExitReason, 			// Other SMI
-	VcpuUnknownExitReason, 			// Interrupt window
-	VcpuUnknownExitReason, 			// NMI window
-	VcpuUnknownExitReason, 			// Task switch
-	VcpuHandleCpuid,				// CPUID
-	VcpuUnknownExitReason, 			// GETSEC
-	VcpuUnknownExitReason, 			// HLT
-	VcpuUnknownExitReason, 			// INVD
-	VcpuUnknownExitReason, 			// INVLPG
-	VcpuUnknownExitReason, 			// RDPMC
-	VcpuUnknownExitReason, 			// RDTSC
-	VcpuUnknownExitReason, 			// RSM
-	VcpuUnknownExitReason, 			// VMCALL
-	VcpuUnknownExitReason, 			// VMCLEAR
-	VcpuUnknownExitReason, 			// VMLAUNCH
-	VcpuUnknownExitReason, 			// VMPTRLD
-	VcpuUnknownExitReason, 			// VMPTRST
-	VcpuUnknownExitReason, 			// VMREAD
-	VcpuUnknownExitReason, 			// VMRESUME
-	VcpuUnknownExitReason, 			// VMWRITE
-	VcpuUnknownExitReason, 			// VMXOFF
-	VcpuUnknownExitReason, 			// VMXON
-	VcpuHandleCrAccess, 			// Control-register accesses
-	VcpuUnknownExitReason, 			// MOV DR
-	VcpuUnknownExitReason,			// I/O instruction
-	VcpuUnknownExitReason,			// RDMSR
-	VcpuUnknownExitReason,			// WRMSR
-	VcpuHandleInvalidGuestState,	// VM-entry failure due to invalid guest state
-	VcpuUnknownExitReason, 			// VM-entry failure due to MSR loading
-	NULL,
-	VcpuUnknownExitReason, 			// MWAIT
-	VcpuUnknownExitReason, 			// Monitor trap flag
-	NULL,
-	VcpuUnknownExitReason, 			// MONITOR
-	VcpuUnknownExitReason, 			// PAUSE
-	VcpuUnknownExitReason, 			// VM-entry failure due to machine-check event
-	NULL,
-	VcpuUnknownExitReason, 			// TPR below threshold
-	VcpuUnknownExitReason, 			// APIC access
-	VcpuUnknownExitReason, 			// Virtualized EOI
-	VcpuUnknownExitReason, 			// Access to GDTR or IDTR
-	VcpuUnknownExitReason, 			// Access to LDTR or TR
-	VcpuUnknownExitReason, 			// EPT violation
-	VcpuUnknownExitReason, 			// EPT misconfiguration
-	VcpuUnknownExitReason, 			// INVEPT
-	VcpuUnknownExitReason, 			// RDTSCP
-	VcpuUnknownExitReason, 			// VMX-preemption timer expired
-	VcpuUnknownExitReason, 			// INVVPID
-	VcpuUnknownExitReason, 			// WBINVD or WBNOINVD
-	VcpuUnknownExitReason, 			// XSETBV
-	VcpuUnknownExitReason, 			// APIC write
-	VcpuUnknownExitReason, 			// RDRAND
-	VcpuUnknownExitReason, 			// INVPCID
-	VcpuUnknownExitReason, 			// VMFUNC
-	VcpuUnknownExitReason, 			// ENCLS
-	VcpuUnknownExitReason, 			// RDSEED
-	VcpuUnknownExitReason, 			// Page-modification log full
-	VcpuUnknownExitReason, 			// XSAVES
-	VcpuUnknownExitReason, 			// XRSTORS
-	NULL,
-	VcpuUnknownExitReason, 			// SPP-related event
-	VcpuUnknownExitReason, 			// UMWAIT
-	VcpuUnknownExitReason, 			// TPAUSE
-	VcpuUnknownExitReason, 			// LOADIWKEY
+    VcpuUnknownExitReason, 			// Exception or non-maskable interrupt (NMI)
+    VcpuUnknownExitReason, 			// External interrupt
+    VcpuUnknownExitReason, 			// Triple fault
+    VcpuUnknownExitReason, 			// INIT signal
+    VcpuUnknownExitReason, 			// Start-up IPI (SIPI)
+    VcpuUnknownExitReason, 			// I/O system-management interrupt (SMI)
+    VcpuUnknownExitReason, 			// Other SMI
+    VcpuUnknownExitReason, 			// Interrupt window
+    VcpuUnknownExitReason, 			// NMI window
+    VcpuUnknownExitReason, 			// Task switch
+    VcpuHandleCpuid,				// CPUID
+    VcpuUnknownExitReason, 			// GETSEC
+    VcpuUnknownExitReason, 			// HLT
+    VcpuUnknownExitReason, 			// INVD
+    VcpuUnknownExitReason, 			// INVLPG
+    VcpuUnknownExitReason, 			// RDPMC
+    VcpuUnknownExitReason, 			// RDTSC
+    VcpuUnknownExitReason, 			// RSM
+    VcpuUnknownExitReason, 			// VMCALL
+    VcpuUnknownExitReason, 			// VMCLEAR
+    VcpuUnknownExitReason, 			// VMLAUNCH
+    VcpuUnknownExitReason, 			// VMPTRLD
+    VcpuUnknownExitReason, 			// VMPTRST
+    VcpuUnknownExitReason, 			// VMREAD
+    VcpuUnknownExitReason, 			// VMRESUME
+    VcpuUnknownExitReason, 			// VMWRITE
+    VcpuUnknownExitReason, 			// VMXOFF
+    VcpuUnknownExitReason, 			// VMXON
+    VcpuHandleCrAccess, 			// Control-register accesses
+    VcpuUnknownExitReason, 			// MOV DR
+    VcpuUnknownExitReason,			// I/O instruction
+    VcpuUnknownExitReason,			// RDMSR
+    VcpuUnknownExitReason,			// WRMSR
+    VcpuHandleInvalidGuestState,	// VM-entry failure due to invalid guest state
+    VcpuUnknownExitReason, 			// VM-entry failure due to MSR loading
+    NULL,
+    VcpuUnknownExitReason, 			// MWAIT
+    VcpuUnknownExitReason, 			// Monitor trap flag
+    NULL,
+    VcpuUnknownExitReason, 			// MONITOR
+    VcpuUnknownExitReason, 			// PAUSE
+    VcpuUnknownExitReason, 			// VM-entry failure due to machine-check event
+    NULL,
+    VcpuUnknownExitReason, 			// TPR below threshold
+    VcpuUnknownExitReason, 			// APIC access
+    VcpuUnknownExitReason, 			// Virtualized EOI
+    VcpuUnknownExitReason, 			// Access to GDTR or IDTR
+    VcpuUnknownExitReason, 			// Access to LDTR or TR
+    VcpuUnknownExitReason, 			// EPT violation
+    VcpuUnknownExitReason, 			// EPT misconfiguration
+    VcpuUnknownExitReason, 			// INVEPT
+    VcpuUnknownExitReason, 			// RDTSCP
+    VcpuUnknownExitReason, 			// VMX-preemption timer expired
+    VcpuUnknownExitReason, 			// INVVPID
+    VcpuUnknownExitReason, 			// WBINVD or WBNOINVD
+    VcpuUnknownExitReason, 			// XSETBV
+    VcpuUnknownExitReason, 			// APIC write
+    VcpuUnknownExitReason, 			// RDRAND
+    VcpuUnknownExitReason, 			// INVPCID
+    VcpuUnknownExitReason, 			// VMFUNC
+    VcpuUnknownExitReason, 			// ENCLS
+    VcpuUnknownExitReason, 			// RDSEED
+    VcpuUnknownExitReason, 			// Page-modification log full
+    VcpuUnknownExitReason, 			// XSAVES
+    VcpuUnknownExitReason, 			// XRSTORS
+    NULL,
+    VcpuUnknownExitReason, 			// SPP-related event
+    VcpuUnknownExitReason, 			// UMWAIT
+    VcpuUnknownExitReason, 			// TPAUSE
+    VcpuUnknownExitReason, 			// LOADIWKEY
 };
 
 VOID
 VcpuSetControl(
-	_Inout_ PVCPU Vcpu,
-	_In_ VMX_CONTROL Control,
+    _Inout_ PVCPU Vcpu,
+    _In_ VMX_CONTROL Control,
     _In_ BOOLEAN State
 );
 
@@ -142,122 +142,122 @@ VcpuIsControlSupported(
 
 VOID
 VcpuCommitVmxState(
-	_Inout_ PVCPU Vcpu
+    _Inout_ PVCPU Vcpu
 );
 
 VOID
 VcpuToggleExitOnMsr(
-	_Inout_ PVCPU Vcpu,
-	_In_ UINT32 Msr,
-	_In_ MSR_ACCESS Access
+    _Inout_ PVCPU Vcpu,
+    _In_ UINT32 Msr,
+    _In_ MSR_ACCESS Access
 );
 
 VOID
 VcpuHandleExit(
-	_Inout_ PVCPU Vcpu,
-	_Inout_ PGUEST_STATE GuestState
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
 );
 
 UINT64
 SegmentBaseAddress(
-	_In_ X86_SEGMENT_SELECTOR Selector
+    _In_ X86_SEGMENT_SELECTOR Selector
 );
 
 UINT32
 SegmentAr(
-	_In_ X86_SEGMENT_SELECTOR Selector
+    _In_ X86_SEGMENT_SELECTOR Selector
 );
 
 NTSTATUS
 VcpuSetup(
-	_Inout_ PVCPU Vcpu,
-	_In_ UINT8 Id
+    _Inout_ PVCPU Vcpu,
+    _In_ UINT8 Id
 )
 /*++
 Routine Description:
-	Initialises a VCPU structure. This function doesn't need to free any resources upon failure
-	because VmmStartHypervisor will take care of it
+    Initialises a VCPU structure. This function doesn't need to free any resources upon failure
+    because VmmStartHypervisor will take care of it
 --*/
 {
     Vcpu->Id = Id;
 
-	Vcpu->Vmcs = VmxAllocateRegion();
-	if (Vcpu->Vmcs == NULL)
-	{
-		ImpDebugPrint("Failed to allocate VMCS region for VCPU #%d...\n", Id);
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-	
-	Vcpu->VmcsPhysical = ImpGetPhysicalAddress(Vcpu->Vmcs);
+    Vcpu->Vmcs = VmxAllocateRegion();
+    if (Vcpu->Vmcs == NULL)
+    {
+        ImpDebugPrint("Failed to allocate VMCS region for VCPU #%d...\n", Id);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    
+    Vcpu->VmcsPhysical = ImpGetPhysicalAddress(Vcpu->Vmcs);
 
-	Vcpu->Vmxon = VmxAllocateRegion();
-	if (Vcpu->Vmxon == NULL)
-	{
-		ImpDebugPrint("Failed to allocate VMCS region for VCPU #%d...\n", Id);
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
+    Vcpu->Vmxon = VmxAllocateRegion();
+    if (Vcpu->Vmxon == NULL)
+    {
+        ImpDebugPrint("Failed to allocate VMCS region for VCPU #%d...\n", Id);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
-	Vcpu->VmxonPhysical = ImpGetPhysicalAddress(Vcpu->Vmxon);
+    Vcpu->VmxonPhysical = ImpGetPhysicalAddress(Vcpu->Vmxon);
 
-	Vcpu->MsrBitmap = (PCHAR)ImpAllocateContiguousMemory(PAGE_SIZE);
-	if (Vcpu->MsrBitmap == NULL)
-	{
-		ImpDebugPrint("Failed to allocate MSR bitmap for VCPU #%d...\n", Id);
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
+    Vcpu->MsrBitmap = (PCHAR)ImpAllocateContiguousMemory(PAGE_SIZE);
+    if (Vcpu->MsrBitmap == NULL)
+    {
+        ImpDebugPrint("Failed to allocate MSR bitmap for VCPU #%d...\n", Id);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
-	Vcpu->MsrBitmapPhysical = ImpGetPhysicalAddress(Vcpu->MsrBitmap);
-	
-	Vcpu->Stack = (PVCPU_STACK)ExAllocatePoolWithTag(NonPagedPool, sizeof(VCPU_STACK), POOL_TAG);
-	if (Vcpu->Stack == NULL)
-	{
-		ImpDebugPrint("Failed to allocate a host stack for VCPU #%d...\n", Id);
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
+    Vcpu->MsrBitmapPhysical = ImpGetPhysicalAddress(Vcpu->MsrBitmap);
+    
+    Vcpu->Stack = (PVCPU_STACK)ExAllocatePoolWithTag(NonPagedPool, sizeof(VCPU_STACK), POOL_TAG);
+    if (Vcpu->Stack == NULL)
+    {
+        ImpDebugPrint("Failed to allocate a host stack for VCPU #%d...\n", Id);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
-	Vcpu->Stack->Cache.Vcpu = Vcpu;
+    Vcpu->Stack->Cache.Vcpu = Vcpu;
 
-	RtlInitializeBitMap(
-			&Vcpu->MsrLoReadBitmap, 
-			Vcpu->MsrBitmap + VMX_MSR_READ_BITMAP_OFFS + VMX_MSR_LO_BITMAP_OFFS, 
-			1024 * 8);
+    RtlInitializeBitMap(
+            &Vcpu->MsrLoReadBitmap, 
+            Vcpu->MsrBitmap + VMX_MSR_READ_BITMAP_OFFS + VMX_MSR_LO_BITMAP_OFFS, 
+            1024 * 8);
 
-	RtlInitializeBitMap(
-			&Vcpu->MsrHiReadBitmap, 
-			Vcpu->MsrBitmap + VMX_MSR_READ_BITMAP_OFFS + VMX_MSR_HI_BITMAP_OFFS, 
-			1024 * 8);
-	
-	RtlInitializeBitMap(
-			&Vcpu->MsrLoWriteBitmap, 
-			Vcpu->MsrBitmap + VMX_MSR_WRITE_BITMAP_OFFS + VMX_MSR_LO_BITMAP_OFFS, 
-			1024 * 8);
+    RtlInitializeBitMap(
+            &Vcpu->MsrHiReadBitmap, 
+            Vcpu->MsrBitmap + VMX_MSR_READ_BITMAP_OFFS + VMX_MSR_HI_BITMAP_OFFS, 
+            1024 * 8);
+    
+    RtlInitializeBitMap(
+            &Vcpu->MsrLoWriteBitmap, 
+            Vcpu->MsrBitmap + VMX_MSR_WRITE_BITMAP_OFFS + VMX_MSR_LO_BITMAP_OFFS, 
+            1024 * 8);
 
-	RtlInitializeBitMap(
-			&Vcpu->MsrHiWriteBitmap, 
-			Vcpu->MsrBitmap + VMX_MSR_WRITE_BITMAP_OFFS + VMX_MSR_HI_BITMAP_OFFS, 
-			1024 * 8);
+    RtlInitializeBitMap(
+            &Vcpu->MsrHiWriteBitmap, 
+            Vcpu->MsrBitmap + VMX_MSR_WRITE_BITMAP_OFFS + VMX_MSR_HI_BITMAP_OFFS, 
+            1024 * 8);
 
-	VmxSetupVmxState(&Vcpu->Vmx);
+    VmxSetupVmxState(&Vcpu->Vmx);
 
     // VM-entry cannot change CR0.CD or CR0.NW
     Vcpu->Cr0ShadowableBits = ~(__readmsr(IA32_VMX_CR0_FIXED0) ^ __readmsr(IA32_VMX_CR0_FIXED1));
     Vcpu->Cr4ShadowableBits = ~(__readmsr(IA32_VMX_CR4_FIXED0) ^ __readmsr(IA32_VMX_CR4_FIXED1));
 
-	// Make sure the VM enters in IA32e
-	VcpuSetControl(Vcpu, VMX_CTL_HOST_ADDRESS_SPACE_SIZE, TRUE);
-	VcpuSetControl(Vcpu, VMX_CTL_GUEST_ADDRESS_SPACE_SIZE, TRUE);
+    // Make sure the VM enters in IA32e
+    VcpuSetControl(Vcpu, VMX_CTL_HOST_ADDRESS_SPACE_SIZE, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_GUEST_ADDRESS_SPACE_SIZE, TRUE);
 
-	VcpuSetControl(Vcpu, VMX_CTL_USE_MSR_BITMAPS, TRUE);
-	VcpuSetControl(Vcpu, VMX_CTL_SECONDARY_CTLS_ACTIVE, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_USE_MSR_BITMAPS, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_SECONDARY_CTLS_ACTIVE, TRUE);
 
-	VcpuSetControl(Vcpu, VMX_CTL_ENABLE_RDTSCP, TRUE);
-	VcpuSetControl(Vcpu, VMX_CTL_ENABLE_XSAVES_XRSTORS, TRUE);
-	VcpuSetControl(Vcpu, VMX_CTL_ENABLE_INVPCID, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_ENABLE_RDTSCP, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_ENABLE_XSAVES_XRSTORS, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_ENABLE_INVPCID, TRUE);
 
     // Save GUEST_EFER on VM-exit
     VcpuSetControl(Vcpu, VMX_CTL_SAVE_EFER_ON_EXIT, TRUE);
 
-	return STATUS_SUCCESS;
+    return STATUS_SUCCESS;
 }
 
 DECLSPEC_NORETURN
@@ -265,310 +265,310 @@ VOID
 VcpuLaunch(VOID)
 /*++
 Routine Description:
-	Post-VMLAUNCH, sets the CPU's registers and RIP to previous execution. 
+    Post-VMLAUNCH, sets the CPU's registers and RIP to previous execution. 
 --*/
 {
-	PVCPU_STACK Stack = *(PVCPU_STACK*)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
-	
-	__cpu_restore_state(&Stack->Cache.Vcpu->LaunchState);
+    PVCPU_STACK Stack = *(PVCPU_STACK*)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
+    
+    __cpu_restore_state(&Stack->Cache.Vcpu->LaunchState);
 }
 
 NTSTATUS
 VcpuSpawn(
-	_In_ PVCPU Vcpu
+    _In_ PVCPU Vcpu
 )
 /*++
 Routine Description:
-	Spawns a VCPU on this core 
+    Spawns a VCPU on this core 
 --*/
 {
-	NTSTATUS Status = STATUS_SUCCESS;
+    NTSTATUS Status = STATUS_SUCCESS;
 
-	ImpDebugPrint("Spawning VCPU #%d...\n", Vcpu->Id);
+    ImpDebugPrint("Spawning VCPU #%d...\n", Vcpu->Id);
 
-	VmxRestrictControlRegisters();
+    VmxRestrictControlRegisters();
 
-	if (!VmxEnableVmxon())
-	{
-		ImpDebugPrint("Unable to enable VMX, it appears to be disabled in the BIOS...\n");
-		return STATUS_NOT_SUPPORTED;
-	}
+    if (!VmxEnableVmxon())
+    {
+        ImpDebugPrint("Unable to enable VMX, it appears to be disabled in the BIOS...\n");
+        return STATUS_NOT_SUPPORTED;
+    }
 
-	if (__vmx_on(&Vcpu->VmxonPhysical))
-	{
-		ImpDebugPrint("Failed to enter VMX operation on VCPU #%d...\n", Vcpu->Id);
-		return STATUS_INVALID_PARAMETER;
-	}
+    if (__vmx_on(&Vcpu->VmxonPhysical))
+    {
+        ImpDebugPrint("Failed to enter VMX operation on VCPU #%d...\n", Vcpu->Id);
+        return STATUS_INVALID_PARAMETER;
+    }
 
-	if (__vmx_vmclear(&Vcpu->VmcsPhysical))
-	{
-		ImpDebugPrint("Failed to clear VMCS for VCPU #%d...\n", Vcpu->Id);
-		return STATUS_INVALID_PARAMETER;
-	}
+    if (__vmx_vmclear(&Vcpu->VmcsPhysical))
+    {
+        ImpDebugPrint("Failed to clear VMCS for VCPU #%d...\n", Vcpu->Id);
+        return STATUS_INVALID_PARAMETER;
+    }
 
-	if (__vmx_vmptrld(&Vcpu->VmcsPhysical))
-	{
-		ImpDebugPrint("Failed to set active VMCS on VCPU #%d...\n", Vcpu->Id);
-		return STATUS_INVALID_PARAMETER;
-	}
+    if (__vmx_vmptrld(&Vcpu->VmcsPhysical))
+    {
+        ImpDebugPrint("Failed to set active VMCS on VCPU #%d...\n", Vcpu->Id);
+        return STATUS_INVALID_PARAMETER;
+    }
 
-	// TODO: Define exception bitmap later in vmx.h
-	VmxWrite(CONTROL_EXCEPTION_BITMAP, 0);
+    // TODO: Define exception bitmap later in vmx.h
+    VmxWrite(CONTROL_EXCEPTION_BITMAP, 0);
 
-	// All page faults should cause VM-exits
-	VmxWrite(CONTROL_PAGE_FAULT_ERROR_CODE_MASK, 0);
-	VmxWrite(CONTROL_PAGE_FAULT_ERROR_CODE_MATCH, 0);
+    // All page faults should cause VM-exits
+    VmxWrite(CONTROL_PAGE_FAULT_ERROR_CODE_MASK, 0);
+    VmxWrite(CONTROL_PAGE_FAULT_ERROR_CODE_MATCH, 0);
 
-	VmxWrite(CONTROL_MSR_BITMAP_ADDRESS, Vcpu->MsrBitmapPhysical);
+    VmxWrite(CONTROL_MSR_BITMAP_ADDRESS, Vcpu->MsrBitmapPhysical);
 
-	// No nested virtualisation, set invalid VMCS link pointer
-	VmxWrite(GUEST_VMCS_LINK_POINTER, ~0ULL);
+    // No nested virtualisation, set invalid VMCS link pointer
+    VmxWrite(GUEST_VMCS_LINK_POINTER, ~0ULL);
 
-	VmxWrite(CONTROL_CR0_READ_SHADOW, __readcr0());
-	VmxWrite(CONTROL_CR0_GUEST_MASK, Vcpu->Cr0ShadowableBits);
-	VmxWrite(GUEST_CR0, __readcr0());
-	VmxWrite(HOST_CR0, __readcr0());
+    VmxWrite(CONTROL_CR0_READ_SHADOW, __readcr0());
+    VmxWrite(CONTROL_CR0_GUEST_MASK, Vcpu->Cr0ShadowableBits);
+    VmxWrite(GUEST_CR0, __readcr0());
+    VmxWrite(HOST_CR0, __readcr0());
 
-	VmxWrite(CONTROL_CR4_READ_SHADOW, __readcr4());
-	VmxWrite(CONTROL_CR4_GUEST_MASK, Vcpu->Cr4ShadowableBits);
-	VmxWrite(GUEST_CR4, __readcr4());
-	VmxWrite(HOST_CR4, __readcr4());
+    VmxWrite(CONTROL_CR4_READ_SHADOW, __readcr4());
+    VmxWrite(CONTROL_CR4_GUEST_MASK, Vcpu->Cr4ShadowableBits);
+    VmxWrite(GUEST_CR4, __readcr4());
+    VmxWrite(HOST_CR4, __readcr4());
 
-	VmxWrite(GUEST_CR3, __readcr3());
-	VmxWrite(HOST_CR3, __readcr3());
+    VmxWrite(GUEST_CR3, __readcr3());
+    VmxWrite(HOST_CR3, __readcr3());
     //VmxWrite(HOST_CR3, Vcpu->Vmm->MmSupport->HostDirectoryPhysical);
 
-	VmxWrite(GUEST_DR7, __readdr(7));
+    VmxWrite(GUEST_DR7, __readdr(7));
 
-	VmxWrite(GUEST_RFLAGS, Vcpu->LaunchState.RFlags);
-	VmxWrite(GUEST_DEBUGCTL, __readmsr(IA32_DEBUGCTL));
-	VmxWrite(GUEST_SYSENTER_ESP, __readmsr(IA32_SYSENTER_ESP));
-	VmxWrite(GUEST_SYSENTER_EIP, __readmsr(IA32_SYSENTER_EIP));
-	VmxWrite(GUEST_SYSENTER_CS, __readmsr(IA32_SYSENTER_CS));
+    VmxWrite(GUEST_RFLAGS, Vcpu->LaunchState.RFlags);
+    VmxWrite(GUEST_DEBUGCTL, __readmsr(IA32_DEBUGCTL));
+    VmxWrite(GUEST_SYSENTER_ESP, __readmsr(IA32_SYSENTER_ESP));
+    VmxWrite(GUEST_SYSENTER_EIP, __readmsr(IA32_SYSENTER_EIP));
+    VmxWrite(GUEST_SYSENTER_CS, __readmsr(IA32_SYSENTER_CS));
 
-	X86_PSEUDO_DESCRIPTOR Gdtr = {0}, Idtr = {0};
-	__sgdt(&Gdtr);
-	__sidt(&Idtr);
+    X86_PSEUDO_DESCRIPTOR Gdtr = {0}, Idtr = {0};
+    __sgdt(&Gdtr);
+    __sidt(&Idtr);
 
-	VmxWrite(GUEST_GDTR_LIMIT, Gdtr.Limit);
-	VmxWrite(GUEST_IDTR_LIMIT, Idtr.Limit);
+    VmxWrite(GUEST_GDTR_LIMIT, Gdtr.Limit);
+    VmxWrite(GUEST_IDTR_LIMIT, Idtr.Limit);
 
-	VmxWrite(GUEST_GDTR_BASE, Gdtr.BaseAddress);
-	VmxWrite(HOST_GDTR_BASE, Gdtr.BaseAddress);
+    VmxWrite(GUEST_GDTR_BASE, Gdtr.BaseAddress);
+    VmxWrite(HOST_GDTR_BASE, Gdtr.BaseAddress);
 
-	VmxWrite(GUEST_IDTR_BASE, Idtr.BaseAddress);
-	VmxWrite(HOST_IDTR_BASE, Idtr.BaseAddress);
-	//VmxWrite(HOST_IDTR_BASE, Vcpu->Vmm->HostInterruptDescriptor.BaseAddress);
+    VmxWrite(GUEST_IDTR_BASE, Idtr.BaseAddress);
+    VmxWrite(HOST_IDTR_BASE, Idtr.BaseAddress);
+    //VmxWrite(HOST_IDTR_BASE, Vcpu->Vmm->HostInterruptDescriptor.BaseAddress);
 
-	X86_SEGMENT_SELECTOR Segment = {0};
+    X86_SEGMENT_SELECTOR Segment = {0};
 
-	Segment.Value = __readcs();
+    Segment.Value = __readcs();
 
-	VmxWrite(GUEST_CS_SELECTOR, Segment.Value);
-	VmxWrite(GUEST_CS_LIMIT, __segmentlimit(Segment.Value));
-	VmxWrite(GUEST_CS_ACCESS_RIGHTS, SegmentAr(Segment));
-	VmxWrite(GUEST_CS_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_CS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+    VmxWrite(GUEST_CS_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_CS_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_CS_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_CS_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_CS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
-	Segment.Value = __readss();
+    Segment.Value = __readss();
 
-	VmxWrite(GUEST_SS_SELECTOR, Segment.Value);
-	VmxWrite(GUEST_SS_LIMIT, __segmentlimit(Segment.Value));
-	VmxWrite(GUEST_SS_ACCESS_RIGHTS, SegmentAr(Segment));
-	VmxWrite(GUEST_SS_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_SS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+    VmxWrite(GUEST_SS_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_SS_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_SS_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_SS_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_SS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
-	Segment.Value = __readds();
+    Segment.Value = __readds();
 
-	VmxWrite(GUEST_DS_SELECTOR, Segment.Value);
-	VmxWrite(GUEST_DS_LIMIT, __segmentlimit(Segment.Value));
-	VmxWrite(GUEST_DS_ACCESS_RIGHTS, SegmentAr(Segment));
-	VmxWrite(GUEST_DS_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_DS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+    VmxWrite(GUEST_DS_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_DS_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_DS_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_DS_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_DS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
-	Segment.Value = __reades();
+    Segment.Value = __reades();
 
-	VmxWrite(GUEST_ES_SELECTOR, Segment.Value);
-	VmxWrite(GUEST_ES_LIMIT, __segmentlimit(Segment.Value));
-	VmxWrite(GUEST_ES_ACCESS_RIGHTS, SegmentAr(Segment));
-	VmxWrite(GUEST_ES_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_ES_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+    VmxWrite(GUEST_ES_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_ES_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_ES_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_ES_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_ES_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
-	Segment.Value = __readfs();
+    Segment.Value = __readfs();
 
-	VmxWrite(GUEST_FS_SELECTOR, Segment.Value);
-	VmxWrite(GUEST_FS_LIMIT, __segmentlimit(Segment.Value));
-	VmxWrite(GUEST_FS_ACCESS_RIGHTS, SegmentAr(Segment));
-	VmxWrite(GUEST_FS_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_FS_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_FS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+    VmxWrite(GUEST_FS_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_FS_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_FS_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_FS_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_FS_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_FS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
-	Segment.Value = __readgs();
+    Segment.Value = __readgs();
 
-	VmxWrite(GUEST_GS_SELECTOR, Segment.Value);
-	VmxWrite(GUEST_GS_LIMIT, __segmentlimit(Segment.Value));
-	VmxWrite(GUEST_GS_ACCESS_RIGHTS, SegmentAr(Segment));
-	VmxWrite(GUEST_GS_BASE, __readmsr(IA32_GS_BASE));
-	VmxWrite(HOST_GS_BASE, __readmsr(IA32_GS_BASE));
-	VmxWrite(HOST_GS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+    VmxWrite(GUEST_GS_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_GS_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_GS_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_GS_BASE, __readmsr(IA32_GS_BASE));
+    VmxWrite(HOST_GS_BASE, __readmsr(IA32_GS_BASE));
+    VmxWrite(HOST_GS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
-	Segment.Value = __readldt();
+    Segment.Value = __readldt();
 
-	VmxWrite(GUEST_LDTR_SELECTOR, Segment.Value);
-	VmxWrite(GUEST_LDTR_LIMIT, __segmentlimit(Segment.Value));
-	VmxWrite(GUEST_LDTR_ACCESS_RIGHTS, SegmentAr(Segment));
-	VmxWrite(GUEST_LDTR_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(GUEST_LDTR_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_LDTR_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_LDTR_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_LDTR_BASE, SegmentBaseAddress(Segment));
 
-	Segment.Value = __readtr();
+    Segment.Value = __readtr();
 
-	VmxWrite(GUEST_TR_SELECTOR, Segment.Value);
-	VmxWrite(GUEST_TR_LIMIT, __segmentlimit(Segment.Value));
-	VmxWrite(GUEST_TR_ACCESS_RIGHTS, SegmentAr(Segment));
-	VmxWrite(GUEST_TR_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_TR_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_TR_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+    VmxWrite(GUEST_TR_SELECTOR, Segment.Value);
+    VmxWrite(GUEST_TR_LIMIT, __segmentlimit(Segment.Value));
+    VmxWrite(GUEST_TR_ACCESS_RIGHTS, SegmentAr(Segment));
+    VmxWrite(GUEST_TR_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_TR_BASE, SegmentBaseAddress(Segment));
+    VmxWrite(HOST_TR_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
-	VcpuCommitVmxState(Vcpu);
-	
-	VmxWrite(HOST_RSP, (UINT64)(Vcpu->Stack->Limit + KERNEL_STACK_SIZE));
-	VmxWrite(GUEST_RSP, (UINT64)(Vcpu->Stack->Limit + KERNEL_STACK_SIZE));
+    VcpuCommitVmxState(Vcpu);
+    
+    VmxWrite(HOST_RSP, (UINT64)(Vcpu->Stack->Limit + KERNEL_STACK_SIZE));
+    VmxWrite(GUEST_RSP, (UINT64)(Vcpu->Stack->Limit + KERNEL_STACK_SIZE));
 
-	VmxWrite(HOST_RIP, (UINT64)__vmexit_entry);
-	VmxWrite(GUEST_RIP, (UINT64)VcpuLaunch);
+    VmxWrite(HOST_RIP, (UINT64)__vmexit_entry);
+    VmxWrite(GUEST_RIP, (UINT64)VcpuLaunch);
 
-	Vcpu->IsLaunched = TRUE;
-	
-	__vmx_vmlaunch();
+    Vcpu->IsLaunched = TRUE;
+    
+    __vmx_vmlaunch();
 
-	return STATUS_APP_INIT_FAILURE;
+    return STATUS_APP_INIT_FAILURE;
 }
 
 VOID
 VcpuSpawnPerCpu(
-	_Inout_ PVCPU_DELEGATE_PARAMS Params
+    _Inout_ PVCPU_DELEGATE_PARAMS Params
 )
 /*++
 Routine Description:
-	Spawns a VCPU on this core by enabling VMX, entering VMX root operation, setting up
-	this VCPUs VMCS and entering non root operation from a previously saved snapshot. 
-	
-	VCPU_DELEGATE_PARAMS::Status only gets updated when VcpuSpawn fails, if it does not
-	control will be returned to the moment after the CpuSaveState call, and it will return
-	with VCPU_DELEGATE_PARAMS::Status as STATUS_SUCCESS, indicating everything went well
+    Spawns a VCPU on this core by enabling VMX, entering VMX root operation, setting up
+    this VCPUs VMCS and entering non root operation from a previously saved snapshot. 
+    
+    VCPU_DELEGATE_PARAMS::Status only gets updated when VcpuSpawn fails, if it does not
+    control will be returned to the moment after the CpuSaveState call, and it will return
+    with VCPU_DELEGATE_PARAMS::Status as STATUS_SUCCESS, indicating everything went well
 --*/
 {
-	ULONG CpuId = KeGetCurrentProcessorNumber();
-	PVCPU Vcpu = &Params->VmmContext->VcpuTable[CpuId];
-	
-	Vcpu->Vmm = Params->VmmContext;
+    ULONG CpuId = KeGetCurrentProcessorNumber();
+    PVCPU Vcpu = &Params->VmmContext->VcpuTable[CpuId];
+    
+    Vcpu->Vmm = Params->VmmContext;
 
-	__cpu_save_state(&Vcpu->LaunchState);
-	
-	// Control flow is restored here upon successful virtualisation of the CPU
-	if (Vcpu->IsLaunched)
-	{
-		InterlockedIncrement(&Params->ActiveVcpuCount);
-		ImpDebugPrint("VCPU #%d is now running...\n", Vcpu->Id);
-		return;
-	}
+    __cpu_save_state(&Vcpu->LaunchState);
+    
+    // Control flow is restored here upon successful virtualisation of the CPU
+    if (Vcpu->IsLaunched)
+    {
+        InterlockedIncrement(&Params->ActiveVcpuCount);
+        ImpDebugPrint("VCPU #%d is now running...\n", Vcpu->Id);
+        return;
+    }
 
-	Params->Status = VcpuSpawn(Vcpu);
+    Params->Status = VcpuSpawn(Vcpu);
 
-	if (!NT_SUCCESS(Params->Status))
-	{
-		InterlockedExchange(&Params->FaultyCoreId, CpuId);
+    if (!NT_SUCCESS(Params->Status))
+    {
+        InterlockedExchange(&Params->FaultyCoreId, CpuId);
 
-		// Shutdown VMX operation on this CPU core if we failed VM launch
-		if (Params->Status == STATUS_APP_INIT_FAILURE)
-		{
-			ImpDebugPrint("VMLAUNCH failed on VCPU #%d... (%x)\n", Vcpu->Id, VmxRead(VM_INSTRUCTION_ERROR));
-			__vmx_off();
-		}
-	}
+        // Shutdown VMX operation on this CPU core if we failed VM launch
+        if (Params->Status == STATUS_APP_INIT_FAILURE)
+        {
+            ImpDebugPrint("VMLAUNCH failed on VCPU #%d... (%x)\n", Vcpu->Id, VmxRead(VM_INSTRUCTION_ERROR));
+            __vmx_off();
+        }
+    }
 }
 
 VOID
 VcpuShutdownPerCpu(
-	_Inout_ PVCPU_DELEGATE_PARAMS Params
+    _Inout_ PVCPU_DELEGATE_PARAMS Params
 )
 /*++
 Routine Description:
-	Checks if this core has been virtualised, and stops VMX operation if so.
+    Checks if this core has been virtualised, and stops VMX operation if so.
 --*/
 {
-	// TODO: Complete this
-	ULONG CpuId = KeGetCurrentProcessorNumber(); 
+    // TODO: Complete this
+    ULONG CpuId = KeGetCurrentProcessorNumber(); 
 
-	/*
-	if (Params->VmmContext->VcpuTable[CpuId].IsLaunched)
-		__vmcall(HYPERCALL_SHUTDOWN_VCPU);
-	*/
+    /*
+    if (Params->VmmContext->VcpuTable[CpuId].IsLaunched)
+        __vmcall(HYPERCALL_SHUTDOWN_VCPU);
+    */
 }
 
 VOID
 VcpuSetControl(
-	_Inout_ PVCPU Vcpu,
-	_In_ VMX_CONTROL Control,
+    _Inout_ PVCPU Vcpu,
+    _In_ VMX_CONTROL Control,
     _In_ BOOLEAN State
 )
 /*++
 Routine Description:
-	Sets the state of a VM execution control for a VCPU
+    Sets the state of a VM execution control for a VCPU
  */
 {
-	VmxSetControl(&Vcpu->Vmx, Control, State);
+    VmxSetControl(&Vcpu->Vmx, Control, State);
 }
 
 VOID
 VcpuCommitVmxState(
-	_Inout_ PVCPU Vcpu
+    _Inout_ PVCPU Vcpu
 )
 /*++
 Routine Description:
-	Updates the VM execution control VMCS components with the VMX state
+    Updates the VM execution control VMCS components with the VMX state
 --*/
 {
-	VmxWrite(CONTROL_PINBASED_CONTROLS, Vcpu->Vmx.Controls.PinbasedCtls);
-	VmxWrite(CONTROL_PRIMARY_PROCBASED_CONTROLS, Vcpu->Vmx.Controls.PrimaryProcbasedCtls);
-	VmxWrite(CONTROL_SECONDARY_PROCBASED_CONTROLS, Vcpu->Vmx.Controls.SecondaryProcbasedCtls);
-	VmxWrite(CONTROL_VMENTRY_CONTROLS, Vcpu->Vmx.Controls.VmEntryCtls);
-	VmxWrite(CONTROL_VMEXIT_CONTROLS, Vcpu->Vmx.Controls.VmExitCtls);
-	VmxWrite(CONTROL_TERTIARY_PROCBASED_CONTROLS, 0);
+    VmxWrite(CONTROL_PINBASED_CONTROLS, Vcpu->Vmx.Controls.PinbasedCtls);
+    VmxWrite(CONTROL_PRIMARY_PROCBASED_CONTROLS, Vcpu->Vmx.Controls.PrimaryProcbasedCtls);
+    VmxWrite(CONTROL_SECONDARY_PROCBASED_CONTROLS, Vcpu->Vmx.Controls.SecondaryProcbasedCtls);
+    VmxWrite(CONTROL_VMENTRY_CONTROLS, Vcpu->Vmx.Controls.VmEntryCtls);
+    VmxWrite(CONTROL_VMEXIT_CONTROLS, Vcpu->Vmx.Controls.VmExitCtls);
+    VmxWrite(CONTROL_TERTIARY_PROCBASED_CONTROLS, 0);
 }
 
 VOID
 VcpuToggleExitOnMsr(
-	_Inout_ PVCPU Vcpu,
-	_In_ UINT32 Msr,
-	_In_ MSR_ACCESS Access
+    _Inout_ PVCPU Vcpu,
+    _In_ UINT32 Msr,
+    _In_ MSR_ACCESS Access
 )
 /*++
 Routine Description:
-	Toggles VM-exits for a specific MSR via a VCPU's MSR bitmap
+    Toggles VM-exits for a specific MSR via a VCPU's MSR bitmap
 --*/
 {
-	PRTL_BITMAP MsrBitmap = NULL;
+    PRTL_BITMAP MsrBitmap = NULL;
 
-	switch (Access)
-	{
-	case MSR_READ:
-		{
-			if (Msr >= 0xC0000000)
-				MsrBitmap = &Vcpu->MsrHiReadBitmap;
-			else
-				MsrBitmap = &Vcpu->MsrLoReadBitmap;
-		} break;
+    switch (Access)
+    {
+    case MSR_READ:
+        {
+            if (Msr >= 0xC0000000)
+                MsrBitmap = &Vcpu->MsrHiReadBitmap;
+            else
+                MsrBitmap = &Vcpu->MsrLoReadBitmap;
+        } break;
 
-	case MSR_WRITE:
-		{
-			if (Msr >= 0xC0000000)
-				MsrBitmap = &Vcpu->MsrHiWriteBitmap;
-			else
-				MsrBitmap = &Vcpu->MsrLoWriteBitmap;
-		} break;
-	}
-	
-	RtlSetBit(MsrBitmap, Msr);
+    case MSR_WRITE:
+        {
+            if (Msr >= 0xC0000000)
+                MsrBitmap = &Vcpu->MsrHiWriteBitmap;
+            else
+                MsrBitmap = &Vcpu->MsrLoWriteBitmap;
+        } break;
+    }
+    
+    RtlSetBit(MsrBitmap, Msr);
 }
 
 DECLSPEC_NORETURN
@@ -576,90 +576,90 @@ VOID
 VcpuResume(VOID)
 /*++
 Routine Description:
-	Executes VMRESUME to resume VMX guest operation.
+    Executes VMRESUME to resume VMX guest operation.
 --*/
 {
-	__vmx_vmresume();
+    __vmx_vmresume();
 
-	ImpDebugPrint("VMRESUME failed... (%x)\n", VmxRead(VM_INSTRUCTION_ERROR));
+    ImpDebugPrint("VMRESUME failed... (%x)\n", VmxRead(VM_INSTRUCTION_ERROR));
 
-	// TODO: Shutdown entire hypervisor from here
-	__vmx_off();
-	__debugbreak();
+    // TODO: Shutdown entire hypervisor from here
+    __vmx_off();
+    __debugbreak();
 }
 
 VOID
 VcpuHandleExit(
-	_Inout_ PVCPU Vcpu,
-	_Inout_ PGUEST_STATE GuestState
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
 )
 /*++
 Routine Description:
-	Loads the VCPU with new data post VM-exit and calls the correct VM-exit handler 
+    Loads the VCPU with new data post VM-exit and calls the correct VM-exit handler 
 --*/
 {	
-	Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
-	Vcpu->Vmx.ExitReason.Value = (UINT32)VmxRead(VM_EXIT_REASON);
+    Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
+    Vcpu->Vmx.ExitReason.Value = (UINT32)VmxRead(VM_EXIT_REASON);
 
-	VMM_EVENT_STATUS Status = sExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState);
+    VMM_EVENT_STATUS Status = sExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState);
 
-	GuestState->Rip = (UINT64)VcpuResume;
+    GuestState->Rip = (UINT64)VcpuResume;
 
-	VcpuCommitVmxState(Vcpu);
+    VcpuCommitVmxState(Vcpu);
 
-	if (Status == VMM_EVENT_CONTINUE)
-		VmxAdvanceGuestRip();
+    if (Status == VMM_EVENT_CONTINUE)
+        VmxAdvanceGuestRip();
 }
 
 DECLSPEC_NORETURN
 VMM_EVENT_STATUS
 VcpuUnknownExitReason(
-	_Inout_ PVCPU Vcpu,
-	_Inout_ PGUEST_STATE GuestState
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
 )
 /*++
 Routine Description:
-	Handles any unknown/unhandled VM-exit reasons
+    Handles any unknown/unhandled VM-exit reasons
 --*/
 {
-	UNREFERENCED_PARAMETER(GuestState);
+    UNREFERENCED_PARAMETER(GuestState);
 
-	// TODO: Shutdown entire hypervisor from here
-	ImpDebugPrint("Unknown VM-exit reason (%d) on VCPU #%d...\n", Vcpu->Vmx.ExitReason.BasicExitReason, Vcpu->Id);
-	KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_UNKNOWN_VMEXIT_REASON, 0, 0, 0);
+    // TODO: Shutdown entire hypervisor from here
+    ImpDebugPrint("Unknown VM-exit reason (%d) on VCPU #%d...\n", Vcpu->Vmx.ExitReason.BasicExitReason, Vcpu->Id);
+    KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_UNKNOWN_VMEXIT_REASON, 0, 0, 0);
 }
 
 VMM_EVENT_STATUS
 VcpuHandleCpuid(
-	_Inout_ PVCPU Vcpu,
-	_Inout_ PGUEST_STATE GuestState
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
 )
 /*++
 Routine Description:
-	Emulates the CPUID instruction.
+    Emulates the CPUID instruction.
 --*/
 {
-	X86_CPUID_ARGS CpuidArgs = {
-		.Eax = (UINT32)GuestState->Rax,
-		.Ebx = (UINT32)GuestState->Rbx,
-		.Ecx = (UINT32)GuestState->Rcx,
-		.Edx = (UINT32)GuestState->Rdx,
-	};
+    X86_CPUID_ARGS CpuidArgs = {
+        .Eax = (UINT32)GuestState->Rax,
+        .Ebx = (UINT32)GuestState->Rbx,
+        .Ecx = (UINT32)GuestState->Rcx,
+        .Edx = (UINT32)GuestState->Rdx,
+    };
 
-	CpuidEmulateGuestCall(&CpuidArgs);
+    CpuidEmulateGuestCall(&CpuidArgs);
 
-	GuestState->Rax = CpuidArgs.Eax;
-	GuestState->Rbx = CpuidArgs.Ebx;
-	GuestState->Rcx = CpuidArgs.Ecx;
-	GuestState->Rdx = CpuidArgs.Edx;
+    GuestState->Rax = CpuidArgs.Eax;
+    GuestState->Rbx = CpuidArgs.Ebx;
+    GuestState->Rcx = CpuidArgs.Ecx;
+    GuestState->Rdx = CpuidArgs.Edx;
 
-	VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
-	VcpuSetControl(Vcpu, VMX_CTL_RDTSC_EXITING, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_RDTSC_EXITING, TRUE);
 
-	// Set the VMX preemption timer to a relatively low value taking the VM entry latency into account
-	VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, Vcpu->TscInfo.VmEntryLatency + 500);
+    // Set the VMX preemption timer to a relatively low value taking the VM entry latency into account
+    VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, Vcpu->TscInfo.VmEntryLatency + 500);
 
-	return VMM_EVENT_CONTINUE;
+    return VMM_EVENT_CONTINUE;
 }
 
 VMM_EVENT_STATUS
@@ -672,10 +672,10 @@ Routine Description:
     Emulates the checks made on the guest state outlined in the Intel SDM Vol. 3 Chapter 26.3.1
 --*/
 {
-	UNREFERENCED_PARAMETER(GuestState);
-	
-	ImpDebugPrint("[%02X] VM-entry failed due to invalid guest state...\n", Vcpu->Id);
-	
+    UNREFERENCED_PARAMETER(GuestState);
+    
+    ImpDebugPrint("[%02X] VM-entry failed due to invalid guest state...\n", Vcpu->Id);
+    
     return VMM_EVENT_CONTINUE;
 }
 
@@ -708,7 +708,7 @@ Routine Description:
         /* R15 */ offsetof(GUEST_STATE, R15)
     };
 
-	return (PUINT64)((UINT64)GuestState + sRegIdToGuestStateOffs[RegisterId]);
+    return (PUINT64)((UINT64)GuestState + sRegIdToGuestStateOffs[RegisterId]);
 }
 
 VMM_EVENT_STATUS
@@ -738,13 +738,13 @@ VcpuHandleCrRead(
 
 VMM_EVENT_STATUS
 VcpuUpdateGuestCr(
-	_In_ UINT64 ControlReg,
-	_In_ UINT64 NewValue,
-	_In_ UINT64 DifferentBits,
-	_In_ VMCS CrEncoding,
-	_In_ VMCS RsEncoding,
-	_In_ UINT64 ShadowableBits,
-	_In_ UINT64 ReservedBits
+    _In_ UINT64 ControlReg,
+    _In_ UINT64 NewValue,
+    _In_ UINT64 DifferentBits,
+    _In_ VMCS CrEncoding,
+    _In_ VMCS RsEncoding,
+    _In_ UINT64 ShadowableBits,
+    _In_ UINT64 ReservedBits
 )
 /*++
 Routine Description:
@@ -753,32 +753,32 @@ Routine Description:
     are just in the guest/host mask to intercept people changing them (TRAP and FIXED)
 --*/
 {
-	UINT64 ReadShadow = VmxRead(RsEncoding);
+    UINT64 ReadShadow = VmxRead(RsEncoding);
 
-	// Inject #GP(0) if there was an attempt to modify a reserved bit
-	if (DifferentBits & ReservedBits)
-	{
-		// TODO: Inject #GP(0) here
-		return VMM_EVENT_INTERRUPT;
-	}
-	
-	// Bits which can be updated inside of the read shadow TODO: (TRAP | SHADOWABLE)
-	const UINT64 RsUpdateableBits = ShadowableBits;
+    // Inject #GP(0) if there was an attempt to modify a reserved bit
+    if (DifferentBits & ReservedBits)
+    {
+        // TODO: Inject #GP(0) here
+        return VMM_EVENT_INTERRUPT;
+    }
+    
+    // Bits which can be updated inside of the read shadow TODO: (TRAP | SHADOWABLE)
+    const UINT64 RsUpdateableBits = ShadowableBits;
 
-	ReadShadow &= ~(DifferentBits & RsUpdateableBits);
-	ReadShadow |= (NewValue & RsUpdateableBits);
+    ReadShadow &= ~(DifferentBits & RsUpdateableBits);
+    ReadShadow |= (NewValue & RsUpdateableBits);
 
-	VmxWrite(RsEncoding, ReadShadow);
+    VmxWrite(RsEncoding, ReadShadow);
 
-	// Bits which can be updated inside of the read shadow TODO: ~(SHADOWABLE | FIXED) 
-	const UINT64 CrUpdateableBits = ~ShadowableBits;
+    // Bits which can be updated inside of the read shadow TODO: ~(SHADOWABLE | FIXED) 
+    const UINT64 CrUpdateableBits = ~ShadowableBits;
 
-	ControlReg &= ~(DifferentBits & CrUpdateableBits);
-	ControlReg |= (NewValue & CrUpdateableBits);
+    ControlReg &= ~(DifferentBits & CrUpdateableBits);
+    ControlReg |= (NewValue & CrUpdateableBits);
 
-	VmxWrite(CrEncoding, ControlReg);
+    VmxWrite(CrEncoding, ControlReg);
 
-	return VMM_EVENT_CONTINUE;
+    return VMM_EVENT_CONTINUE;
 }
 
 VMM_EVENT_STATUS
@@ -795,19 +795,25 @@ Routine Description:
 {
     VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
 
-    const UINT64 NewValue = *LookupTargetReg(GuestState, ExitQual.RegisterId);
+    const PUINT64 TargetReg = LookupTargetReg(GuestState, ExitQual.RegisterId);
+
+    UINT64 NewValue = 0;
+    if (ExitQual.ControlRegisterId == 4 /* RSP */)
+        NewValue = VmxRead(GUEST_RSP);
+    else
+        NewValue = *TargetReg;
 
     switch (ExitQual.ControlRegisterId)
     {
     case 0:
         {
-			UINT64 ControlRegister = VmxRead(GUEST_CR0);
-			UINT64 ShadowableBits = Vcpu->Cr0ShadowableBits;     		
+            UINT64 ControlRegister = VmxRead(GUEST_CR0);
+            UINT64 ShadowableBits = Vcpu->Cr0ShadowableBits;     		
 
-			const X86_CR0 DifferentBits = {
-				.Value = NewValue ^ ControlRegister
-			};
-    	
+            const X86_CR0 DifferentBits = {
+                .Value = NewValue ^ ControlRegister
+            };
+        
             const X86_CR0 NewCr = {
                 .Value = NewValue
             };
@@ -895,38 +901,38 @@ Routine Description:
                 return VMM_EVENT_INTERRUPT;
             }
 
-			Status = VcpuUpdateGuestCr(
-				ControlRegister,			// Control registers current value
-				NewValue,					// The value being written
-				DifferentBits.Value,		// Bits which have been modified
-				GUEST_CR0,					// The VMCS encoding for the CR
-				CONTROL_CR0_READ_SHADOW,	// The VMCS encoding for the CR's read shadow
-				ShadowableBits,				// Host-maskable bits (bits that can be changed in the read shadow)
-				CR0_RESERVED_BITMASK		// Reserved bits in the CR which shouldn't be set
-			);
+            Status = VcpuUpdateGuestCr(
+                ControlRegister,			// Control registers current value
+                NewValue,					// The value being written
+                DifferentBits.Value,		// Bits which have been modified
+                GUEST_CR0,					// The VMCS encoding for the CR
+                CONTROL_CR0_READ_SHADOW,	// The VMCS encoding for the CR's read shadow
+                ShadowableBits,				// Host-maskable bits (bits that can be changed in the read shadow)
+                CR0_RESERVED_BITMASK		// Reserved bits in the CR which shouldn't be set
+            );
 
             // If something went wrong updating the guest's CR, return now
             if (Status != VMM_EVENT_CONTINUE)
                 return Status;
 
             // TODO: Remove this and emulate instead
-    		// If NW or CD has been modified, instead of emulating the effects of these bits, instead 
+            // If NW or CD has been modified, instead of emulating the effects of these bits, instead 
             // remove all changes to any host-owned bits in the register writing to CR0 then return 
             // VMM_EVENT_INTERRUPT so the instruction gets executed upon VM-entry but doesn't cause an exit
-    		// NOTE: This is kinda dangerous but I'm lazy and dont want to emulate CD or NW but i will in the 
+            // NOTE: This is kinda dangerous but I'm lazy and dont want to emulate CD or NW but i will in the 
             // future.
-			if (DifferentBits.NotWriteThrough ||
-				DifferentBits.CacheDisable)
-			{
-				const PUINT64 TargetReg = LookupTargetReg(GuestState, ExitQual.RegisterId);
+            if (DifferentBits.NotWriteThrough ||
+                DifferentBits.CacheDisable)
+            {
+                const PUINT64 TargetReg = LookupTargetReg(GuestState, ExitQual.RegisterId);
 
-				// Reset any host owned bits to the CR value 
-				*TargetReg &= ~(DifferentBits.Value & HostOwnedBits);
-				*TargetReg |= ControlRegister & HostOwnedBits;
+                // Reset any host owned bits to the CR value 
+                *TargetReg &= ~(DifferentBits.Value & HostOwnedBits);
+                *TargetReg |= ControlRegister & HostOwnedBits;
 
                 // TODO: Enable MTF interrupt and push a pending CR spoof
-				return VMM_EVENT_INTERRUPT;
-			}
+                return VMM_EVENT_INTERRUPT;
+            }
         } break;
 
     case 3:
@@ -937,12 +943,12 @@ Routine Description:
 
     case 4:
         {
-			UINT64 ControlRegister = VmxRead(GUEST_CR4);
-			UINT64 ShadowableBits = Vcpu->Cr4ShadowableBits;
-    		
-			const X86_CR4 DifferentBits = {
-				.Value = NewValue ^ ControlRegister
-			};
+            UINT64 ControlRegister = VmxRead(GUEST_CR4);
+            UINT64 ShadowableBits = Vcpu->Cr4ShadowableBits;
+            
+            const X86_CR4 DifferentBits = {
+                .Value = NewValue ^ ControlRegister
+            };
             
             const X86_CR4 NewCr = {
                 .Value = NewValue
@@ -998,8 +1004,8 @@ Routine Description:
 
 VMM_EVENT_STATUS
 VcpuEmulateCLTS(
-	_Inout_ PVCPU Vcpu,
-	_In_ VMX_MOV_CR_EXIT_QUALIFICATION ExitQual
+    _Inout_ PVCPU Vcpu,
+    _In_ VMX_MOV_CR_EXIT_QUALIFICATION ExitQual
 )
 {
     X86_CR0 Cr0 = {
@@ -1010,23 +1016,23 @@ VcpuEmulateCLTS(
 
     VmxWrite(GUEST_CR0, Cr0.Value);
 
-	return VMM_EVENT_CONTINUE;
+    return VMM_EVENT_CONTINUE;
 }
 
 VMM_EVENT_STATUS
 VcpuEmulateLMSW(
-	_Inout_ PVCPU Vcpu,
-	_In_ VMX_MOV_CR_EXIT_QUALIFICATION ExitQual
+    _Inout_ PVCPU Vcpu,
+    _In_ VMX_MOV_CR_EXIT_QUALIFICATION ExitQual
 )
 {
     // TODO: Finish this
-	return VMM_EVENT_CONTINUE;
+    return VMM_EVENT_CONTINUE;
 }
 
 VMM_EVENT_STATUS
 VcpuHandleCrAccess(
-	_Inout_ PVCPU Vcpu,
-	_Inout_ PGUEST_STATE GuestState
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
 )
 {
     // Update read shadow with whatever 
@@ -1047,84 +1053,84 @@ VcpuHandleCrAccess(
     case CR_ACCESS_LMSW: Status = VcpuEmulateLMSW(Vcpu, ExitQual); break;
     }
 
-	return Status;
+    return Status;
 }
 
 PX86_SEGMENT_DESCRIPTOR
 LookupSegmentDescriptor(
-	_In_ X86_SEGMENT_SELECTOR Selector
+    _In_ X86_SEGMENT_SELECTOR Selector
 )
 /*++
 Routine Description:
-	Looks up a segment descriptor in the GDT using a provided selector
+    Looks up a segment descriptor in the GDT using a provided selector
 --*/
 {
-	X86_PSEUDO_DESCRIPTOR Gdtr;
-	__sgdt(&Gdtr);
+    X86_PSEUDO_DESCRIPTOR Gdtr;
+    __sgdt(&Gdtr);
 
     return (PX86_SEGMENT_DESCRIPTOR)(Gdtr.BaseAddress + Selector.Index * sizeof(X86_SEGMENT_DESCRIPTOR));
 }
 
 UINT64
 SegmentBaseAddress(
-	_In_ X86_SEGMENT_SELECTOR Selector
+    _In_ X86_SEGMENT_SELECTOR Selector
 )
 /*++
 Routine Description:
-	Calculates the base address of a segment using a segment selector
+    Calculates the base address of a segment using a segment selector
 --*/
 {
-	UINT64 Address = 0;
+    UINT64 Address = 0;
 
-	// The LDT is unuseable on Windows 10, and the first entry of the GDT isn't used
-	if (Selector.Table != SEGMENT_SELECTOR_TABLE_GDT || Selector.Index == 0)
-		return 0;
+    // The LDT is unuseable on Windows 10, and the first entry of the GDT isn't used
+    if (Selector.Table != SEGMENT_SELECTOR_TABLE_GDT || Selector.Index == 0)
+        return 0;
 
-	PX86_SEGMENT_DESCRIPTOR Segment = LookupSegmentDescriptor(Selector);
+    PX86_SEGMENT_DESCRIPTOR Segment = LookupSegmentDescriptor(Selector);
 
-	if (Segment == NULL)
-	{
-		ImpDebugPrint("Invalid segment selector '%u'...\n", Selector.Value);
-		return 0;
-	}
+    if (Segment == NULL)
+    {
+        ImpDebugPrint("Invalid segment selector '%u'...\n", Selector.Value);
+        return 0;
+    }
 
-	Address = (((UINT64)Segment->BaseHigh << 24) | 
-			   ((UINT64)Segment->BaseMiddle << 16) | 
-			   ((UINT64)Segment->BaseLow));
-	
-	if (Segment->System == 0)
-	{
-		PX86_SYSTEM_DESCRIPTOR SystemSegment = (PX86_SYSTEM_DESCRIPTOR)Segment;
-		Address |= (UINT64)SystemSegment->BaseUpper << 32;
-	}
-	
-	return Address;
+    Address = (((UINT64)Segment->BaseHigh << 24) | 
+               ((UINT64)Segment->BaseMiddle << 16) | 
+               ((UINT64)Segment->BaseLow));
+    
+    if (Segment->System == 0)
+    {
+        PX86_SYSTEM_DESCRIPTOR SystemSegment = (PX86_SYSTEM_DESCRIPTOR)Segment;
+        Address |= (UINT64)SystemSegment->BaseUpper << 32;
+    }
+    
+    return Address;
 }
 
 UINT32
 SegmentAr(
-	_In_ X86_SEGMENT_SELECTOR Selector
+    _In_ X86_SEGMENT_SELECTOR Selector
 )
 /*++
 Routine Description:
-	Gets the access rights of a segment
+    Gets the access rights of a segment
 --*/
 {
-	PX86_SEGMENT_DESCRIPTOR Segment = LookupSegmentDescriptor(Selector);
+    PX86_SEGMENT_DESCRIPTOR Segment = LookupSegmentDescriptor(Selector);
 
-	if (Segment == NULL)
-	{
-		ImpDebugPrint("Invalid segment selector '%i'...\n", Selector.Value);
-		return 0;
-	}
-	
-	X86_SEGMENT_ACCESS_RIGHTS SegmentAccessRights = {
-		.Value = (UINT32)(__segmentar(Selector) >> 8)
-	};
+    if (Segment == NULL)
+    {
+        ImpDebugPrint("Invalid segment selector '%i'...\n", Selector.Value);
+        return 0;
+    }
+    
+    X86_SEGMENT_ACCESS_RIGHTS SegmentAccessRights = {
+        .Value = (UINT32)(__segmentar(Selector) >> 8)
+    };
 
-	SegmentAccessRights.Unusable = !Segment->Present;
-	SegmentAccessRights.Reserved1 = 0;
-	SegmentAccessRights.Reserved2 = 0;
-	
-	return SegmentAccessRights.Value;
+    SegmentAccessRights.Unusable = !Segment->Present;
+    SegmentAccessRights.Reserved1 = 0;
+    SegmentAccessRights.Reserved2 = 0;
+    
+    return SegmentAccessRights.Value;
 }
