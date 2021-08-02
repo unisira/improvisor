@@ -51,7 +51,7 @@ Routine Description:
 
         // Set up Flink and Blink
         CurrAllocRecord->Records.Flink = i < Count + 1  ? &(CurrAllocRecord + 1)->Records : NULL;
-        CurrAllocRecord->Records.Blink = i > 0          ? &(CurrAllocRecord - 1)->Records : NULL
+        CurrAllocRecord->Records.Blink = i > 0          ? &(CurrAllocRecord - 1)->Records : NULL;
     }
 
     // Insert the record for block of records 
