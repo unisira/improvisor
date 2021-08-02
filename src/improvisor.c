@@ -1,6 +1,6 @@
 #include "improvisor.h"
 
-PIMP_ALLOC_RECORD gHostAllocationsHead;
+PIMP_ALLOC_RECORD gHostAllocationsHead = NULL;
 
 // The raw buffer containing the host allocation records
 static PIMP_ALLOC_RECORD sImpAllocRecordsRaw = NULL;
