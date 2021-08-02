@@ -4,10 +4,6 @@
 #include "mm.h"
 
 /* TODO:
-X86_LA48 LinearAddr = {
-    .Value = GuestVirtAddr
-};
-
 MM_PTE, PDE, PDPTE, PML4E definitions
 */
 
