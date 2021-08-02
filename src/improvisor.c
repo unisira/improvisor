@@ -50,9 +50,8 @@ Routine Description:
         PIMP_ALLOC_RECORD CurrAllocRecord = sImpAllocRecordsRaw + i;
 
         // Set up Flink and Blink
-        CurrAllocRecord->Records.Flink = &(CurrAllocRecord + 1)->Records;
-        if (i > 0)
-            CurrAllocRecord->Records.Blink = &(CurrAllocRecord - 1)->Records;
+        CurrAllocRecord->Records.Flink = i < Count + 1  ? &(CurrAllocRecord + 1)->Records : NULL;
+        CurrAllocRecord->Records.Blink = i > 0          ? &(CurrAllocRecord + 1)->Records : NULL
     }
 
     // Insert the record for this 
