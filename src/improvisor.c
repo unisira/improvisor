@@ -43,7 +43,7 @@ Routine Description:
         return STATUS_INSUFFICIENT_RESOURCES;
 
     // Set the head to be the first entry
-    gHostAllocationsHead = (PIMP_ALLOC_RECORD)sImpAllocRecordsRaw->Records.Flink;
+    gHostAllocationsHead = sImpAllocRecordsRaw;
 
     for (UINT8 i = 0; i < Count + 1; i++)
     {
