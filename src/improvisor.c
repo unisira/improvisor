@@ -22,7 +22,7 @@ Routine Description:
     AllocRecord->Address = Address;
     AllocRecord->Size = Size;
 
-    gHostAllocationsHead = AllocRecord->Records.Flink; 
+    gHostAllocationsHead = (PIMP_ALLOC_RECORD)AllocRecord->Records.Flink; 
 
     return STATUS_SUCCESS;
 }
@@ -51,10 +51,10 @@ Routine Description:
 
         // Set up Flink and Blink
         CurrAllocRecord->Records.Flink = i < Count + 1  ? &(CurrAllocRecord + 1)->Records : NULL;
-        CurrAllocRecord->Records.Blink = i > 0          ? &(CurrAllocRecord + 1)->Records : NULL
+        CurrAllocRecord->Records.Blink = i > 0          ? &(CurrAllocRecord - 1)->Records : NULL
     }
 
-    // Insert the record for this 
+    // Insert the record for block of records 
     if (!NT_SUCCESS(ImpInsertAllocRecord(sImpAllocRecordsRaw, sizeof(IMP_ALLOC_RECORD) * (Count + 1))))
         return STATUS_INSUFFICIENT_RESOURCES;
 
