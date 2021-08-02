@@ -18,8 +18,27 @@
 //     _In_ SIZE_T Size
 // );
 
+typedef struct _IMP_ALLOC_RECORD
+{
+    LIST_ENTRY Records;
+    PVOID Address;
+    SIZE_T Size;
+} IMP_ALLOC_RECORD, *PIMP_ALLOC_RECORD;
+
+extern PIMP_ALLOC_RECORD gHostAllocationsHead;
+
+NTSTATUS
+ImpReserveAllocationRecords(
+    _In_ SIZE_T Count
+);
+
 PVOID
 ImpAllocateContiguousMemory(
+    _In_ SIZE_T Size
+);
+
+PVOID
+ImpAllocateNpPool(
     _In_ SIZE_T Size
 );
 
