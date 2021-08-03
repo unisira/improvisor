@@ -48,12 +48,38 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+NTSTATUS MmWinReadPageTableEntry(
+    _In_ UINT64 TablePfn,
+    _In_ SIZE_T Index,
+    _Out_ PMM_PTE pEntry
+)
+/*++
+Routine Description:
+    Maps a page table into memory using a page frame number `TablePfn` and reads the entry selected by 
+    `Index` into `Entry`
+--*/
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    PMM_PTE Table = NULL;
+
+    Status = MmWinMapPhysicalMemory(PAGE_ADDRESS(TablePfn), PAGE_SIZE, &Table);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    *pEntry = Table[Index];
+
+    MmUnmapIoSpace(Table, PAGE_SIZE);
+
+    return Status;
+}
+
 NTSTATUS
 MmWinTranslateAddrVerbose(
     _In_ PVOID Address,
-    _Out_ PMM_PML4E pPml4e,
-    _Out_ PMM_PDPTE pPdpte,
-    _Out_ PMM_PDE pPde,
+    _Out_ PMM_PTE pPml4e,
+    _Out_ PMM_PTE pPdpte,
+    _Out_ PMM_PTE pPde,
     _Out_ PMM_PTE pPte
 )
 /*++
@@ -68,81 +94,70 @@ Routine Description:
         .Value = __readcr3()
     };
 
-    PMM_PML4E Pml4 = NULL;
-    PMM_PDPTE Pdpt = NULL;
-    PMM_PDE Pd = NULL;
-    PMM_PTE Pt = NULL;
+    MM_PTE Pte = {0};
 
     X86_LA48 LinearAddr = {
-        .Value = Address
+        .Value = (UINT64)Address
     };
     
-    Status = MmWinMapPhysicalMemory(PAGE_ADDRESS(Cr3.PageDirectoryBase), PAGE_SIZE, &Pml4);
+    Status = MmWinReadPageTableEntry(Cr3.PageDirectoryBase, LinearAddr.Pml4Index, &Pte);
     if (!NT_SUCCESS(Status))
     {
-        ImpDebugPrint("Failed to map current PML4...\n");
+        ImpDebugPrint("Failed to read PML4E for '%llX'...\n", Address);
         return Status;
     }
 
-    MM_PML4E Pml4e = Pml4[LinearAddr.Pml4Index];
-
-    MmUnmapIoSpace(Pml4, PAGE_SIZE);
-
-    if (!Pml4e.Present)
+    if (!Pte.Present)
     {
         ImpDebugPrint("PML4E for '%llX' is invalid...\n", Address);
         return STATUS_INVALID_PARAMETER;
     }
 
-    *pPml4e = Pml4e;
+    *pPml4e = Pte;
     
-    Status = MmWinMapPhysicalMemory(PAGE_ADDRESS(Pml4e.Pdpt), PAGE_SIZE, &Pdpt);
+    Status = MmWinReadPageTableEntry(Pte.PageFrameNumber, LinearAddr.PdptIndex, &Pte);
     if (!NT_SUCCESS(Status))
     {
-        ImpDebugPrint("Failed to map PDPT for '%llX'...\n", Address);
+        ImpDebugPrint("Failed to read PDPTE for '%llX'...\n", Address);
         return Status; 
     }
     
-    MM_PDPTE Pdpte = Pdpt[LinearAddr.PdptIndex];
-
-    MmUnmapIoSpace(Pdpt, PAGE_SIZE);
-
-    if (!Pdpte.Present)
+    if (!Pte.Present)
     {
         ImpDebugPrint("PDPTE for '%llX' is invalid...\n", Address);
         return STATUS_INVALID_PARAMETER;
     }
 
-    *pPdpte = Pdpte;
+    *pPdpte = Pte;
 
-    Status = MmWinMapPhysicalMemory(PAGE_ADRESS(Pdpte.Pd), PAGE_SIZE, &Pd);
+    if (Pte.LargePage)
+        return STATUS_SUCCESS;
+
+    Status = MmWinReadPageTableEntry(Pte.PageFrameNumber, LinearAddr.PdIndex, &Pte);
     if (!NT_SUCCESS(Status))
     {
-        ImpDebugPrint("Failed to map PD for '%llX'...\n", Address);
+        ImpDebugPrint("Failed to read PDE for '%llX'...\n", Address);
         return Status;
     }
 
-    MM_PDE Pde = Pd[LinearAddr.PdIndex];
-
-    MmUnmapIoSpace(Pd, PAGE_SIZE);
-
-    if (!Pde.Present)
+    if (!Pte.Present)
     {
         ImpDebugPrint("PDE for '%llX' is invalid...\n", Address);
         return STATUS_INVALID_PARAMETER;
     }
 
-    *pPde = Pde;
+    *pPde = Pte;
 
-    Status = MmWinMapPhysicalMemory(PAGE_ADDRESS(Pde.Pt), PAGE_SIZE, &Pt);
+    if (Pte.LargePage)
+        return STATUS_SUCCESS;
+
+    Status = MmWinReadPageTableEntry(Pte.PageFrameNumber, LinearAddr.PtIndex, &Pte);
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Failed to map PT for '%llX'...\n");
         return Status;
     }
     
-    MM_PTE Pte = Pt[LinearAddr.PtIndex];
-
     if (!Pte.Present)
     {
         ImpDebugPrint("PTE for '%llX' is invalid...\n", Address);
