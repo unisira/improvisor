@@ -238,13 +238,15 @@ NTSTATUS
 MmCopyAddressTranslation(
     _Inout_ PMM_PTE Pml4,
     _In_ PVOID Address,
-    _In_ SIZE_T Size,
+    _In_ SIZE_T Size
 )
 /*++
 Routine Description:
     This function copies an address translation from the current page tables to `Pml4` 
 --*/
 {
+    MM_PTE Pml4e = {0}, Pdpte = {0}, Pde = {0}, Pte = {0};
+	
     if (!NT_SUCCESS(MmWinTranslateAddrVerbose(Address, &Pml4e, &Pdpte, &Pde, &Pte)))
     {
         ImpDebugPrint("Failed to translate '%llX' in current page directory...\n", Address);
@@ -260,7 +262,7 @@ Routine Description:
     PMM_PTE HostPdpte = NULL;
     if (!HostPml4e->Present)
     {
-        PMM_PDPTE HostPdpt = NULL;
+        PMM_PTE HostPdpt = NULL;
         if (!NT_SUCCESS(MmAllocateHostPageTable(&HostPdpt)))
         {
             ImpDebugPrint("Couldn't allocate host PDPT for '%llX'...\n", Address);
@@ -270,12 +272,12 @@ Routine Description:
         HostPdpte = &HostPdpt[LinearAddr.PdptIndex];
 
         *HostPml4e = Pml4e;
-        HostPml4e->Pdpt = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(HostPdpt));
+        HostPml4e->PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(HostPdpt));
     }
     else
     {
         PMM_PTE HostPdpt = NULL;
-        if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPml4e->Pdpt), PAGE_SIZE, &HostPdpt)))
+        if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPml4e->PageFrameNumber), PAGE_SIZE, &HostPdpt)))
         {
             ImpDebugPrint("Couldn't map existing PDPT into memory for '%llX'...\n", Address);
             return STATUS_INSUFFICIENT_RESOURCES;
@@ -286,7 +288,7 @@ Routine Description:
         MmUnmapIoSpace(HostPdpt, PAGE_SIZE);
     }
 
-    PMM_PTE HostPde = NULL
+    PMM_PTE HostPde = NULL;
     if (!HostPdpte->Present)
     {
         *HostPdpte = Pdpte;
@@ -294,7 +296,7 @@ Routine Description:
         if (Pdpte.LargePage)
             return STATUS_SUCCESS;
 
-        PMM_PDPTE HostPdpt = NULL;
+        PMM_PTE HostPd = NULL;
         if (!NT_SUCCESS(MmAllocateHostPageTable(&HostPd)))
         {
             ImpDebugPrint("Couldn't allocate host PD for '%llX'...\n", Address);
@@ -302,15 +304,15 @@ Routine Description:
         }
 
         HostPde = &HostPd[LinearAddr.PdIndex];
-        HostPdpte->Pd = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(HostPd));
+        HostPdpte->PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(HostPd));
     }
     else
     {
         if (Pdpte.LargePage)
             return STATUS_SUCCESS;
 
-        PMM_PDPTE HostPdpt = NULL;
-        if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPdpte->Pd), PAGE_SIZE, &HostPdpt)))
+        PMM_PTE HostPd = NULL;
+        if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPdpte->PageFrameNumber), PAGE_SIZE, &HostPd)))
         {
             ImpDebugPrint("Couldn't map existing PD into memory for '%llX'...\n", Address);
             return STATUS_INSUFFICIENT_RESOURCES;
@@ -321,7 +323,7 @@ Routine Description:
         MmUnmapIoSpace(HostPd, PAGE_SIZE);
     }
 
-    PMM_PTE HostPte = NULL
+    PMM_PTE HostPte = NULL;
     if (!HostPde->Present)
     {
         *HostPde = Pde;
@@ -329,15 +331,15 @@ Routine Description:
         if (Pde.LargePage)
             return STATUS_SUCCESS;
 
-        PMM_PDPTE HostPt = NULL;
+        PMM_PTE HostPt = NULL;
         if (!NT_SUCCESS(MmAllocateHostPageTable(&HostPt)))
         {
-            ImpDebugPrint("Couldn't allocate host PD for '%llX'...\n", CurrRecord->Address);
+            ImpDebugPrint("Couldn't allocate host PD for '%llX'...\n", Address);
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        HostPte = HostPt[LinearAddr.PtIndex];
-        HostPde->Pt = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(HostPt));
+        HostPte = &HostPt[LinearAddr.PtIndex];
+        HostPde->PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(HostPt));
     }
     else
     {
@@ -345,9 +347,9 @@ Routine Description:
             return STATUS_SUCCESS;
 
         PMM_PTE HostPt = NULL;
-        if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPde->Pt), PAGE_SIZE, &HostPt)))
+        if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPde->PageFrameNumber), PAGE_SIZE, &HostPt)))
         {
-            ImpDebugPrint("Couldn't map existing PD into memory for '%llX'...\n", CurrRecord->Address);
+            ImpDebugPrint("Couldn't map existing PD into memory for '%llX'...\n", Address);
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
@@ -375,7 +377,7 @@ Routine Description:
 {
     NTSTATUS Status = STATUS_SUCCESS;
 
-    PMM_PML4E HostPml4 = NULL;
+    PMM_PTE HostPml4 = NULL;
     if (!NT_SUCCESS(MmAllocateHostPageTable(&HostPml4)))
     {
         ImpDebugPrint("Couldn't allocate host PML4...\n");
@@ -384,20 +386,20 @@ Routine Description:
 
     MmSupport->HostDirectoryPhysical = ImpGetPhysicalAddress(HostPml4);
 
-    PIMP_ALLOC_RECORD CurrRecord = gImpHostAllocationsHead;
+    PIMP_ALLOC_RECORD CurrRecord = gHostAllocationsHead;
     while (CurrRecord->Records.Blink != NULL)
     {
         SIZE_T SizeMapped = 0;
         while (CurrRecord->Size > SizeMapped)
         {
-            Status = MmCopyAddressTranslation(HostPml4, (PCHAR)CurrRecord->Address + SizeMapped);
+            Status = MmCopyAddressTranslation(HostPml4, (PCHAR)CurrRecord->Address + SizeMapped, CurrRecord->Size);
             if (!NT_SUCCESS(Status))
             {
                 ImpDebugPrint("Failed to copy translation for '%llX'...\n", CurrRecord->Address);
                 return Status;
             }
 
-            SizeMapped += PAGE_SIZE
+            SizeMapped += PAGE_SIZE;
         } 
 
         CurrRecord = (PIMP_ALLOC_RECORD)CurrRecord->Records.Blink;
@@ -415,7 +417,7 @@ MmInitialise(
 
     // Reserve 1000 page tables for the host to create its own page tables and still
     // have access to them post-VMLAUNCH
-    Status = MmReserveHostPageTables(1000);
+    Status = MmHostReservePageTables(1000);
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Failed to reserve page tables for the host...\n");
@@ -423,7 +425,7 @@ MmInitialise(
     }
 
     Status = MmSetupHostPageDirectory(MmSupport);
-    If (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Failed to setup the host page directory... (%X)\n", Status);
         return Status;
