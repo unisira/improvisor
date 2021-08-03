@@ -3,10 +3,6 @@
 #include "arch/cr.h"
 #include "mm.h"
 
-/* TODO:
-MM_PTE, PDE, PDPTE, PML4E definitions
-*/
-
 #define PAGE_FRAME_NUMBER(Addr) ((UINT64)(Addr) >> 12)
 #define PAGE_ADDRESS(Pfn) ((UINT64)(Pfn) << 12)
 
@@ -240,7 +236,7 @@ Routine Description:
 
 NTSTATUS
 MmCopyAddressTranslation(
-    _Inout_ PMM_PML4E Pml4,
+    _Inout_ PMM_PTE Pml4,
     _In_ PVOID Address,
     _In_ SIZE_T Size,
 )
@@ -259,9 +255,9 @@ Routine Description:
         .Value = Address
     };
 
-    PMM_PML4E HostPml4e = &Pml4[LinearAddr.Pml4Index];
+    PMM_PTE HostPml4e = &Pml4[LinearAddr.Pml4Index];
 
-    PMM_PDPTE HostPdpte = NULL;
+    PMM_PTE HostPdpte = NULL;
     if (!HostPml4e->Present)
     {
         PMM_PDPTE HostPdpt = NULL;
@@ -278,7 +274,7 @@ Routine Description:
     }
     else
     {
-        PMM_PDPTE HostPdpt = NULL;
+        PMM_PTE HostPdpt = NULL;
         if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPml4e->Pdpt), PAGE_SIZE, &HostPdpt)))
         {
             ImpDebugPrint("Couldn't map existing PDPT into memory for '%llX'...\n", Address);
@@ -290,9 +286,14 @@ Routine Description:
         MmUnmapIoSpace(HostPdpt, PAGE_SIZE);
     }
 
-    PMM_PDE HostPde = NULL
+    PMM_PTE HostPde = NULL
     if (!HostPdpte->Present)
     {
+        *HostPdpte = Pdpte;
+
+        if (Pdpte.LargePage)
+            return STATUS_SUCCESS;
+
         PMM_PDPTE HostPdpt = NULL;
         if (!NT_SUCCESS(MmAllocateHostPageTable(&HostPd)))
         {
@@ -301,12 +302,13 @@ Routine Description:
         }
 
         HostPde = &HostPd[LinearAddr.PdIndex];
-
-        *HostPdpte = Pdpte;
         HostPdpte->Pd = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(HostPd));
     }
     else
     {
+        if (Pdpte.LargePage)
+            return STATUS_SUCCESS;
+
         PMM_PDPTE HostPdpt = NULL;
         if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPdpte->Pd), PAGE_SIZE, &HostPdpt)))
         {
@@ -319,10 +321,15 @@ Routine Description:
         MmUnmapIoSpace(HostPd, PAGE_SIZE);
     }
 
-    PMM_PDE HostPte = NULL
+    PMM_PTE HostPte = NULL
     if (!HostPde->Present)
     {
-        PMM_PDPTE HostPdpt = NULL;
+        *HostPde = Pde;
+
+        if (Pde.LargePage)
+            return STATUS_SUCCESS;
+
+        PMM_PDPTE HostPt = NULL;
         if (!NT_SUCCESS(MmAllocateHostPageTable(&HostPt)))
         {
             ImpDebugPrint("Couldn't allocate host PD for '%llX'...\n", CurrRecord->Address);
@@ -330,13 +337,14 @@ Routine Description:
         }
 
         HostPte = HostPt[LinearAddr.PtIndex];
-
-        *HostPde = Pde;
         HostPde->Pt = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(HostPt));
     }
     else
     {
-        PMM_PDPTE HostPdpt = NULL;
+        if (Pde.LargePage)
+            return STATUS_SUCCESS;
+
+        PMM_PTE HostPt = NULL;
         if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPde->Pt), PAGE_SIZE, &HostPt)))
         {
             ImpDebugPrint("Couldn't map existing PD into memory for '%llX'...\n", CurrRecord->Address);
@@ -356,7 +364,7 @@ Routine Description:
 
 NTSTATUS
 MmSetupHostPageDirectory(
-    _Inout_ PMM_SUPPORT MmSupport
+    _Out_ PMM_SUPPORT MmSupport
 )
 /*++
 Routine Description:
@@ -411,6 +419,13 @@ MmInitialise(
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Failed to reserve page tables for the host...\n");
+        return Status;
+    }
+
+    Status = MmSetupHostPageDirectory(MmSupport);
+    If (!NT_SUCCESS(Status))
+    {
+        ImpDebugPrint("Failed to setup the host page directory... (%X)\n", Status);
         return Status;
     }
 
