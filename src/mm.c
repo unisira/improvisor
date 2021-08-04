@@ -613,7 +613,7 @@ Routine Description:
 
         CurrRecord = (PIMP_ALLOC_RECORD)CurrRecord->Records.Blink;
     }
-
+ 
     // Allocate 512 pages to be used for arbitrary mapping
     Status = MmCreateGuestMappingRange(HostPml4, VPTE_BASE, PAGE_SIZE * 512);
     if (!NT_SUCCESS(Status))
@@ -651,4 +651,78 @@ MmInitialise(
     // TODO: Pool allocator
 
     return Status;
+}
+
+VOID
+MmMapGuestPhys(
+    _Inout_ PVMM_VPTE Vpte,
+    _In_ UINT64 PhysAddr
+)
+/*++
+Routine Description:
+    This function maps a guest physical address to a VPTE
+--*/
+{
+    Vpte->MappedPhysAddr = PhysAddr;
+    Vpte->MappedVirtAddr = Vpte->MappedAddr + PhysAddr & 0xFFF;
+    Vpte->Pte->PageFrameNumber = PAGE_FRAME_NUMBER(PhysAddr);
+}
+
+NTSTATUS
+MmReadGuestPhys(
+    _In_ UINT64 PhysAddr,
+    _In_ SIZE_T Size,
+    _Inout_ PVOID Buffer
+)
+/*++
+Routine Description:
+    This function reads physical memory by using one of the VPTEs from the guest mapping range
+--*/
+{
+    // TODO: Cache VPTE translations
+    MM_VPTE Vpte;
+    if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    SIZE_T SizeRead = 0;
+    while (Size > SizeRead)
+    {
+        MmMapGuestPhys(&Vpte, PhysAddr + SizeRead);
+
+        SIZE_T SizeToRead = Size - SizeRead > PAGE_SIZE ? PAGE_SIZE : Size - SizeRead;
+        RtlCopyMemory((PCHAR)Buffer + SizeRead, Vpte.MappedVirtAddr, SizeToRead);
+
+        SizeRead += PAGE_SIZE
+    }
+
+    MmFreeVpte(&Vpte);
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+MmWriteGuestPhys(
+    _In_ UINT64 PhysAddr,
+    _In_ SIZE_T Size,
+    _In_ PVOID Buffer,
+)
+{
+    MM_VPTE Vpte;
+    if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    SIZE_T SizeWritten = 0;
+    while (Size > SizeWritten)
+    {
+        MmMapGuestPhys(&Vpte, PhysAddr + SizeWritten);
+
+        SIZE_T SizeToWrite = Size - SizeWritten > PAGE_SIZE ? PAGE_SIZE : Size - SizeWritten;
+        RtlCopyMemory(Vpte.MappedVirtAddr, (PCHAR)Buffer + SizeWritten, SizeToWrite);
+
+        SizeWritten += PAGE_SIZE;
+    }
+
+    MmFreeVpte(&Vpte);
+
+    return STATUS_SUCCESS;
 }
