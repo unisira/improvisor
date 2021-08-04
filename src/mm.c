@@ -14,10 +14,15 @@ typedef struct _MM_RESERVED_PT
 
 PMM_RESERVED_PT gHostPageTablesHead = NULL;
 
+PMM_VPTE gVirtualPTEHead = NULL;
+
 // The raw array of page tables, each comprising of 512 possible entries
 static PVOID sPageTableListRaw = NULL;
 // The raw list of page table entries for the linked list
 static PMM_RESERVED_PT sPageTableListEntries = NULL;
+
+// The raw list of virtual PTE list entries
+static PMM_VPTE sVirtualPTEListRaw = NULL;
 
 NTSTATUS
 MmWinMapPhysicalMemory(
@@ -235,10 +240,77 @@ Routine Description:
 }
 
 NTSTATUS
+MmAllocateVpteList(
+    _In_ SIZE_T Count
+)
+/*++
+Routine Description:
+    This function allocates a list of entries for the virtual PTE list which is used for 
+    mapping guest physical memory
+--*/
+{
+    sVirtualPTEListRaw = ImpAllocateNpPool(sizeof(MM_VPTE) * Count);
+    if (sPageTableListEntries == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    gVirtualPTEHead = sVirtualPTEListRaw;
+
+    for (SIZE_T i = 0; i < Count; i++)
+    {
+        PMM_VPTE CurrVpte = &sVirtualPTEListRaw[i];
+
+        CurrVpte->Links.Flink = i < Count   ? &(CurrVpte + 1)->Links : NULL;
+        CurrVpte->Links.Blink = i > 0       ? &(CurrVpte - 1)->Links : NULL;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+MmAllocateVpte(
+    _Out_ PMM_VPTE pVpte
+)
+{
+    if (gVirtualPTEHead->Links.Flink == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    *pVpte = gVirtualPTEHead;
+
+    gVirtualPTEHead = (PMM_VPTE)gVirtualPTEHead->Links.Flink;
+
+    return STATUS_SUCCESS;
+}
+
+VOID
+MmFreeVpte(
+    _Inout_ PMM_VPTE Vpte
+)
+{
+    PMM_VPTE HeadVpte = gVirtualPTEHead;
+   
+    Vpte->MappedPhysAddr = 0;
+    Vpte->MappedAddr = NULL;
+    Vpte->MappedVirtAddr = NULL;
+
+    gVirtualPTEHead = Vpte;
+    // Update the new head entry with the old head entry's forward link
+    Vpte->Links.Flink = HeadVpte->Links.Flink;
+    // Update the old head entry's forward link to the new head entry
+    HeadVpte->Links.Flink = &Vpte->Links;
+    // Set the new head entry's backwards link to the old head entry
+    Vpte->Links.Blink = &HeadVpte->Links;
+
+    // Remove this entry from its current position
+    PMM_VPTE NextVpte = (PMM_VPTE)Vpte->Links.Flink;
+    PMM_VPTE PrevVpte = (PMM_VPTE)Vpte->Links.Blink;
+    NextVpte->Links.Blink = &PrevVpte->Links;
+    PrevVpte->Links.Flink = &NextVpte->Links;
+}
+
+NTSTATUS
 MmCopyAddressTranslation(
     _Inout_ PMM_PTE Pml4,
-    _In_ PVOID Address,
-    _In_ SIZE_T Size
+    _In_ PVOID Address
 )
 /*++
 Routine Description:
@@ -365,8 +437,145 @@ Routine Description:
 }
 
 NTSTATUS
+MmCreateGuestMappingRange(
+    _Inout_ PMM_PTE Pml4,
+    _In_ PVOID Address,
+    _In_ SIZE_T Size
+)
+/*++
+Routine Description:
+    This function allocates as many empty mappings as it takes to create enough PTEs to cover `Size`, and fills them
+    into a linked list the VMM can allocate from
+--*/
+{
+    if (!NT_SUCCESS(MmAllocateVpteList((Size + PAGE_SIZE - 1) / PAGE_SIZE)))
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    SIZE_T SizeMapped = 0;
+    while (Size > SizeMapped)
+    {
+        X86_LA48 LinearAddr = {
+            .Value = (UINT64)Address + SizeMapped
+        };
+
+        PMM_PTE Pml4e = &Pml4[LinearAddr.Pml4Index];
+
+        PMM_PTE Pdpte = NULL;
+        if (!Pml4e->Present)
+        {
+            Pml4e->Present = TRUE;
+            Pml4e->WriteAllowed = TRUE;
+
+            PMM_PTE Pdpt = NULL;
+            if (!NT_SUCCESS(MmAllocateHostPageTable(&Pdpt)))
+            {
+                ImpDebugPrint("Couldn't allocate host PDPT for '%llX'...\n", Address);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+
+            Pdpte = &Pdpt[LinearAddr.PdptIndex];
+
+            Pml4e->PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(Pdpt));
+        }
+        else
+        {
+            PMM_PTE Pdpt = NULL;
+            if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(Pml4e->PageFrameNumber), PAGE_SIZE, &Pdpt)))
+            {
+                ImpDebugPrint("Couldn't map existing PDPT into memory for '%llX'...\n", Address);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+
+            Pdpte = &Pdpt[LinearAddr.PdptIndex];
+
+            MmUnmapIoSpace(HostPdpt, PAGE_SIZE);
+        }
+
+        PMM_PTE Pde = NULL;
+        if (!Pdpte->Present)
+        {
+            Pdpte->Present = TRUE;
+            Pdpte->WriteAllowed = TRUE;
+
+            PMM_PTE Pd = NULL;
+            if (!NT_SUCCESS(MmAllocateHostPageTable(&Pd)))
+            {
+                ImpDebugPrint("Couldn't allocate host PD for '%llX'...\n", Address);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+
+            Pde = &Pd[LinearAddr.PdIndex];
+            Pdpte->PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(Pd));
+        }
+        else
+        {
+            PMM_PTE Pd = NULL;
+            if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(Pdpte->PageFrameNumber), PAGE_SIZE, &Pd)))
+            {
+                ImpDebugPrint("Couldn't map existing PD into memory for '%llX'...\n", Address);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+
+            Pde = &Pd[LinearAddr.PdIndex];
+
+            MmUnmapIoSpace(Pd, PAGE_SIZE);
+        }
+
+        PMM_PTE Pte = NULL;
+        if (!Pde->Present)
+        {
+            Pde->Present = TRUE;
+            Pde->WriteAllowed = TRUE;
+
+            PMM_PTE Pt = NULL;
+            if (!NT_SUCCESS(MmAllocateHostPageTable(&Pt)))
+            {
+                ImpDebugPrint("Couldn't allocate host PD for '%llX'...\n", Address);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+
+            Pte = &Pt[LinearAddr.PtIndex];
+            Pde->PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(Pt));
+        }
+        else
+        {
+            PMM_PTE Pt = NULL;
+            if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPde->PageFrameNumber), PAGE_SIZE, &Pt)))
+            {
+                ImpDebugPrint("Couldn't map existing PD into memory for '%llX'...\n", Address);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+
+            Pte = &Pt[LinearAddr.PdIndex];
+
+            MmUnmapIoSpace(Pt, PAGE_SIZE);
+        }
+
+        if (!Pte->Present)
+        {
+            Pte->Present = TRUE;
+            Pte->WriteAllowed = TRUE;
+        }
+
+        MM_VPTE Vpte;
+        if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        Vpte.Pte = Pte;
+        Vpte.MappedAddr = LinearAddr.Value; 
+
+        SizeMapped += PAGE_SIZE;
+    }
+    
+    // Reset VPTE head to the beginning
+    gVirtualPTEHead = sVirtualPTEListRaw;
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
 MmSetupHostPageDirectory(
-    _Out_ PMM_SUPPORT MmSupport
+    _Inout_ PMM_SUPPORT MmSupport
 )
 /*++
 Routine Description:
@@ -392,7 +601,7 @@ Routine Description:
         SIZE_T SizeMapped = 0;
         while (CurrRecord->Size > SizeMapped)
         {
-            Status = MmCopyAddressTranslation(HostPml4, (PCHAR)CurrRecord->Address + SizeMapped, CurrRecord->Size);
+            Status = MmCopyAddressTranslation(HostPml4, (PCHAR)CurrRecord->Address + SizeMapped);
             if (!NT_SUCCESS(Status))
             {
                 ImpDebugPrint("Failed to copy translation for '%llX'...\n", CurrRecord->Address);
@@ -403,6 +612,14 @@ Routine Description:
         } 
 
         CurrRecord = (PIMP_ALLOC_RECORD)CurrRecord->Records.Blink;
+    }
+
+    // Allocate 512 pages to be used for arbitrary mapping
+    Status = MmCreateGuestMappingRange(HostPml4, VPTE_BASE, PAGE_SIZE * 512);
+    if (!NT_SUCCESS(Status))
+    {
+        ImpDebugPrint("Couldn't allocate guest mapping range...\n");
+        return Status;
     }
 
     return STATUS_SUCCESS;
@@ -431,6 +648,7 @@ MmInitialise(
         return Status;
     }
 
+    // TODO: Pool allocator
+
     return Status;
 }
-

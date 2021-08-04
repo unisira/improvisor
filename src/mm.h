@@ -30,6 +30,15 @@ typedef union _MM_PTE
     };
 } MM_PTE, *PMM_PTE;
 
+typedef struct _MM_VPTE
+{
+    LIST_ENTRY Links;
+    PMM_PTE Pte;
+    UINT64 MappedVirtAddr;
+    UINT64 MappedPhysAddr;
+    UINT64 MappedAddr;
+} MM_VPTE, *PMM_VPTE;
+
 NTSTATUS
 MmInitialise(
 	_Inout_ PMM_SUPPORT MmSupport
