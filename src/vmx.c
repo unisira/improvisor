@@ -5,6 +5,12 @@
 #include "arch/cr.h"
 #include "vmx.h"
 
+VOID
+__invvpid(
+    _In_ UINT8 Vpid, 
+    _In_ PVMX_INVVPID_DESCRIPTOR Desc
+);
+
 typedef union _VMX_CAPABILITY_MSR
 {
     UINT64 Value;
@@ -154,8 +160,8 @@ Routine Description:
 
 VOID
 VmxInjectEvent(
-    _In_ X86_EXCEPTION Vector,
-    _In_ X86_INTERRUPT_TYPE Type,
+    _In_ UINT8 Vector,
+    _In_ UINT8 Type,
     _In_ UINT16 ErrorCode
 )
 /*++
@@ -205,6 +211,19 @@ Routine Description:
 --*/
 {
     __vmx_vmwrite(Component, Value);
+}
+
+VOID
+VmxInvvpid(
+    _In_ VMX_INVEPT_MODE InvMode,
+    _In_ UINT16 Vpid
+)
+{
+    VMX_INVVPID_DESCRIPTOR Desc = {
+        .Vpid = Vpid
+    };
+
+    __invvpid(InvMode, &Desc);
 }
 
 UINT64

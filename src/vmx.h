@@ -67,6 +67,12 @@ typedef union _VMX_INTERRUPT_INFO
     };
 } VMX_ENTRY_INTERRUPT_INFO, *PVMX_ENTRY_INTERRUPT_INFO;
 
+typedef struct _VMX_INVVPID_DESCRIPTOR
+{
+    UINT16 Vpid;
+    UINT64 LinearAddr;
+} VMX_INVVPID_DESCRIPTOR, *PVMX_INVVPID_DESCRIPTOR;
+
 typedef struct _VMX_STATE
 {
     UINT64 GuestRip;
@@ -113,6 +119,14 @@ typedef enum _VMX_LMSW_OP_TYPE
     OP_REGISTER,
     OP_MEMORY
 } VMX_LMSW_OP_TYPE, *PVMX_LMSW_OP_TYPE;
+
+typedef enum _VMX_INVEPT_MODE
+{
+	INV_ADDRESS = 0,
+	INV_SINGLE_CONTEXT,
+	INV_ALL_CONTEXT,
+	INV_SINGLE_CONTEXT_RETAIN_GLOBALS
+} VMX_INVEPT_MODE, *PVMX_INVEPT_MODE;
 
 typedef enum _VMX_CONTROL
 {
@@ -382,8 +396,8 @@ VmxRestrictControlRegisters(VOID);
 
 VOID
 VmxInjectEvent(
-    _In_ X86_EXCEPTION Vector,
-    _In_ X86_INTERRUPT_TYPE Type,
+    _In_ UINT8 Vector,
+    _In_ UINT8 Type,
     _In_ UINT16 ErrorCode
 );
 
@@ -396,6 +410,12 @@ VOID
 VmxWrite(
     _In_ VMCS Component,
     _In_ UINT64 Value
+);
+
+VOID
+VmxInvvpid(
+    _In_ VMX_INVEPT_MODE InvMode,
+    _In_ UINT16 Vpid
 );
 
 VOID
