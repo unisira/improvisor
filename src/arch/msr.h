@@ -3,6 +3,7 @@
 
 #include <ntdef.h>
 
+#define IA32_APIC_BASE 0x1B
 #define IA32_FEATURE_CONTROL 0x3A
 #define IA32_MTRR_CAPABILITIES 0xFE
 #define IA32_MTRR_DEFAULT_TYPE 0x2FF
@@ -74,7 +75,7 @@ typedef union _IA32_VMX_BASIC_MSR
     };
 } IA32_VMX_BASIC_MSR, *PIA32_VMX_BASIC_MSR;
 
-typedef union _IA32_EFER
+typedef union _IA32_EFER_MSR
 {
     UINT64 Value;
 
@@ -87,6 +88,21 @@ typedef union _IA32_EFER
         UINT64 ExecuteDisable : 1;
         UINT64 Reserved3 : 52;
     };
-} IA32_EFER, *PIA32_EFER;
+} IA32_EFER_MSR, *PIA32_EFER_MSR;
+
+typedef union _IA32_APIC_BASE_MSR
+{
+    UINT64 Value;
+
+    struct
+    {
+        UINT64 Reserved1: 8;
+        UINT64 Bsp : 1;
+        UINT64 Reserved2 : 1;
+        UINT64 X2APICMode : 1;
+        UINT64 APICEnable : 1;
+        UINT64 APICBase: 52;
+    };
+} IA32_APIC_BASE_MSR, *PIA32_APIC_BASE_MSR;
 
 #endif
