@@ -40,7 +40,6 @@ CPU_STATE ENDS
 .code
 
 __cpu_save_state PROC
-    pushfq
     mov [rcx].CPU_STATE._Rax, rax
     mov [rcx].CPU_STATE._Rbx, rbx
     mov [rcx].CPU_STATE._Rcx, rcx
@@ -73,11 +72,12 @@ __cpu_save_state PROC
     movups [rcx].CPU_STATE._Xmm14, xmm14
     movups [rcx].CPU_STATE._Xmm15, xmm15
     stmxcsr [rcx].CPU_STATE._MxCsr
-    lea rax, [rsp+8]
+    lea rax, [rsp]
     mov [rcx].CPU_STATE._Rsp, rax
-    mov rax, [rsp+8]
+    mov rax, [rsp]
     mov [rcx].CPU_STATE._Rip, rax
     mov rax, [rcx].CPU_STATE._Rax
+    pushfq
     pop [rcx].CPU_STATE._RFlags
     ret
 __cpu_save_state ENDP
