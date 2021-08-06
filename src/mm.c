@@ -1,7 +1,10 @@
 #include "improvisor.h"
+#include "util/spinlock.h"
 #include "arch/memory.h"
 #include "arch/cr.h"
 #include "mm.h"
+
+#define VPTE_BASE (0xfffffc9ec0000000)
 
 #define PAGE_FRAME_NUMBER(Addr) ((UINT64)(Addr) >> 12)
 #define PAGE_ADDRESS(Pfn) ((UINT64)(Pfn) << 12)
@@ -23,12 +26,13 @@ static PMM_RESERVED_PT sPageTableListEntries = NULL;
 
 // The raw list of virtual PTE list entries
 static PMM_VPTE sVirtualPTEListRaw = NULL;
+static SPINLOCK sVirtualPTEListLock;
 
-NTSTATUS
-MmWinMapPhysicalMemory(
-    _In_ UINT64 PhysAddr,
-    _In_ SIZE_T Size,
-    _Out_ PVOID* pVirtAddr
+// TODO: Move away from use of NTSTATUS for non-setup / windows related functions
+
+PVOID
+MmWinPhysicalToVirtual(
+    _In_ UINT64 PhysAddr
 )
 /*++
 Routine Description:
@@ -39,20 +43,13 @@ Routine Description:
         .QuadPart = PhysAddr
     };
 
-    PVOID Address = MmMapIoSpace(Addr, Size, MmNonCached);
-
-    if (Address == NULL)
-        return STATUS_INSUFFICIENT_RESOURCES;
-
-    *pVirtAddr = Address;
-
-    return STATUS_SUCCESS;
+    return MmGetVirtualForPhysical(Addr);
 }
 
-NTSTATUS MmWinReadPageTableEntry(
+PMM_PTE 
+MmWinReadPageTableEntry(
     _In_ UINT64 TablePfn,
-    _In_ SIZE_T Index,
-    _Out_ PMM_PTE pEntry
+    _In_ SIZE_T Index
 )
 /*++
 Routine Description:
@@ -60,19 +57,9 @@ Routine Description:
     `Index` into `Entry`
 --*/
 {
-    NTSTATUS Status = STATUS_SUCCESS;
+    PMM_PTE Table = MmWinPhysicalToVirtual(PAGE_ADDRESS(TablePfn));
 
-    PMM_PTE Table = NULL;
-
-    Status = MmWinMapPhysicalMemory(PAGE_ADDRESS(TablePfn), PAGE_SIZE, &Table);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    *pEntry = Table[Index];
-
-    MmUnmapIoSpace(Table, PAGE_SIZE);
-
-    return Status;
+    return &Table[Index];
 }
 
 NTSTATUS
@@ -101,13 +88,7 @@ Routine Description:
         .Value = (UINT64)Address
     };
     
-    Status = MmWinReadPageTableEntry(Cr3.PageDirectoryBase, LinearAddr.Pml4Index, &Pte);
-    if (!NT_SUCCESS(Status))
-    {
-        ImpDebugPrint("Failed to read PML4E for '%llX'...\n", Address);
-        return Status;
-    }
-
+    Pte = *MmWinReadPageTableEntry(Cr3.PageDirectoryBase, LinearAddr.Pml4Index);
     if (!Pte.Present)
     {
         ImpDebugPrint("PML4E for '%llX' is invalid...\n", Address);
@@ -116,13 +97,7 @@ Routine Description:
 
     *pPml4e = Pte;
     
-    Status = MmWinReadPageTableEntry(Pte.PageFrameNumber, LinearAddr.PdptIndex, &Pte);
-    if (!NT_SUCCESS(Status))
-    {
-        ImpDebugPrint("Failed to read PDPTE for '%llX'...\n", Address);
-        return Status; 
-    }
-    
+    Pte = *MmWinReadPageTableEntry(Pte.PageFrameNumber, LinearAddr.PdptIndex);
     if (!Pte.Present)
     {
         ImpDebugPrint("PDPTE for '%llX' is invalid...\n", Address);
@@ -134,13 +109,7 @@ Routine Description:
     if (Pte.LargePage)
         return STATUS_SUCCESS;
 
-    Status = MmWinReadPageTableEntry(Pte.PageFrameNumber, LinearAddr.PdIndex, &Pte);
-    if (!NT_SUCCESS(Status))
-    {
-        ImpDebugPrint("Failed to read PDE for '%llX'...\n", Address);
-        return Status;
-    }
-
+    Pte = *MmWinReadPageTableEntry(Pte.PageFrameNumber, LinearAddr.PdIndex);
     if (!Pte.Present)
     {
         ImpDebugPrint("PDE for '%llX' is invalid...\n", Address);
@@ -152,13 +121,7 @@ Routine Description:
     if (Pte.LargePage)
         return STATUS_SUCCESS;
 
-    Status = MmWinReadPageTableEntry(Pte.PageFrameNumber, LinearAddr.PtIndex, &Pte);
-    if (!NT_SUCCESS(Status))
-    {
-        ImpDebugPrint("Failed to map PT for '%llX'...\n");
-        return Status;
-    }
-    
+    Pte = *MmWinReadPageTableEntry(Pte.PageFrameNumber, LinearAddr.PtIndex);
     if (!Pte.Present)
     {
         ImpDebugPrint("PTE for '%llX' is invalid...\n", Address);
@@ -183,7 +146,7 @@ Routine Description:
 {
     NTSTATUS Status = STATUS_SUCCESS; 
 
-    sPageTableListRaw = ImpAllocateContiguousMemory(PAGE_SIZE * Count);
+    sPageTableListRaw = ImpAllocateNpPool(PAGE_SIZE * Count);
     if (sPageTableListRaw == NULL)
     {
         Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -198,7 +161,7 @@ Routine Description:
     }
 
     // Setup the head as the first entry in this array
-    gHostPageTablesHead = sPageTableListRaw;
+    gHostPageTablesHead = sPageTableListEntries;
 
     for (SIZE_T i = 0; i < Count; i++)
     {
@@ -211,11 +174,14 @@ Routine Description:
     }
 
 panic:
-    if (sPageTableListRaw)
-        MmFreeContiguousMemory(sPageTableListRaw);
-    if (sPageTableListEntries)
-        ExFreePoolWithTag(sPageTableListEntries, POOL_TAG);
-
+    if (!NT_SUCCESS(Status))
+    {
+        if (sPageTableListRaw)
+            ExFreePoolWithTag(sPageTableListRaw, POOL_TAG);
+        if (sPageTableListEntries)
+            ExFreePoolWithTag(sPageTableListEntries, POOL_TAG);
+    }
+        
     return Status;
 }
 
@@ -268,15 +234,19 @@ Routine Description:
 
 NTSTATUS
 MmAllocateVpte(
-    _Out_ PMM_VPTE pVpte
+    _Out_ PMM_VPTE* pVpte
 )
 {
+    SpinLock(&sVirtualPTEListLock);
+
     if (gVirtualPTEHead->Links.Flink == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
     *pVpte = gVirtualPTEHead;
 
     gVirtualPTEHead = (PMM_VPTE)gVirtualPTEHead->Links.Flink;
+
+    SpinUnlock(&sVirtualPTEListLock);
 
     return STATUS_SUCCESS;
 }
@@ -286,6 +256,8 @@ MmFreeVpte(
     _Inout_ PMM_VPTE Vpte
 )
 {
+    SpinLock(&sVirtualPTEListLock);
+
     PMM_VPTE HeadVpte = gVirtualPTEHead;
    
     Vpte->MappedPhysAddr = 0;
@@ -305,6 +277,8 @@ MmFreeVpte(
     PMM_VPTE PrevVpte = (PMM_VPTE)Vpte->Links.Blink;
     NextVpte->Links.Blink = &PrevVpte->Links;
     PrevVpte->Links.Flink = &NextVpte->Links;
+
+    SpinUnlock(&sVirtualPTEListLock);
 }
 
 NTSTATUS
@@ -347,18 +321,7 @@ Routine Description:
         HostPml4e->PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(HostPdpt));
     }
     else
-    {
-        PMM_PTE HostPdpt = NULL;
-        if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPml4e->PageFrameNumber), PAGE_SIZE, &HostPdpt)))
-        {
-            ImpDebugPrint("Couldn't map existing PDPT into memory for '%llX'...\n", Address);
-            return STATUS_INSUFFICIENT_RESOURCES;
-        }
-
-        HostPdpte = &HostPdpt[LinearAddr.PdptIndex];
-
-        MmUnmapIoSpace(HostPdpt, PAGE_SIZE);
-    }
+        HostPdpte = MmWinReadPageTableEntry(HostPml4e->PageFrameNumber, LinearAddr.PdptIndex);
 
     PMM_PTE HostPde = NULL;
     if (!HostPdpte->Present)
@@ -383,16 +346,7 @@ Routine Description:
         if (Pdpte.LargePage)
             return STATUS_SUCCESS;
 
-        PMM_PTE HostPd = NULL;
-        if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPdpte->PageFrameNumber), PAGE_SIZE, &HostPd)))
-        {
-            ImpDebugPrint("Couldn't map existing PD into memory for '%llX'...\n", Address);
-            return STATUS_INSUFFICIENT_RESOURCES;
-        }
-
-        HostPde = &HostPd[LinearAddr.PdIndex];
-
-        MmUnmapIoSpace(HostPd, PAGE_SIZE);
+        HostPde = MmWinReadPageTableEntry(HostPdpte->PageFrameNumber, LinearAddr.PdIndex);
     }
 
     PMM_PTE HostPte = NULL;
@@ -418,16 +372,7 @@ Routine Description:
         if (Pde.LargePage)
             return STATUS_SUCCESS;
 
-        PMM_PTE HostPt = NULL;
-        if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPde->PageFrameNumber), PAGE_SIZE, &HostPt)))
-        {
-            ImpDebugPrint("Couldn't map existing PD into memory for '%llX'...\n", Address);
-            return STATUS_INSUFFICIENT_RESOURCES;
-        }
-
-        HostPte = &HostPt[LinearAddr.PdIndex];
-
-        MmUnmapIoSpace(HostPt, PAGE_SIZE);
+        HostPte = MmWinReadPageTableEntry(HostPde->PageFrameNumber, LinearAddr.PtIndex);
     }
 
     if (!HostPte->Present)
@@ -478,18 +423,7 @@ Routine Description:
             Pml4e->PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(Pdpt));
         }
         else
-        {
-            PMM_PTE Pdpt = NULL;
-            if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(Pml4e->PageFrameNumber), PAGE_SIZE, &Pdpt)))
-            {
-                ImpDebugPrint("Couldn't map existing PDPT into memory for '%llX'...\n", Address);
-                return STATUS_INSUFFICIENT_RESOURCES;
-            }
-
-            Pdpte = &Pdpt[LinearAddr.PdptIndex];
-
-            MmUnmapIoSpace(HostPdpt, PAGE_SIZE);
-        }
+            Pdpte = MmWinReadPageTableEntry(Pml4e->PageFrameNumber, LinearAddr.PdptIndex);
 
         PMM_PTE Pde = NULL;
         if (!Pdpte->Present)
@@ -508,18 +442,7 @@ Routine Description:
             Pdpte->PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(Pd));
         }
         else
-        {
-            PMM_PTE Pd = NULL;
-            if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(Pdpte->PageFrameNumber), PAGE_SIZE, &Pd)))
-            {
-                ImpDebugPrint("Couldn't map existing PD into memory for '%llX'...\n", Address);
-                return STATUS_INSUFFICIENT_RESOURCES;
-            }
-
-            Pde = &Pd[LinearAddr.PdIndex];
-
-            MmUnmapIoSpace(Pd, PAGE_SIZE);
-        }
+            Pde = MmWinReadPageTableEntry(Pdpte->PageFrameNumber, LinearAddr.PdIndex);
 
         PMM_PTE Pte = NULL;
         if (!Pde->Present)
@@ -538,18 +461,7 @@ Routine Description:
             Pde->PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(Pt));
         }
         else
-        {
-            PMM_PTE Pt = NULL;
-            if (!NT_SUCCESS(MmWinMapPhysicalMemory(PAGE_ADDRESS(HostPde->PageFrameNumber), PAGE_SIZE, &Pt)))
-            {
-                ImpDebugPrint("Couldn't map existing PD into memory for '%llX'...\n", Address);
-                return STATUS_INSUFFICIENT_RESOURCES;
-            }
-
-            Pte = &Pt[LinearAddr.PdIndex];
-
-            MmUnmapIoSpace(Pt, PAGE_SIZE);
-        }
+            Pte = MmWinReadPageTableEntry(Pde->PageFrameNumber, LinearAddr.PtIndex);
 
         if (!Pte->Present)
         {
@@ -557,12 +469,12 @@ Routine Description:
             Pte->WriteAllowed = TRUE;
         }
 
-        MM_VPTE Vpte;
+        PMM_VPTE Vpte = NULL;
         if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
             return STATUS_INSUFFICIENT_RESOURCES;
 
-        Vpte.Pte = Pte;
-        Vpte.MappedAddr = LinearAddr.Value; 
+        Vpte->Pte = Pte;
+        Vpte->MappedAddr = LinearAddr.Value; 
 
         SizeMapped += PAGE_SIZE;
     }
@@ -595,7 +507,7 @@ Routine Description:
 
     MmSupport->HostDirectoryPhysical = ImpGetPhysicalAddress(HostPml4);
 
-    PIMP_ALLOC_RECORD CurrRecord = gHostAllocationsHead;
+    PIMP_ALLOC_RECORD CurrRecord = (PIMP_ALLOC_RECORD)gHostAllocationsHead->Records.Blink;
     while (CurrRecord->Records.Blink != NULL)
     {
         SIZE_T SizeMapped = 0;
@@ -655,7 +567,7 @@ MmInitialise(
 
 VOID
 MmMapGuestPhys(
-    _Inout_ PVMM_VPTE Vpte,
+    _Inout_ PMM_VPTE Vpte,
     _In_ UINT64 PhysAddr
 )
 /*++
@@ -692,7 +604,7 @@ Routine Description:
         SIZE_T SizeToRead = Size - SizeRead > PAGE_SIZE ? PAGE_SIZE : Size - SizeRead;
         RtlCopyMemory((PCHAR)Buffer + SizeRead, Vpte.MappedVirtAddr, SizeToRead);
 
-        SizeRead += PAGE_SIZE
+        SizeRead += PAGE_SIZE;
     }
 
     MmFreeVpte(&Vpte);
@@ -704,13 +616,13 @@ NTSTATUS
 MmWriteGuestPhys(
     _In_ UINT64 PhysAddr,
     _In_ SIZE_T Size,
-    _In_ PVOID Buffer,
+    _In_ PVOID Buffer
 )
 {
     MM_VPTE Vpte;
     if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
         return STATUS_INSUFFICIENT_RESOURCES;
-
+    
     SIZE_T SizeWritten = 0;
     while (Size > SizeWritten)
     {
@@ -724,5 +636,16 @@ MmWriteGuestPhys(
 
     MmFreeVpte(&Vpte);
 
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+MmReadGuestVirt(
+    _In_ UINT64 GuestCr3,
+    _In_ UINT64 VirtAddr,
+    _In_ SIZE_T Size,
+    _Inout_ PVOID Buffer
+)
+{
     return STATUS_SUCCESS;
 }

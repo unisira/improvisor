@@ -44,4 +44,18 @@ MmInitialise(
 	_Inout_ PMM_SUPPORT MmSupport
 );
 
+NTSTATUS
+MmWriteGuestPhys(
+    _In_ UINT64 PhysAddr,
+    _In_ SIZE_T Size,
+    _In_ PVOID Buffer
+);
+
+NTSTATUS
+MmReadGuestPhys(
+    _In_ UINT64 PhysAddr,
+    _In_ SIZE_T Size,
+    _In_ PVOID Buffer
+);
+
 #endif
