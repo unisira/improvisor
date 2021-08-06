@@ -15,9 +15,11 @@ Routine Description:
     Inserts a new allocation record into the list head
 --*/
 {
-    PIMP_ALLOC_RECORD AllocRecord = gHostAllocationsHead;
-    if (AllocRecord == NULL)
+
+    if (gHostAllocationsHead->Records.Flink == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
+
+    PIMP_ALLOC_RECORD AllocRecord = gHostAllocationsHead;
 
     AllocRecord->Address = Address;
     AllocRecord->Size = Size;
@@ -42,10 +44,12 @@ Routine Description:
     if (sImpAllocRecordsRaw == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
+    RtlSecureZeroMemory(sImpAllocRecordsRaw, sizeof(IMP_ALLOC_RECORD) * (Count + 1));
+
     // Set the head to be the first entry
     gHostAllocationsHead = sImpAllocRecordsRaw;
 
-    for (UINT8 i = 0; i < Count + 1; i++)
+    for (SIZE_T i = 0; i < Count + 1; i++)
     {
         PIMP_ALLOC_RECORD CurrAllocRecord = sImpAllocRecordsRaw + i;
 
