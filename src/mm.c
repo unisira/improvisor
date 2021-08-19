@@ -236,6 +236,10 @@ NTSTATUS
 MmAllocateVpte(
     _Out_ PMM_VPTE* pVpte
 )
+/*++
+Routine Description:
+    This function takes a VPTE entry from the head of the list.
+--*/
 {
     SpinLock(&sVirtualPTEListLock);
 
@@ -255,6 +259,11 @@ VOID
 MmFreeVpte(
     _Inout_ PMM_VPTE Vpte
 )
+/*++
+Routine Description:
+    This function frees a VPTE entry by clearing the structure, adding the entry to the end of the list
+    and removing it from its current position
+--*/
 {
     SpinLock(&sVirtualPTEListLock);
 
@@ -264,6 +273,12 @@ MmFreeVpte(
     Vpte->MappedAddr = NULL;
     Vpte->MappedVirtAddr = NULL;
 
+    // Remove this entry from its current position
+    PMM_VPTE NextVpte = (PMM_VPTE)Vpte->Links.Flink;
+    PMM_VPTE PrevVpte = (PMM_VPTE)Vpte->Links.Blink;
+    NextVpte->Links.Blink = &PrevVpte->Links;
+    PrevVpte->Links.Flink = &NextVpte->Links;
+
     gVirtualPTEHead = Vpte;
     // Update the new head entry with the old head entry's forward link
     Vpte->Links.Flink = HeadVpte->Links.Flink;
@@ -271,12 +286,6 @@ MmFreeVpte(
     HeadVpte->Links.Flink = &Vpte->Links;
     // Set the new head entry's backwards link to the old head entry
     Vpte->Links.Blink = &HeadVpte->Links;
-
-    // Remove this entry from its current position
-    PMM_VPTE NextVpte = (PMM_VPTE)Vpte->Links.Flink;
-    PMM_VPTE PrevVpte = (PMM_VPTE)Vpte->Links.Blink;
-    NextVpte->Links.Blink = &PrevVpte->Links;
-    PrevVpte->Links.Flink = &NextVpte->Links;
 
     SpinUnlock(&sVirtualPTEListLock);
 }
@@ -592,22 +601,22 @@ Routine Description:
 --*/
 {
     // TODO: Cache VPTE translations
-    MM_VPTE Vpte;
+    PMM_VPTE Vpte = NULL;
     if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
         return STATUS_INSUFFICIENT_RESOURCES;
 
     SIZE_T SizeRead = 0;
     while (Size > SizeRead)
     {
-        MmMapGuestPhys(&Vpte, PhysAddr + SizeRead);
+        MmMapGuestPhys(Vpte, PhysAddr + SizeRead);
 
         SIZE_T SizeToRead = Size - SizeRead > PAGE_SIZE ? PAGE_SIZE : Size - SizeRead;
-        RtlCopyMemory((PCHAR)Buffer + SizeRead, Vpte.MappedVirtAddr, SizeToRead);
+        RtlCopyMemory((PCHAR)Buffer + SizeRead, Vpte->MappedVirtAddr, SizeToRead);
 
         SizeRead += PAGE_SIZE;
     }
 
-    MmFreeVpte(&Vpte);
+    MmFreeVpte(Vpte);
 
     return STATUS_SUCCESS;
 }
@@ -619,7 +628,7 @@ MmWriteGuestPhys(
     _In_ PVOID Buffer
 )
 {
-    MM_VPTE Vpte;
+    PMM_VPTE Vpte = NULL;
     if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
         return STATUS_INSUFFICIENT_RESOURCES;
     
@@ -629,12 +638,66 @@ MmWriteGuestPhys(
         MmMapGuestPhys(&Vpte, PhysAddr + SizeWritten);
 
         SIZE_T SizeToWrite = Size - SizeWritten > PAGE_SIZE ? PAGE_SIZE : Size - SizeWritten;
-        RtlCopyMemory(Vpte.MappedVirtAddr, (PCHAR)Buffer + SizeWritten, SizeToWrite);
+        RtlCopyMemory(Vpte->MappedVirtAddr, (PCHAR)Buffer + SizeWritten, SizeToWrite);
 
         SizeWritten += PAGE_SIZE;
     }
 
-    MmFreeVpte(&Vpte);
+    MmFreeVpte(Vpte);
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+MmMapGuestVirt(
+    _Inout_ PMM_VPTE Vpte,
+    _In_ UINT64 GuestCr3,
+    _In_ UINT64 VirtAddr
+)
+{
+    // TODO: Cut down on VPTE allocations during this call, can cause a lot of noise with CPUs trying to access
+    // MmAllocateVpte
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    X86_LA48 LinearAddr = {
+        .Value = (UINT64)VirtAddr
+    };
+
+    X86_CR3 Cr3 = {
+        .Value = GuestCr3
+    };
+
+    MM_PTE Pte = {0};
+
+    Status = MmReadGuestPhys(PAGE_ADDRESS(Cr3.PageDirectoryBase) + sizeof(MM_PTE) * LinearAddr.Pml4Index, sizeof(MM_PTE), &Pte);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (!Pte.Present)
+        return STATUS_INVALID_PARAMETER;
+
+    Status = MmReadGuestPhys(PAGE_ADDRESS(Pte.PageFrameNumber) + sizeof(MM_PTE) * LinearAddr.PdptIndex, sizeof(MM_PTE), &Pte);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (!Pte.Present)
+        return STATUS_INVALID_PARAMETER;
+
+    Status = MmReadGuestPhys(PAGE_ADDRESS(Pte.PageFrameNumber) + sizeof(MM_PTE) * LinearAddr.PdIndex, sizeof(MM_PTE), &Pte);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (!Pte.Present)
+        return STATUS_INVALID_PARAMETER;
+
+    Status = MmReadGuestPhys(PAGE_ADDRESS(Pte.PageFrameNumber) + sizeof(MM_PTE) * LinearAddr.PtIndex, sizeof(MM_PTE), &Pte);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    if (!Pte.Present)
+        return STATUS_INVALID_PARAMETER;
+
+    MmMapGuestPhys(Vpte, PAGE_ADDRESS(Pte.PageFrameNumber) + VirtAddr & 0xFFF);
 
     return STATUS_SUCCESS;
 }
@@ -647,5 +710,50 @@ MmReadGuestVirt(
     _Inout_ PVOID Buffer
 )
 {
+    PMM_VPTE Vpte = NULL;
+    if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    SIZE_T SizeRead = 0;
+    while (Size > SizeRead)
+    {
+        MmMapGuestVirt(Vpte, GuestCr3, VirtAddr + SizeRead);
+
+        SIZE_T SizeToRead = Size - SizeRead > PAGE_SIZE ? PAGE_SIZE : Size - SizeRead;
+        RtlCopyMemory((PCHAR)Buffer + SizeRead, Vpte->MappedVirtAddr, SizeToRead);
+
+        SizeRead += PAGE_SIZE;
+    }
+
+    MmFreeVpte(Vpte);
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+MmWriteGuestVirt(
+    _In_ UINT64 GuestCr3,
+    _In_ UINT64 VirtAddr,
+    _In_ SIZE_T Size,
+    _In_ PVOID Buffer
+)
+{
+    PMM_VPTE Vpte = NULL;
+    if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
+        return STATUS_INSUFFICIENT_RESOURCES;
+    
+    SIZE_T SizeWritten = 0;
+    while (Size > SizeWritten)
+    {
+        MmMapGuestVirt(&Vpte, GuestCr3, VirtAddr + SizeWritten);
+
+        SIZE_T SizeToWrite = Size - SizeWritten > PAGE_SIZE ? PAGE_SIZE : Size - SizeWritten;
+        RtlCopyMemory(Vpte->MappedVirtAddr, (PCHAR)Buffer + SizeWritten, SizeToWrite);
+
+        SizeWritten += PAGE_SIZE;
+    }
+
+    MmFreeVpte(Vpte);
+
     return STATUS_SUCCESS;
 }

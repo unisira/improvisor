@@ -58,4 +58,20 @@ MmReadGuestPhys(
     _In_ PVOID Buffer
 );
 
+NTSTATUS
+MmWriteGuestVirt(
+    _In_ UINT64 GuestCr3,
+    _In_ UINT64 PhysAddr,
+    _In_ SIZE_T Size,
+    _In_ PVOID Buffer
+);
+
+NTSTATUS
+MmReadGuestVirt(
+    _In_ UINT64 GuestCr3,
+    _In_ UINT64 PhysAddr,
+    _In_ SIZE_T Size,
+    _In_ PVOID Buffer
+);
+
 #endif
