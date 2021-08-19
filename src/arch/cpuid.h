@@ -193,14 +193,14 @@ typedef enum _X86_CPU_FEATURE
 
 typedef union _X86_CPUID_ARGS
 {
-    UINT32 Data[4];
+    INT32 Data[4];
 
     struct 
     {
-        UINT32 Eax;
-        UINT32 Ebx;
-        UINT32 Ecx;
-        UINT32 Edx;
+        INT32 Eax;
+        INT32 Ebx;
+        INT32 Ecx;
+        INT32 Edx;
     };
 } X86_CPUID_ARGS, *PX86_CPUID_ARGS;
 
