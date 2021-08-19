@@ -34,6 +34,13 @@ Routine Description:
 {
     NTSTATUS Status = STATUS_SUCCESS;
 
+    Status = ImpReserveAllocationRecords(0x2000);
+    if (!NT_SUCCESS(Status))
+    {
+        ImpDebugPrint("Couldn't reserve host allocation records...\n");
+        return Status;
+    }
+
     /*
     Status = VmmEnsureFeatureSupport();
     if (!NT_SUCCESS(Status))
@@ -43,7 +50,7 @@ Routine Description:
     }
     */
 
-    PVMM_CONTEXT VmmContext = (PVMM_CONTEXT)ExAllocatePoolWithTag(NonPagedPool, sizeof(VMM_CONTEXT), POOL_TAG);
+    PVMM_CONTEXT VmmContext = (PVMM_CONTEXT)ImpAllocateNpPool(sizeof(VMM_CONTEXT));
     if (VmmContext == NULL)
     {
         ImpDebugPrint("Failed to allocate VMM context...\n");
@@ -71,23 +78,15 @@ Routine Description:
     VCPU_DELEGATE_PARAMS Params = {
         .VmmContext = VmmContext,
         .ActiveVcpuCount = 0,
-        .FaultyCoreId = -1,
+        .FailedCoreMask = 0,
         .Status = STATUS_SUCCESS
     };
 
     Status = VmmSpawnVcpuDelegates(VcpuSpawnPerCpu, &Params);
     if (!NT_SUCCESS(Status))
     {
-        ImpDebugPrint("Failed to spawn VCPU on core #%d... (%x)\n", Params.FaultyCoreId, Status);
-        
-        Params.Status = STATUS_SUCCESS;
-        Status = VmmSpawnVcpuDelegates(VcpuShutdownPerCpu, &Params);
-        if (!NT_SUCCESS(Status))
-        {
-            ImpDebugPrint("Failed to shutdown active VCPUs, core #%d encountered an error... (%x)\n", Params.FaultyCoreId, Status);
-            KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_FAILED_SHUTDOWN, Params.FaultyCoreId, Status, 0);
-        }
-
+        ImpDebugPrint("Failed to spawn VCPU on cores (%x)... (%x)", Params.FailedCoreMask, Status);
+        VmmShutdownHypervisor(VmmContext);
         goto panic;
     }
 
@@ -117,15 +116,12 @@ Routine Description:
     NTSTATUS Status = STATUS_SUCCESS;
     UINT8 CpuCount = VmmContext->CpuCount;
 
-    VmmContext->VcpuTable = (PVCPU)ExAllocatePoolWithTag(NonPagedPool, sizeof(VCPU) * CpuCount, POOL_TAG);
+    VmmContext->VcpuTable = (PVCPU)ImpAllocateNpPool(sizeof(VCPU) * CpuCount);
     if (VmmContext->VcpuTable == NULL)
     {
         ImpDebugPrint("Failed to allocate VCPU table...\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-
-    // TODO: This can be removed and put inside a pool allocation wrapper function
-    RtlSecureZeroMemory(VmmContext->VcpuTable, sizeof(VCPU) * CpuCount);
 
     for (UINT8 i = 0; i < CpuCount; i++)
     {
@@ -153,6 +149,35 @@ Routine Description:
     // TODO: Complete this
     NTSTATUS Status = STATUS_SUCCESS;
 
+    /*
+    TODO: wrap this into nice func
+    X86_PSEUDO_DESCRIPTOR Idtr;
+    __sidt(&Idtr);
+
+    PVOID HostIdtBaseAddr = ImpAllocateContiguousMemory(Idtr.Limit);
+    if (HostIdtBaseAddr == NULL)
+    {
+        ImpDebugPrint("Failed to allocate host IDT...\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlCopyMemory(Idtr.BaseAddress, HostIdtBaseAddr, Idtr.Limit);
+
+    VmmContext->HostInterruptDescriptor.BaseAddress = HostIdtBaseAddr;
+    VmmContext->HostInterruptDescriptor.Limit = Idtr.Limit;
+
+    // TODO: Write a generic interrupt handler in vmm_intr.asm and make it look up array of host interrupt
+    // handlers and jmp to it
+    VmmSetHostInterruptHandler(EXCEPTION_NMI, VmmHandleHostNMI);
+    */
+
+    Status = MmInitialise(&VmmContext->MmSupport);
+    if (!NT_SUCCESS(Status))
+    {
+        ImpDebugPrint("Failed to initialise memory manager... (%X)\n", Status);
+        return Status;
+    }
+
     VmmContext->UseUnrestrictedGuests = FALSE;
 
     return Status;
@@ -178,15 +203,18 @@ Routine Description:
 
 VOID
 VmmShutdownHypervisor(
-    VOID
+    _Inout_ PVMM_CONTEXT Vmm 
 )
 /*++
 Routine Description:
-	Shuts down the hypervisor by sending an IPI out to all active processors, and shutting them down individually
+	Shuts down the hypervisor by sending an NMI out to all active processors, and shutting them down   
+    individually
  */
 {
 	// TODO: Complete this
-    return;
+    // VMXOFF on current processor,
+    // Vmm->IsShuttingDown = TRUE;
+    // ApicSendPacket(INTERRUPT_NMI, Affinity);
 }
 
 VOID

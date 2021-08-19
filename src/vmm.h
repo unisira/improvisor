@@ -2,17 +2,19 @@
 #define IMP_VM_H
 
 #include <wdm.h>
+#include <intrin.h>
 
 #include "arch/segment.h"
-#include "mm/page.h"
 #include "vcpu.h"
+#include "mm.h"
 
 typedef struct _VMM_CONTEXT
 {
     UINT8 CpuCount;
     PVCPU VcpuTable;
     BOOLEAN UseUnrestrictedGuests;
-    PMM_SUPPORT MmSupport;
+    BOOLEAN IsShuttingDown;
+    MM_SUPPORT MmSupport;
     X86_PSEUDO_DESCRIPTOR HostInterruptDescriptor;
 } VMM_CONTEXT, * PVMM_CONTEXT;
 
@@ -23,7 +25,7 @@ VmmStartHypervisor(
 
 VOID 
 VmmShutdownHypervisor(
-    VOID
+   _Inout_ PVMM_CONTEXT Vmm 
 );
 
 #endif
