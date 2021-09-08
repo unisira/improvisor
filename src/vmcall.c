@@ -26,16 +26,11 @@ typedef union _HYPERCALL_VIRT_EX
     {
         UINT64 Cr3 : 16;
         UINT64 Size : 32;
-        UINT64 IsAddrCached : 1;
     };
 } HYPERCALL_VIRT_EX, *PHYPERCALL_VIRT_EX;
 
 typedef enum _HYPERCALL_ID
 {
-    // Add a translation to a guest physical address to the VMMs page tables
-    HYPERCALL_CACHE_TRANSLATION,
-    // Remove a cached translation
-    HYPERCALL_FREE_CACHED_TRANSLATION,
     // Read a guest virtual address, using translations from a specified process's address space
     HYPERCALL_READ_VIRT,
     // Read a guest virtual address, using translations from a specified process's address space
@@ -84,32 +79,6 @@ VmHandleHypercall(
 
     switch (Hypercall->Id) 
     {
-    case HYPERCALL_CACHE_TRANSLATION: 
-    {
-        // TODO: Make this useful, create a list of cached address translations and FUCKING USE THEM!!, Add IsCached to HYPERCALL_VIRT_EX and change the size of Cr3 to 16 bits
-        if (GuestState->Rdx == 0)
-            return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
-
-        HYPERCALL_VIRT_EX VirtEx = {
-            .Value = GuestState->Rbx
-        };
-
-        if (CacheAddrEx.Cr3 == 0)
-            return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
-
-        PMM_VPTE Vpte = NULL;
-        if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
-            return VmAbortHypercall(Hypercall, HRESULT_INSUFFICIENT_RESOURCES);
-
-        if (!NT_SUCCESS(MmMapGuestVirt(Vpte, CacheAddrEx->Cr3, GuestState->Rdx)))
-            return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
-        
-        Hypercall->Result = HRESULT_SUCCESS;
-    } break;
-    case HYPERCALL_FREE_CACHED_TRANSLATION: 
-    {
-        // TODO: Finish this
-    } break;
     case HYPERCALL_READ_VIRT:
     {
        if (GuestState->Rdx == 0)
@@ -126,24 +95,16 @@ VmHandleHypercall(
             return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
 
         PMM_VPTE Vpte = NULL;
-        if (VirtEx.IsAddrCached)
-        {
-            Vpte = VmFindCachedTranslation(GuestState->Rdx);
-        } 
-        else
-        {
-            if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
-                return VmAbortHypercall(Hypercall, HRESULT_INSUFFICIENT_RESOURCES);
+        if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
+            return VmAbortHypercall(Hypercall, HRESULT_INSUFFICIENT_RESOURCES);
 
-            if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx)))
-                return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
-        }
+        if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx)))
+            return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
 
         if (!NT_SUCCESS(MmReadGuestVirt(VirtEx.Cr3, GuestState->Rdx, VirtEx.Size, Vpte->MappedVirtAddr)))
             return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
-
-        if (!VirtEx.IsAddrCached)
-            MmFreeVpte(Vpte);
+            
+        MmFreeVpte(Vpte);
 
         Hypercall->Result = HRESULT_SUCCESS; 
     } break;
