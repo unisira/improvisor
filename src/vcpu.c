@@ -1,8 +1,10 @@
+#include "arch/interrupt.h"
 #include "arch/segment.h"
+#include "arch/cpuid.h"
 #include "arch/msr.h"
 #include "arch/cr.h"
+#include "vmcall.h"
 #include "vcpu.h"
-#include "cpuid.h"
 #include "vmm.h"
 
 EXTERN_C
@@ -53,6 +55,8 @@ VMEXIT_HANDLER VcpuUnknownExitReason;
 VMEXIT_HANDLER VcpuHandleCpuid;
 VMEXIT_HANDLER VcpuHandleInvalidGuestState;
 VMEXIT_HANDLER VcpuHandleCrAccess;
+VMEXIT_HANDLER VcpuHandleVmxInstruction;
+VMEXIT_HANDLER VcpuHandleHypercall;
 
 static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason, 			// Exception or non-maskable interrupt (NMI)
@@ -66,23 +70,23 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason, 			// NMI window
     VcpuUnknownExitReason, 			// Task switch
     VcpuHandleCpuid,				// CPUID
-    VcpuUnknownExitReason, 			// GETSEC
+    VcpuHandleVmxInstruction, 		// GETSEC
     VcpuUnknownExitReason, 			// HLT
     VcpuUnknownExitReason, 			// INVD
     VcpuUnknownExitReason, 			// INVLPG
     VcpuUnknownExitReason, 			// RDPMC
     VcpuUnknownExitReason, 			// RDTSC
     VcpuUnknownExitReason, 			// RSM
-    VcpuUnknownExitReason, 			// VMCALL
-    VcpuUnknownExitReason, 			// VMCLEAR
-    VcpuUnknownExitReason, 			// VMLAUNCH
-    VcpuUnknownExitReason, 			// VMPTRLD
-    VcpuUnknownExitReason, 			// VMPTRST
-    VcpuUnknownExitReason, 			// VMREAD
-    VcpuUnknownExitReason, 			// VMRESUME
-    VcpuUnknownExitReason, 			// VMWRITE
-    VcpuUnknownExitReason, 			// VMXOFF
-    VcpuUnknownExitReason, 			// VMXON
+    VcpuHandleHypercall, 			// VMCALL
+    VcpuHandleVmxInstruction, 		// VMCLEAR
+    VcpuHandleVmxInstruction, 		// VMLAUNCH
+    VcpuHandleVmxInstruction, 		// VMPTRLD
+    VcpuHandleVmxInstruction, 		// VMPTRST
+    VcpuHandleVmxInstruction, 		// VMREAD
+    VcpuHandleVmxInstruction, 		// VMRESUME
+    VcpuHandleVmxInstruction, 		// VMWRITE
+    VcpuHandleVmxInstruction, 		// VMXOFF
+    VcpuHandleVmxInstruction, 		// VMXON
     VcpuHandleCrAccess, 			// Control-register accesses
     VcpuUnknownExitReason, 			// MOV DR
     VcpuUnknownExitReason,			// I/O instruction
@@ -105,10 +109,10 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason, 			// Access to LDTR or TR
     VcpuUnknownExitReason, 			// EPT violation
     VcpuUnknownExitReason, 			// EPT misconfiguration
-    VcpuUnknownExitReason, 			// INVEPT
+    VcpuHandleVmxInstruction, 		// INVEPT
     VcpuUnknownExitReason, 			// RDTSCP
     VcpuUnknownExitReason, 			// VMX-preemption timer expired
-    VcpuUnknownExitReason, 			// INVVPID
+    VcpuHandleVmxInstruction, 		// INVVPID
     VcpuUnknownExitReason, 			// WBINVD or WBNOINVD
     VcpuUnknownExitReason, 			// XSETBV
     VcpuUnknownExitReason, 			// APIC write
@@ -137,7 +141,7 @@ VcpuSetControl(
 BOOLEAN
 VcpuIsControlSupported(
     _Inout_ PVCPU Vcpu,
-    _In_ VMX_CONTROL Control,
+    _In_ VMX_CONTROL Control
 );
 
 VOID
@@ -208,7 +212,7 @@ Routine Description:
 
     Vcpu->MsrBitmapPhysical = ImpGetPhysicalAddress(Vcpu->MsrBitmap);
     
-    Vcpu->Stack = (PVCPU_STACK)ExAllocatePoolWithTag(NonPagedPool, sizeof(VCPU_STACK), POOL_TAG);
+    Vcpu->Stack = (PVCPU_STACK)ImpAllocateNpPool(sizeof(VCPU_STACK));
     if (Vcpu->Stack == NULL)
     {
         ImpDebugPrint("Failed to allocate a host stack for VCPU #%d...\n", Id);
@@ -260,6 +264,20 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+NTSTATUS
+VcpuDestroy(
+    _Inout_ PVCPU Vcpu
+)
+/*++
+Routine Description:
+    Frees all resources allocated by a VCPU
+--*/
+{
+    MmFreeContiguousMemory(Vcpu->Vmxon);
+    MmFreeContiguousMemory(Vcpu->Vmcs);
+
+}
+
 DECLSPEC_NORETURN
 VOID
 VcpuLaunch(VOID)
@@ -268,8 +286,7 @@ Routine Description:
     Post-VMLAUNCH, sets the CPU's registers and RIP to previous execution. 
 --*/
 {
-    PVCPU_STACK Stack = *(PVCPU_STACK*)((UINT64)_AddressOfReturnAddress() - KERNEL_STACK_SIZE);
-    
+    PVCPU_STACK Stack = (PVCPU_STACK)((UINT64)_AddressOfReturnAddress() - 0x5FF0);
     __cpu_restore_state(&Stack->Cache.Vcpu->LaunchState);
 }
 
@@ -430,8 +447,8 @@ Routine Description:
 
     VcpuCommitVmxState(Vcpu);
     
-    VmxWrite(HOST_RSP, (UINT64)(Vcpu->Stack->Limit + KERNEL_STACK_SIZE));
-    VmxWrite(GUEST_RSP, (UINT64)(Vcpu->Stack->Limit + KERNEL_STACK_SIZE));
+    VmxWrite(HOST_RSP, (UINT64)(Vcpu->Stack->Limit + 0x6000 - 16));
+    VmxWrite(GUEST_RSP, (UINT64)(Vcpu->Stack->Limit + 0x6000 - 16));
 
     VmxWrite(HOST_RIP, (UINT64)__vmexit_entry);
     VmxWrite(GUEST_RIP, (UINT64)VcpuLaunch);
@@ -476,7 +493,7 @@ Routine Description:
 
     if (!NT_SUCCESS(Params->Status))
     {
-        InterlockedExchange(&Params->FaultyCoreId, CpuId);
+        InterlockedOr(&Params->FailedCoreMask, 1 << CpuId);
 
         // Shutdown VMX operation on this CPU core if we failed VM launch
         if (Params->Status == STATUS_APP_INIT_FAILURE)
@@ -498,11 +515,6 @@ Routine Description:
 {
     // TODO: Complete this
     ULONG CpuId = KeGetCurrentProcessorNumber(); 
-
-    /*
-    if (Params->VmmContext->VcpuTable[CpuId].IsLaunched)
-        __vmcall(HYPERCALL_SHUTDOWN_VCPU);
-    */
 }
 
 VOID
@@ -517,6 +529,19 @@ Routine Description:
  */
 {
     VmxSetControl(&Vcpu->Vmx, Control, State);
+}
+
+BOOLEAN
+VcpuIsControlSupported(
+    _Inout_ PVCPU Vcpu,
+    _In_ VMX_CONTROL Control
+)
+/*++
+Routine Description:
+    Checks if a control is supported by this processor by checking the VMX execution capability registers
+--*/
+{
+    return VmxIsControlSupported(&Vcpu->Vmx, Control);
 }
 
 VOID
@@ -646,18 +671,27 @@ Routine Description:
         .Edx = (UINT32)GuestState->Rdx,
     };
 
-    CpuidEmulateGuestCall(&CpuidArgs);
+    __cpuidex(CpuidArgs.Data, GuestState->Rax, GuestState->Rcx);
+
+    switch (GuestState->Rax)
+    {
+    case 0x00000001:
+        CpuidArgs.Data[FEATURE_REG(X86_FEATURE_HYPERVISOR)] &= ~FEATURE_MASK(X86_FEATURE_HYPERVISOR);
+        break;
+    }
 
     GuestState->Rax = CpuidArgs.Eax;
     GuestState->Rbx = CpuidArgs.Ebx;
     GuestState->Rcx = CpuidArgs.Ecx;
     GuestState->Rdx = CpuidArgs.Edx;
 
+    /* TODO: Make this work
     VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
     VcpuSetControl(Vcpu, VMX_CTL_RDTSC_EXITING, TRUE);
 
     // Set the VMX preemption timer to a relatively low value taking the VM entry latency into account
     VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, Vcpu->TscInfo.VmEntryLatency + 500);
+    */
 
     return VMM_EVENT_CONTINUE;
 }
@@ -695,7 +729,7 @@ Routine Description:
         /* RDX */ offsetof(GUEST_STATE, Rdx),
         /* RBX */ offsetof(GUEST_STATE, Rbx),
         /* RSP */ 0,
-        /* RBB */ 0,
+        /* RBP */ 0,
         /* RSI */ offsetof(GUEST_STATE, Rsi),
         /* RDI */ offsetof(GUEST_STATE, Rdi),
         /* R8  */ offsetof(GUEST_STATE, R8),
@@ -758,7 +792,7 @@ Routine Description:
     // Inject #GP(0) if there was an attempt to modify a reserved bit
     if (DifferentBits & ReservedBits)
     {
-        // TODO: Inject #GP(0) here
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
         return VMM_EVENT_INTERRUPT;
     }
     
@@ -870,13 +904,13 @@ Routine Description:
 
                 // If CR0.PG is changed to a 0, all TLBs are invalidated
                 if (DifferentBits.Paging && !NewCr.Paging)
-                    VmxInvvpid(VPID_INV_SINGLE_CTX, 1);
+                    VmxInvvpid(INV_SINGLE_CONTEXT, 1);
             }
             
             // If CR0.PG has been changed, update IA32_EFER.LMA
             if (DifferentBits.Paging)
             {
-                IA32_EFER Efer = {
+                IA32_EFER_MSR Efer = {
                     .Value = VmxRead(GUEST_EFER)
                 };
 
@@ -889,7 +923,7 @@ Routine Description:
                 };
 
                 // If CR0.PG has been enabled, we must check if we are in PAE paging
-                if (NewCr.Paging && !Efer.LongModeEnable && Cr4.PhysicalAddressExtensions)
+                if (NewCr.Paging && !Efer.LongModeEnable && Cr4.PhysicalAddressExtension)
                 {
                     // TODO: Setup PDPTR in VMCS
                 }
@@ -927,8 +961,8 @@ Routine Description:
                 const PUINT64 TargetReg = LookupTargetReg(GuestState, ExitQual.RegisterId);
 
                 // Reset any host owned bits to the CR value 
-                *TargetReg &= ~(DifferentBits.Value & HostOwnedBits);
-                *TargetReg |= ControlRegister & HostOwnedBits;
+                *TargetReg &= ~(DifferentBits.Value & ShadowableBits);
+                *TargetReg |= ControlRegister & ShadowableBits;
 
                 // TODO: Enable MTF interrupt and push a pending CR spoof
                 return VMM_EVENT_INTERRUPT;
@@ -957,7 +991,7 @@ Routine Description:
             // TODO: Check CR4.VMXE being set, make sure its 0 in the read shadow and inject #UD upon trying
             // to change it
 
-            const IA32_EFER Efer = {
+            const IA32_EFER_MSR Efer = {
                 .Value = VmxRead(GUEST_EFER)
             };
 
@@ -969,7 +1003,7 @@ Routine Description:
             }
 
             if (DifferentBits.PhysicalAddressExtension && NewCr.PhysicalAddressExtension == 0 && 
-                Efer.LongModeEnabled)
+                Efer.LongModeEnable)
             {
                 VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
                 return VMM_EVENT_INTERRUPT;
@@ -981,15 +1015,15 @@ Routine Description:
                 DifferentBits.Value,
                 GUEST_CR4,
                 CONTROL_CR4_READ_SHADOW,
-                HostOwnedBits,
+                ShadowableBits,
                 CR4_RESERVED_BITMASK
             );
 
             if (DifferentBits.GlobalPageEnable ||
                 DifferentBits.PhysicalAddressExtension ||
                 (DifferentBits.PCIDEnable && NewCr.PCIDEnable == 0) ||
-                (DifferentBits.SmepEnable && NewCr.SmepEnable == 1)
-                VmxInvvpid(VPID_INV_SINGLE_CTX, 1);
+                (DifferentBits.SmepEnable && NewCr.SmepEnable == 1))
+                VmxInvvpid(INV_SINGLE_CONTEXT, 1);
         } break;
 
     case 8:
@@ -1035,10 +1069,6 @@ VcpuHandleCrAccess(
     _Inout_ PGUEST_STATE GuestState
 )
 {
-    // Update read shadow with whatever 
-    // update actual register with things that are allowed
-    // inject exception on attempt to enable VMXE which is P
-
     VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
 
     VMX_MOV_CR_EXIT_QUALIFICATION ExitQual = {
@@ -1054,6 +1084,35 @@ VcpuHandleCrAccess(
     }
 
     return Status;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleVmxInstruction(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+/*++
+Routine Description:
+    Emulates execution of VMX related instructions by injecting a #UD exception
+--*/
+{
+    VmxInjectEvent(EXCEPTION_UNDEFINED_OPCODE, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+    return VMM_EVENT_INTERRUPT;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleHypercall(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+/*++
+Routine Description:
+    This function handles the guest->host bridge known as hypercalls, which allows trusted applications
+    to interact with the driver and control or use the functionality built into it
+--*/
+{
+    PHYPERCALL_INFO Hypercall = (PHYPERCALL_INFO)&GuestState->Rax;
+    return VmHandleHypercall(Vcpu, GuestState, Hypercall);
 }
 
 PX86_SEGMENT_DESCRIPTOR

@@ -4,6 +4,7 @@
 #include "improvisor.h"
 #include "vmx.h"
 #include "cpu.h"
+#include "mm.h"
 
 // Emulation was successful, continue execution
 #define VMM_EVENT_CONTINUE (0x00000000)
@@ -31,8 +32,6 @@ typedef struct _GUEST_STATE
     UINT64 R15;
     UINT64 Rip;
     UINT32 MxCsr;
-    UINT32 _Align1;
-    UINT64 _Align2;
     M128 Xmm0;
     M128 Xmm1;
     M128 Xmm2;
@@ -57,7 +56,7 @@ typedef struct _VCPU_DELEGATE_PARAMS
 {
     struct _VMM_CONTEXT* VmmContext;
     ULONG ActiveVcpuCount;
-    ULONG FaultyCoreId;
+    ULONG FailedCoreMask;
     NTSTATUS Status;
 } VCPU_DELEGATE_PARAMS, *PVCPU_DELEGATE_PARAMS;
 
@@ -114,6 +113,11 @@ NTSTATUS
 VcpuSetup(
     _Inout_ PVCPU Vcpu,
     _In_ UINT8 Id
+);
+
+NTSTATUS
+VcpuDestroy(
+    _Inout_ PVCPU Vcpu
 );
 
 VOID
