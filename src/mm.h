@@ -34,14 +34,24 @@ typedef struct _MM_VPTE
 {
     LIST_ENTRY Links;
     PMM_PTE Pte;
-    UINT64 MappedVirtAddr;
+    PVOID MappedVirtAddr;
     UINT64 MappedPhysAddr;
-    UINT64 MappedAddr;
+    PVOID MappedAddr;
 } MM_VPTE, *PMM_VPTE;
 
 NTSTATUS
 MmInitialise(
 	_Inout_ PMM_SUPPORT MmSupport
+);
+
+NTSTATUS
+MmAllocateVpte(
+    _Out_ PMM_VPTE* pVpte
+);
+
+VOID
+MmFreeVpte(
+    _Inout_ PMM_VPTE Vpte
 );
 
 NTSTATUS
@@ -59,9 +69,16 @@ MmReadGuestPhys(
 );
 
 NTSTATUS
+MmMapGuestVirt(
+    _Inout_ PMM_VPTE Vpte,
+    _In_ UINT64 GuestCr3,
+    _In_ UINT64 VirtAddr
+);
+
+NTSTATUS
 MmWriteGuestVirt(
     _In_ UINT64 GuestCr3,
-    _In_ UINT64 PhysAddr,
+    _In_ UINT64 VirtAddr,
     _In_ SIZE_T Size,
     _In_ PVOID Buffer
 );
@@ -69,7 +86,7 @@ MmWriteGuestVirt(
 NTSTATUS
 MmReadGuestVirt(
     _In_ UINT64 GuestCr3,
-    _In_ UINT64 PhysAddr,
+    _In_ UINT64 VirtAddr,
     _In_ SIZE_T Size,
     _In_ PVOID Buffer
 );
