@@ -90,6 +90,7 @@ typedef struct _VCPU
     UINT64 VmxonPhysical;
     UINT64 MsrBitmapPhysical;
     BOOLEAN IsLaunched;
+    BOOLEAN IsShuttingDown;
     CPU_STATE LaunchState;
     VMX_STATE Vmx;
     TSC_INFO TscInfo;
@@ -127,7 +128,7 @@ VcpuSpawnPerCpu(
 
 VOID
 VcpuShutdownPerCpu(
-    _Inout_ PVCPU_DELEGATE_PARAMS Params
+    _Inout_ PVCPU Vcpu 
 );
 
 #endif

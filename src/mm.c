@@ -428,6 +428,9 @@ Routine Description:
     Allocates memory by removing enough chunks to satisfy `Size` from the linked list and reserving them for use 
 --*/
 {
+    // Force 16 byte alignment
+    Size = ALIGN_TO(Size, 16);
+
     // TODO: Alignment to 16-byte boundary, easily done by forcing size to be aligned 
     PMM_POOL_CHUNK_HDR CurrChunk = gFreePoolChunkHead;
 
@@ -727,7 +730,8 @@ Routine Description:
 
     MmSupport->HostDirectoryPhysical = ImpGetPhysicalAddress(HostPml4);
 
-    PIMP_ALLOC_RECORD CurrRecord = (PIMP_ALLOC_RECORD)gHostAllocationsHead->Records.Blink;
+    // TODO: Think about if that while loop condition is wrong, possibly missing the first after the refactor
+    PIMP_ALLOC_RECORD CurrRecord = (PIMP_ALLOC_RECORD)gHostAllocationsHead;
     while (CurrRecord->Records.Blink != NULL)
     {
         SIZE_T SizeMapped = 0;
@@ -838,6 +842,10 @@ MmWriteGuestPhys(
     _In_ SIZE_T Size,
     _In_ PVOID Buffer
 )
+/*++
+Routine Description:
+    Writes the contents of `Buffer` to a physical address
+--*/
 {
     PMM_VPTE Vpte = NULL;
     if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
@@ -865,6 +873,10 @@ MmMapGuestVirt(
     _In_ UINT64 GuestCr3,
     _In_ UINT64 VirtAddr
 )
+/*++
+Routine Description:
+    Maps a virtual address to `Vpte` by translating `VirtAddr` through `GuestCr3` and assigning `Vpte` the physical address obtained
+--*/
 {
     // TODO: Cut down on VPTE allocations during this call, can cause a lot of noise with CPUs trying to access
     // MmAllocateVpte and MmFreeVpte
@@ -920,21 +932,22 @@ MmReadGuestVirt(
     _In_ SIZE_T Size,
     _Inout_ PVOID Buffer
 )
+/*++
+Routine Description:
+    Maps a virtual address using the translation in `GuestCr3` and reads `Size` bytes into `Buffer`. Size must be <= PAGE_SIZE
+--*/
 {
+    if (Size >= PAGE_SIZE)
+        return STATUS_INVALID_BUFFER_SIZE;
+
     PMM_VPTE Vpte = NULL;
     if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    SIZE_T SizeRead = 0;
-    while (Size > SizeRead)
-    {
-        MmMapGuestVirt(Vpte, GuestCr3, VirtAddr + SizeRead);
+    if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, VirtAddr)))
+        return STATUS_INVALID_PARAMETER;
 
-        SIZE_T SizeToRead = Size - SizeRead > PAGE_SIZE ? PAGE_SIZE : Size - SizeRead;
-        RtlCopyMemory((PCHAR)Buffer + SizeRead, Vpte->MappedVirtAddr, SizeToRead);
-
-        SizeRead += PAGE_SIZE;
-    }
+    RtlCopyMemory(Buffer, Vpte->MappedVirtAddr, Size);
 
     MmFreeVpte(Vpte);
 
@@ -948,21 +961,22 @@ MmWriteGuestVirt(
     _In_ SIZE_T Size,
     _In_ PVOID Buffer
 )
+/*++
+Routine Description:
+    Maps a virtual address using the translation in `GuestCr3` and writes `Buffer` to it. Size must be <= PAGE_SIZE
+--*/
 {
+    if (Size >= PAGE_SIZE)
+        return STATUS_INVALID_BUFFER_SIZE;
+
     PMM_VPTE Vpte = NULL;
     if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
         return STATUS_INSUFFICIENT_RESOURCES;
     
-    SIZE_T SizeWritten = 0;
-    while (Size > SizeWritten)
-    {
-        MmMapGuestVirt(&Vpte, GuestCr3, VirtAddr + SizeWritten);
+    if (!NT_SUCCESS(MmMapGuestVirt(&Vpte, GuestCr3, VirtAddr)))
+        return STATUS_INVALID_PARAMETER;
 
-        SIZE_T SizeToWrite = Size - SizeWritten > PAGE_SIZE ? PAGE_SIZE : Size - SizeWritten;
-        RtlCopyMemory(Vpte->MappedVirtAddr, (PCHAR)Buffer + SizeWritten, SizeToWrite);
-
-        SizeWritten += PAGE_SIZE;
-    }
+    RtlCopyMemory(Vpte->MappedVirtAddr, Buffer, Size);
 
     MmFreeVpte(Vpte);
 

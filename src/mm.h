@@ -45,6 +45,11 @@ MmInitialise(
 );
 
 NTSTATUS
+MmAllocateHostPageTable(
+    _Out_ PVOID* Table
+);
+
+NTSTATUS
 MmAllocateVpte(
     _Out_ PMM_VPTE* pVpte
 );

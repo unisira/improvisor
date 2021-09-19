@@ -29,14 +29,28 @@ typedef union _HYPERCALL_VIRT_EX
     };
 } HYPERCALL_VIRT_EX, *PHYPERCALL_VIRT_EX;
 
+typedef union _HYERPCALL_SIGSCAN_EX
+{
+    UINT64 Value;
+
+    struct
+    {
+        UINT64 Cr3 : 16;
+        UINT64 Size : 32;
+        UINT64 
+    };
+} HYPERCALL_SIGSCAN_EX, *PHYPERCALL_SIGSCAN_EX;
+
 typedef enum _HYPERCALL_ID
 {
     // Read a guest virtual address, using translations from a specified process's address space
-    HYPERCALL_READ_VIRT,
+    HYPERCALL_READ_VIRT = 0x56504D49 /* 'IMPV' */,
     // Read a guest virtual address, using translations from a specified process's address space
     HYPERCALL_WRITE_VIRT,
     // Scan for a byte signature inside of a virtual address range using translations specified
-    HYPERCALL_VIRT_SIGSCAN
+    HYPERCALL_VIRT_SIGSCAN,
+    // Shutdown the current VCPU and free its resources
+    HYPERCALL_SHUTDOWN_VCPU,
 } HYPERCALL_ID, PHYPERCALL_ID;
 
 // Hypercall system overview:
@@ -55,7 +69,7 @@ Routine Description:
     Creates a list of address translation cache entries used to speed up reads/writes to common locations
 --*/
 {
-
+    // TODO Future: Finish this, could improve performance big time
 }
 
 VMM_EVENT_STATUS
@@ -94,16 +108,23 @@ VmHandleHypercall(
         if (VirtEx.Cr3 == 0 || VirtEx.Size == 0)
             return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
 
-        PMM_VPTE Vpte = NULL;
+        PMM_VPTE Vpte = NULL; 
         if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
             return VmAbortHypercall(Hypercall, HRESULT_INSUFFICIENT_RESOURCES);
+        
+        SIZE_T SizeRead = 0;
+        while (VirtEx.Size > SizeRead)
+        {
+            if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx)))
+                return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
 
-        if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx)))
-            return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+            SIZE_T SizeToRead = VirtEx.Size - SizeRead > PAGE_SIZE ? PAGE_SIZE : VirtEx.Size - SizeRead;
+            if (!NT_SUCCESS(MmReadGuestVirt(VirtEx.Cr3, GuestState->Rdx + SizeRead, SizeToRead, (PCHAR)Vpte->MappedVirtAddr + SizeRead)))
+                return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
 
-        if (!NT_SUCCESS(MmReadGuestVirt(VirtEx.Cr3, GuestState->Rdx, VirtEx.Size, Vpte->MappedVirtAddr)))
-            return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
-            
+            SizeRead += PAGE_SIZE;
+        }
+           
         MmFreeVpte(Vpte);
 
         Hypercall->Result = HRESULT_SUCCESS; 
@@ -127,17 +148,31 @@ VmHandleHypercall(
         if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
             return VmAbortHypercall(Hypercall, HRESULT_INSUFFICIENT_RESOURCES);
 
-        if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx)))
-            return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+        SIZE_T SizeWritten = 0;
+        while (VirtEx.Size > SizeWritten)
+        {
+            if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx)))
+                return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+        
+            SIZE_T SizeToWrite = VirtEx.Size - SizeWritten > PAGE_SIZE ? PAGE_SIZE : VirtEx.Size - SizeWritten;
+            if (!NT_SUCCESS(MmWriteGuestVirt(VirtEx.Cr3, GuestState->Rdx + SizeWritten, SizeToWrite, (PCHAR)Vpte->MappedVirtAddr + SizeWritten)))
+                return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
 
-        if (!NT_SUCCESS(MmWriteGuestVirt(VirtEx.Cr3, GuestState->Rdx, VirtEx.Size, Vpte->MappedVirtAddr)))
-            return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+            SizeWritten += PAGE_SIZE;
+        }
 
         MmFreeVpte(Vpte);
 
         Hypercall->Result = HRESULT_SUCCESS;
     } break;
-    case HYPERCALL_VIRT_SIGSCAN: break;
+    case HYPERCALL_VIRT_SIGSCAN: 
+    {
+        // TODO: Finish this, add signature parsing function & scanner 
+    } break;
+    case HYPERCALL_SHUTDOWN_VCPU:
+    {
+        Vcpu->IsShuttingDown = TRUE;
+    } break;
     default:
         Hypercall->Result = HRESULT_UNKNOWN_HCID;
         VmxInjectEvent(EXCEPTION_UNDEFINED_OPCODE, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);

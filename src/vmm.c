@@ -41,7 +41,7 @@ Routine Description:
         return Status;
     }
 
-    /*
+    /* TODO: Debug why VMX isn't showing up as supported
     Status = VmmEnsureFeatureSupport();
     if (!NT_SUCCESS(Status))
     {
@@ -212,9 +212,15 @@ Routine Description:
  */
 {
 	// TODO: Complete this
-    // VMXOFF on current processor,
-    // Vmm->IsShuttingDown = TRUE;
-    // ApicSendPacket(INTERRUPT_NMI, Affinity);
+    //
+    // Notes (I seriously need to think about this properly):
+    // This function is called upon panicking. It should shutdown the current VCPU, and then the rest
+    //
+    // 1. Call VcpuShutdownPerCpu, this will VMXOFF the current VCPU and restore CR3 to the system CR3,
+    //    hopefully allowing kernel functions to be called in turn allowing us to free resources
+    //
+    // 2. Next, send an IPI to shutdown each VCPU from the current one, the callback should call VcpuShutdownPerCpu
+    // 3. Profit
 }
 
 VOID

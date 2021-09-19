@@ -270,12 +270,11 @@ VcpuDestroy(
 )
 /*++
 Routine Description:
-    Frees all resources allocated by a VCPU
+    Frees all resources allocated for VCPU's
 --*/
 {
-    MmFreeContiguousMemory(Vcpu->Vmxon);
-    MmFreeContiguousMemory(Vcpu->Vmcs);
-
+    // TODO: Finish this 
+    // TODO: Only call this function if we are the last VCPU to be shutdown
 }
 
 DECLSPEC_NORETURN
@@ -506,7 +505,7 @@ Routine Description:
 
 VOID
 VcpuShutdownPerCpu(
-    _Inout_ PVCPU_DELEGATE_PARAMS Params
+    _Inout_ PVCPU Vcpu 
 )
 /*++
 Routine Description:
@@ -514,7 +513,7 @@ Routine Description:
 --*/
 {
     // TODO: Complete this
-    ULONG CpuId = KeGetCurrentProcessorNumber(); 
+    // TODO: VMXOFF, Restore CR3, Free resources and return
 }
 
 VOID
@@ -608,19 +607,22 @@ Routine Description:
 
     ImpDebugPrint("VMRESUME failed... (%x)\n", VmxRead(VM_INSTRUCTION_ERROR));
 
-    // TODO: Shutdown entire hypervisor from here
+    // TODO: Shutdown entire hypervisor from here (VmmShutdownHypervisor)
+    // TODO: Check out? Try using a VMM to get elevated threads by exiting VMX operation and letting
+    //       the thread execute in kernel mode! Should fuck over every anticheat known to man
     __vmx_off();
     __debugbreak();
 }
 
-VOID
+BOOLEAN
 VcpuHandleExit(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState
 )
 /*++
 Routine Description:
-    Loads the VCPU with new data post VM-exit and calls the correct VM-exit handler 
+    Loads the VCPU with new data post VM-exit and calls the correct VM-exit handler, handles any critical errors
+    by immediately shutting down this VCPU and signaling to the other VCPU's that they should shutdown too
 --*/
 {	
     Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
@@ -628,15 +630,31 @@ Routine Description:
 
     VMM_EVENT_STATUS Status = sExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState);
 
+    if (Vcpu->Vmm->IsShuttingDown)
+        Status = VMM_EVENT_ABORT;
+
+    if (Status == VMM_EVENT_ABORT)
+    {
+        // TODO: Set up fake KiKernelIstExit stack inside of __vmexit_trap
+        GuestState->Rip = VmxRead(GUEST_RIP);
+        GuestState->Rsp = VmxRead(GUEST_RSP);
+
+        // VMXOFF
+        // Free all resources for this VCPU
+
+        return FALSE;
+    }
+
     GuestState->Rip = (UINT64)VcpuResume;
 
     VcpuCommitVmxState(Vcpu);
 
     if (Status == VMM_EVENT_CONTINUE)
         VmxAdvanceGuestRip();
+
+    return TRUE;
 }
 
-DECLSPEC_NORETURN
 VMM_EVENT_STATUS
 VcpuUnknownExitReason(
     _Inout_ PVCPU Vcpu,
@@ -644,14 +662,15 @@ VcpuUnknownExitReason(
 )
 /*++
 Routine Description:
-    Handles any unknown/unhandled VM-exit reasons
+    Handles any unknown/unhandled VM-exit reasons by signalling the hypervisor to shutdown
 --*/
 {
     UNREFERENCED_PARAMETER(GuestState);
 
     // TODO: Shutdown entire hypervisor from here
     ImpDebugPrint("Unknown VM-exit reason (%d) on VCPU #%d...\n", Vcpu->Vmx.ExitReason.BasicExitReason, Vcpu->Id);
-    KeBugCheckEx(HYPERVISOR_ERROR, BUGCHECK_UNKNOWN_VMEXIT_REASON, 0, 0, 0);
+
+    return VMM_EVENT_ABORT;
 }
 
 VMM_EVENT_STATUS
