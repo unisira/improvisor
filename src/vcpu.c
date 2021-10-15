@@ -7,6 +7,9 @@
 #include "vcpu.h"
 #include "vmm.h"
 
+// The value of the VMX preemption timer used as a watchdog for TSC virtualisation
+#define VTSC_WATCHDOG_QUANTUM 1000
+
 EXTERN_C
 VOID
 __vmexit_entry(VOID);
@@ -57,6 +60,11 @@ VMEXIT_HANDLER VcpuHandleInvalidGuestState;
 VMEXIT_HANDLER VcpuHandleCrAccess;
 VMEXIT_HANDLER VcpuHandleVmxInstruction;
 VMEXIT_HANDLER VcpuHandleHypercall;
+VMEXIT_HANDLER VcpuHandleRdtsc;
+VMEXIT_HANDLER VcpuHandleMsrRead;
+VMEXIT_HANDLER VcpuHandleMsrWrite;
+VMEXIT_HANDLER VcpuHandleXSETBV;
+VMEXIT_HANDLER VcpuHandlePreemptionTimerExpire;
 
 static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason, 			// Exception or non-maskable interrupt (NMI)
@@ -75,7 +83,7 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason, 			// INVD
     VcpuUnknownExitReason, 			// INVLPG
     VcpuUnknownExitReason, 			// RDPMC
-    VcpuUnknownExitReason, 			// RDTSC
+    VcpuHandleRdtsc, 			    // RDTSC
     VcpuUnknownExitReason, 			// RSM
     VcpuHandleHypercall, 			// VMCALL
     VcpuHandleVmxInstruction, 		// VMCLEAR
@@ -90,8 +98,8 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuHandleCrAccess, 			// Control-register accesses
     VcpuUnknownExitReason, 			// MOV DR
     VcpuUnknownExitReason,			// I/O instruction
-    VcpuUnknownExitReason,			// RDMSR
-    VcpuUnknownExitReason,			// WRMSR
+    VcpuHandleMsrRead,     			// RDMSR
+    VcpuHandleMsrWrite, 			// WRMSR
     VcpuHandleInvalidGuestState,	// VM-entry failure due to invalid guest state
     VcpuUnknownExitReason, 			// VM-entry failure due to MSR loading
     NULL,
@@ -110,7 +118,7 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason, 			// EPT violation
     VcpuUnknownExitReason, 			// EPT misconfiguration
     VcpuHandleVmxInstruction, 		// INVEPT
-    VcpuUnknownExitReason, 			// RDTSCP
+    VcpuHandleRdtsc,     			// RDTSCP
     VcpuUnknownExitReason, 			// VMX-preemption timer expired
     VcpuHandleVmxInstruction, 		// INVVPID
     VcpuUnknownExitReason, 			// WBINVD or WBNOINVD
@@ -118,7 +126,7 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason, 			// APIC write
     VcpuUnknownExitReason, 			// RDRAND
     VcpuUnknownExitReason, 			// INVPCID
-    VcpuUnknownExitReason, 			// VMFUNC
+    VcpuHandleVmxInstruction, 		// VMFUNC
     VcpuUnknownExitReason, 			// ENCLS
     VcpuUnknownExitReason, 			// RDSEED
     VcpuUnknownExitReason, 			// Page-modification log full
@@ -274,7 +282,6 @@ Routine Description:
 --*/
 {
     // TODO: Finish this 
-    // TODO: Only call this function if we are the last VCPU to be shutdown
 }
 
 DECLSPEC_NORETURN
@@ -630,20 +637,21 @@ Routine Description:
 
     VMM_EVENT_STATUS Status = sExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState);
 
-    if (Vcpu->Vmm->IsShuttingDown)
+    if (Vcpu->IsShuttingDown)
         Status = VMM_EVENT_ABORT;
 
+    /*
     if (Status == VMM_EVENT_ABORT)
     {
         // TODO: Set up fake KiKernelIstExit stack inside of __vmexit_trap
         GuestState->Rip = VmxRead(GUEST_RIP);
-        GuestState->Rsp = VmxRead(GUEST_RSP);
 
         // VMXOFF
         // Free all resources for this VCPU
 
         return FALSE;
     }
+    */
 
     GuestState->Rip = (UINT64)VcpuResume;
 
@@ -669,8 +677,42 @@ Routine Description:
 
     // TODO: Shutdown entire hypervisor from here
     ImpDebugPrint("Unknown VM-exit reason (%d) on VCPU #%d...\n", Vcpu->Vmx.ExitReason.BasicExitReason, Vcpu->Id);
-
     return VMM_EVENT_ABORT;
+}
+
+VOID
+VcpuEnableTscSpoofing(
+    _Inout_ PVCPU Vcpu
+)
+/*++
+Routine Description:
+    This function enables TSC spoofing for the next while
+--*/
+{
+    // TSC Spoofing:
+    //
+    // Save TSC MSR on VM-exit always
+    //
+    // on CPUID VM-exit:
+    //      Enable VMX preemption timer set to 4000
+    //      Enable RDTSC exiting
+    //      Store TSC MSR value saved on exit + CPUID latency - VM-entry latency in TSC event history
+    //
+    // on RDTSC/P VM-exit with spoofing:
+    //      Read last history with same caller ID
+    //      Set TSC value to last history value + guest exeuction time obtained from VMX preemption timer value
+    //      
+    // on VMX preemption timer expiration VM-exit:
+    //      Disable RDTSC exiting
+    //      Disable VMX preemption timer
+    //
+    Vcpu->TscInfo.SpoofEnabled = TRUE;
+
+    VcpuSetControl(VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
+    VcpuSetControl(VMX_CTL_RDTSC_EXITING, TRUE);
+
+    // Write the TSC watchdog quantum
+    VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, VTSC_WATCHDOG_QUANTUM + Vcpu->TscInfo.VmEntryLatency);
 }
 
 VMM_EVENT_STATUS
@@ -704,13 +746,34 @@ Routine Description:
     GuestState->Rcx = CpuidArgs.Ecx;
     GuestState->Rdx = CpuidArgs.Edx;
 
-    /* TODO: Make this work
-    VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
-    VcpuSetControl(Vcpu, VMX_CTL_RDTSC_EXITING, TRUE);
+    if (!Vcpu->TscInfo.SpoofEnabled)
+        VcpuEnableTscSpoofing(Vcpu);
+    else
+    {
+        // Try find a previous TSC event from this thread
+        PTSC_EVENT_ENTRY LastEntry = VTscFindLastTscEvent(&Vcpu->TscInfo, WinGetCurrentGuestThreadID());
+        if (LastEntry)
+        {
+            // Calculate the time since the last event during this thread
+            // TODO: Take into account context switch execution latency
+            UINT64 ElapsedTime = VTSC_WATCHDOG_QUANTUM - VmxRead(GUEST_VMX_PREEMPTION_TIMER_VALUE);
 
-    // Set the VMX preemption timer to a relatively low value taking the VM entry latency into account
-    VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, Vcpu->TscInfo.VmEntryLatency + 500);
-    */
+            // Base the new timestamp off the last TSC event for this thread
+            UINT64 Timestamp = LastEntry->Timestamp + LastEntry->Latency + ElapsedTime;
+
+            VTscInsertEventEntry(TSC_EVENT_CPUID, Timestamp);
+        } 
+        else
+        {
+            // Context switch occured, we are running a new thread on the same core where a TSC event happened
+            // Estimate TSC value using stored TSC MSR - VM-exit latency + CPUID latency
+            //
+            // TODO: Context switch + quantum running out = big issue, check next scheduled thread?
+            UINT64 Timestamp = Vcpu->MsrStore[MSR_STORE_EXIT][IA32_TIME_STAMP_COUNTER] - Vcpu->TscInfo.VmExitLatency;
+
+            VTscInsertEventEntry(TSC_EVENT_CPUID, Timestamp);
+        }
+    }
 
     return VMM_EVENT_CONTINUE;
 }
@@ -751,7 +814,7 @@ Routine Description:
         /* RBP */ 0,
         /* RSI */ offsetof(GUEST_STATE, Rsi),
         /* RDI */ offsetof(GUEST_STATE, Rdi),
-        /* R8  */ offsetof(GUEST_STATE, R8),
+        /* R8  */ offsetof(GUEST_STVmmVmExitXsetbvATE, R8),
         /* R9  */ offsetof(GUEST_STATE, R9),
         /* R10 */ offsetof(GUEST_STATE, R10),
         /* R11 */ offsetof(GUEST_STATE, R11),
@@ -1132,6 +1195,216 @@ Routine Description:
 {
     PHYPERCALL_INFO Hypercall = (PHYPERCALL_INFO)&GuestState->Rax;
     return VmHandleHypercall(Vcpu, GuestState, Hypercall);
+}
+
+VOID
+VcpuSpoofTscValue(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+    _Out_ PLARGE_INTEGER Tsc
+)
+{
+    // Must handle multiple threads/ CPUID executions
+    //
+    // 
+    //
+
+    PTSC_EVENT_ENTRY CurrEvent = Vcpu->TscInfo.EventHistoryHead;
+    while (CurrEvent != NULL)
+    {
+        if (WinGetCurrentGuestThreadID() == CurrEvent->ThreadID)
+        {
+            
+        }
+        
+        CurrEvent = (PTSC_EVENT_ENTRY)CurrEvent->Links.Blink;
+    }
+}
+
+VMM_EVENT_STATUS
+VcpuHandleRdtsc(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    // CPUID Exit - Estimate TSC for after VMENTRY and record it
+
+    // TODO: PLAN
+    // On CPUID VM-exit
+    //      Enable VMX preemption timer to some predefined quantum
+    //      Enable RDTSC exiting
+    //      Store RDTSC of current time (Current - VMENTRY_LATENCY)
+    //
+    // On RDTSC VM-exit
+    //      Query value of VMX preemption timer (amount of time the guest has ran in between)
+    //      Set TSC to the value of the previous TSC stored + instruction latency (calculated previously)
+    //
+    // On VMX preemption timer exit
+    //      Disable RDTSC exiting and VMX preemption timer
+    //
+    //
+
+    LARGE_INTEGER Tsc = {
+        .QuadPart = __rdtsc()
+    };
+
+    if (Vcpu->TscInfo.SpoofEnabled)
+        VcpuSpoofTscValue(Vcpu, GuestState, &Tsc);
+
+    GuestState->Rdx = Tsc.HighPart;
+    GuestState->Rax = Tsc.LowPart;
+
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleRdtscp(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    // CPUID Exit - Estimate TSC for after VMENTRY and record it
+
+    // TODO: PLAN
+    // On CPUID VM-exit
+    //      Enable VMX preemption timer to some predefined quantum
+    //      Enable RDTSC exiting
+    //      Store RDTSC of current time (Current - VMENTRY_LATENCY)
+    //
+    // On RDTSC VM-exit
+    //      Query value of VMX preemption timer (amount of time the guest has ran in between)
+    //      Set TSC to the value of the previous TSC stored + instruction latency (calculated previously)
+    //
+    // On VMX preemption timer exit
+    //      Disable RDTSC exiting and VMX preemption timer
+    //
+    //
+
+    LARGE_INTEGER Tsc = {
+        .QuadPart = __rdtsc()
+    };
+
+    if (Vcpu->TscInfo.SpoofEnabled)
+        VcpuSpoofTscValue(Vcpu, GuestState, &Tsc);
+
+    GuestState->Rdx = Tsc.HighPart;
+    GuestState->Rax = Tsc.LowPart;
+
+    return VMM_EVENT_CONTINUE;
+}
+
+BOOLEAN
+VcpuValidateMsr(
+    _In_ UINT64 Msr
+)
+/*++
+Routine Description:
+    Validates if an MSR is valid to read/write from
+--*/
+{
+    // TODO: Finish this
+    return FALSE;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleMsrRead(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    UINT64 Msr = GuestState->Rcx;
+
+    if (!VcpuValidateMsr(Msr))
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
+    LARGE_INTEGER MsrValue = {
+        .HighPart = GuestState->Rdx, .LowPart = GuestState->Rax
+    };
+
+    __writemsr(MsrValue.QuadPart);
+
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleMsrWrite(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    UINT64 Msr = GuestState->Rcx;
+
+    if (!VcpuValidateMsr(Msr))
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
+    LARGE_INTEGER MsrValue = {
+        .QuadPart = __readmsr(Msr)
+    };
+
+    GuestState->Rdx = MsrValue.HighPart;
+    GuestState->Rax = MsrValue.LowPart;
+
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleXSETBV(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuHandlePreemptionTimerExpire(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    // TODO: Disable VMX preemption timer and TSC spoofing
+    if (Vcpu->TscInfo.SpoofEnabled)
+    {
+
+        Vcpu->TscInfo.SpoofEnabled = FALSE;
+    }
+
+
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleExternalInterruptNmi(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    // If a context switch happens and we execute on another core, theres no way to tell how long
+    // it has been since execution of a TSC. I must use external interrupt exiting and add a new TSC
+    // event for when this happens to reset the watchdog quantum just in case
+
+    // Context switches switch THREADS not CORES
+    // On CONTEXT SWITCH INTERRUPT:
+    //      RESET QUANTUM, INSERT MARKER TSC EVENT 
+    //
+    // Context switch 1:
+    //      Current thread stops running, runs new thread that does nothing
+    //      Quantum on this core is reset but a 'marker' entry with the old thread ID is inserted
+    //
+    // Context switch 2:
+    //      Current thread gets queued again, code runs and causes the TSC event that was anticipated
+    //      Quantum on this core was reset but has continued, the TSC event handling code will find
+    //      the 'marker' entry we insert and will virtualise based off that
+    //
+
+
+    return VMM_EVENT_CONTINUE;
 }
 
 PX86_SEGMENT_DESCRIPTOR

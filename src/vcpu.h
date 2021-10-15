@@ -5,6 +5,7 @@
 #include "vmx.h"
 #include "cpu.h"
 #include "mm.h"
+#include "tsc.h"
 
 // Emulation was successful, continue execution
 #define VMM_EVENT_CONTINUE (0x00000000)
@@ -70,11 +71,6 @@ typedef union _VCPU_STACK
     } Cache;
 } VCPU_STACK, *PVCPU_STACK;
 
-typedef struct _TSC_INFO
-{
-    UINT64 VmEntryLatency;
-} TSC_INFO, *PTSC_INFO;
-
 typedef struct _VCPU
 {
     UINT8 Id;
@@ -93,7 +89,7 @@ typedef struct _VCPU
     BOOLEAN IsShuttingDown;
     CPU_STATE LaunchState;
     VMX_STATE Vmx;
-    TSC_INFO TscInfo;
+    TSC_STATUS TscInfo;
     UINT64 Cr0ShadowableBits;
     UINT64 Cr4ShadowableBits;
     BOOLEAN UnrestrictedGuest;
