@@ -85,4 +85,14 @@ typedef union _X86_SEGMENT_ACCESS_RIGHTS
 	};
 } X86_SEGMENT_ACCESS_RIGHTS, *PX86_SEGMENT_ACCESS_RIGHTS;
 
+UINT64
+SegmentBaseAddress(
+    _In_ X86_SEGMENT_SELECTOR Selector
+);
+
+UINT32
+SegmentAr(
+    _In_ X86_SEGMENT_SELECTOR Selector
+);
+
 #endif
