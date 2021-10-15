@@ -4,12 +4,15 @@
 // Define for WINDBG usage & hot loading & unloading
 #define _DEBUG
 
+BOOLEAN gIsHypervisorRunning;
+
 VOID
 DriverUnload(
     IN PDRIVER_OBJECT DriverObject
 )
 {
-    VmmShutdownHypervisor();
+    if (gIsHypervisorRunning)
+        VmmShutdownHypervisor(NULL);
 }
 
 NTSTATUS 
@@ -18,6 +21,8 @@ DriverEntry(
     IN PUNICODE_STRING RegistryPath
 )
 {
+    NTSTATUS Status = STATUS_SUCCESS;
+
     UNREFERENCED_PARAMETER(RegistryPath);
 
 #ifdef _DEBUG 
@@ -25,5 +30,9 @@ DriverEntry(
     DriverObject->DriverUnload = DriverUnload;
 #endif
 
-    return VmmStartHypervisor();
+    Status = VmmStartHypervisor();
+    if (NT_SUCCESS(Status))
+        gIsHypervisorRunning = TRUE;
+
+    return Status;
 }
