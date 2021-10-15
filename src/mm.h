@@ -34,10 +34,21 @@ typedef struct _MM_VPTE
 {
     LIST_ENTRY Links;
     PMM_PTE Pte;
+    UINT64 PtePhysAddr;
     PVOID MappedVirtAddr;
     UINT64 MappedPhysAddr;
     PVOID MappedAddr;
 } MM_VPTE, *PMM_VPTE;
+
+typedef struct _MM_RESERVED_PT
+{
+    LIST_ENTRY Links;
+    PVOID TableAddr;
+    UINT64 TablePhysAddr;
+} MM_RESERVED_PT, *PMM_RESERVED_PT;
+
+extern PMM_RESERVED_PT gHostPageTablesHead = NULL;
+extern PMM_RESERVED_PT gHostPageTablesTail = NULL;
 
 NTSTATUS
 MmInitialise(

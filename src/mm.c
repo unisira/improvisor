@@ -17,20 +17,14 @@ typedef struct _MM_RESERVED_PT
 {
     LIST_ENTRY Links;
     PVOID TableAddr;
+    UINT64 TablePhysAddr;
 } MM_RESERVED_PT, *PMM_RESERVED_PT;
-
-typedef struct _MM_POOL_CHUNK_HDR
-{
-    LIST_ENTRY Links;
-    SIZE_T Size;
-} MM_POOL_CHUNK_HDR, *PMM_POOL_CHUNK_HDR;
 
 // TODO: For host page tables, include MM_RESERVED_PT header in the raw PT list allocation
 PMM_RESERVED_PT gHostPageTablesHead = NULL;
+PMM_RESERVED_PT gHostPageTablesTail = NULL;
 
 PMM_VPTE gVirtualPTEHead = NULL;
-
-PMM_POOL_BLOCK_HDR gFreePoolChunkHead = NULL;
 
 // The raw array of page tables, each comprising of 512 possible entries
 static PVOID sPageTableListRaw = NULL;
@@ -40,9 +34,6 @@ static PMM_RESERVED_PT sPageTableListEntries = NULL;
 // The raw list of virtual PTE list entries
 static PMM_VPTE sVirtualPTEListRaw = NULL;
 static SPINLOCK sVirtualPTEListLock;
-
-static PVOID sPoolBlock = NULL;
-static SPINLOCK sPoolBlockLock;
 
 // TODO: Move away from use of NTSTATUS for non-setup / windows related functions
 
@@ -177,13 +168,14 @@ Routine Description:
     }
 
     // Setup the head as the first entry in this array
-    gHostPageTablesHead = sPageTableListEntries;
+    gHostPageTablesTail = gHostPageTablesHead = sPageTableListEntries;
 
     for (SIZE_T i = 0; i < Count; i++)
     {
         PMM_RESERVED_PT CurrTable = sPageTableListEntries + i;
 
         CurrTable->TableAddr = (PCHAR)sPageTableListRaw + (i * PAGE_SIZE);
+        CurrTable->TablePhysAddr = MmGetPhysicalAddress(CurrTable->TableAddr);
 
         CurrTable->Links.Flink = i < Count  ? &(CurrTable + 1)->Links : NULL;
         CurrTable->Links.Blink = i > 0      ? &(CurrTable - 1)->Links : NULL;
@@ -307,201 +299,6 @@ Routine Description:
     Vpte->Links.Blink = &HeadVpte->Links;
 
     SpinUnlock(&sVirtualPTEListLock);
-}
-
-NTSTATUS
-MmAllocatePoolBlock(
-    _In_ SIZE_T Size
-)
-/*++
-Routine Description:
-    This function allocates a pool block for the pool allocator, which will allow
-    memory to be allocated/free'd during host execution without any need for NT functions
---*/
-{
-    SIZE_T ChunkCount = (Size + BASE_POOL_CHUNK_SIZE - 1) / BASE_POOL_CHUNK_SIZE;
-    
-    sPoolBlock = ImpAllocateNpPool(Size + ChunkCount * sizeof(MM_POOL_CHUNK_HDR));
-    if (sPoolBlock)
-        return STATUS_INSUFFICIENT_RESOURCES;
-    
-    gFreePoolChunkHead = (PMM_POOL_CHUNK_HDR)sPoolBlock;
-
-    PMM_POOL_CHUNK_HDR CurrChunk = gFreePoolChunkHead;
-    for (SIZE_T i = 0; i < ChunkCount; i++)
-    {
-        CurrChunk->Links.Flink = i < ChunkCount ? (PVOID)((ULONG_PTR)CurrChunk + sizeof(MM_POOL_CHUNK_HDR) + BASE_POOL_CHUNK_SIZE) : NULL; 
-        CurrChunk->Links.Blink = i > 0          ? (PVOID)((ULONG_PTR)CurrChunk - sizeof(MM_POOL_CHUNK_HDR) - BASE_POOL_CHUNK_SIZE) : NULL;
-        CurrChunk->Size = BASE_POOL_CHUNK_SIZE;
-
-        CurrChunk = (PMM_POOL_CHUNK_HDR)CurrChunk->Links.Flink;
-    }
-
-    return STATUS_SUCCESS;
-}
-
-VOID
-MmRemoveChunk(
-    _In_ PMM_POOL_CHUNK_HDR Chunk
-)
-/*++
-Routine Description:
-    Removes `Chunk` from the linked list
---*/
-{
-    PMM_POOL_CHUNK_HDR NextChunk = (PMM_POOL_CHUNK_HDR)Chunk->Links.Flink;
-    PMM_POOL_CHUNK_HDR PrevChunk = (PMM_POOL_CHUNK_HDR)Chunk->Links.Blink;
-    if (NextChunk != NULL)
-        NextChunk->Links.Blink = &PrevChunk->Links;
-    if (PrevChunk != NULL)
-        PrevChunk->Links.Flink = &NextChunk->Links;
-}
-
-VOID
-MmCombineChunks(
-    _In_ PMM_POOL_CHUNK_HDR First,
-    _In_ PMM_POOL_CHUNK_HDR Second
-)
-/*++
-Routine Description:
-    Combines `First` and `Second`, with `Second` getting invalidated
---*/
-{
-    // Remove `Second` from its place in the linked list 
-    MmRemoveChunk(Second);
-
-    First->Size += Second->Size;
-}
-
-PMM_POOL_CHUNK_HDR
-MmFindNextContiguousChunk(
-    _In_ PMM_POOL_CHUNK_HDR Chunk
-)
-/*++
-Routine Description:
-    Looks for the chunk that directly follows `Chunk` in the pool block
---*/
-{
-    PVOID ExpectedBase = (PVOID)((ULONG_PTR)CHUNK_ADDR(Chunk) + Chunk->Size);
-
-    while (Chunk->Links.Flink != NULL)
-    {
-        if (CHUNK_ADDR(Chunk) == ExpectedBase)
-            return Chunk;
-
-        Chunk = (PMM_POOL_CHUNK_HDR)Chunk->Links.Flink;
-    }
-
-    return NULL;
-}
-
-VOID
-MmCoalesceContiguousChunks()
-/*++
-Routine Description:
-    Iterates over each chunk and combines it with the next adjacent one until it
-    can't find any more or the size would push it over `BASE_POOL_CHUNK_SIZE`
---*/
-{
-    PMM_POOL_CHUNK_HDR CurrChunk = gFreePoolChunkHead;
-    while (CurrChunk->Links.Flink != NULL)
-    {
-        PMM_POOL_CHUNK_HDR ContigChunk = MmFindNextContiguousChunk(CurrChunk);
-        if (ContigChunk == NULL)
-            break;
-
-        if (CurrChunk->Size + ContigChunk->Size > BASE_POOL_CHUNK_SIZE)
-            break;
-
-        MmCombineChunks(CurrChunk, ContigChunk);
-
-        CurrChunk = (PMM_POOL_CHUNK_HDR)CurrChunk->Links.Flink;
-    }
-}
-
-PVOID
-MmAllocatePool(
-    _In_ SIZE_T Size
-)
-/*++
-Routine Description:
-    Allocates memory by removing enough chunks to satisfy `Size` from the linked list and reserving them for use 
---*/
-{
-    // Force 16 byte alignment
-    Size = ALIGN_TO(Size, 16);
-
-    // TODO: Alignment to 16-byte boundary, easily done by forcing size to be aligned 
-    PMM_POOL_CHUNK_HDR CurrChunk = gFreePoolChunkHead;
-
-    if (CurrChunk->Size <= Size)
-    { 
-        SIZE_T Iter = 0;
-        while (CurrChunk->Size <= Size)
-        {
-            // If this fails, we can't find or create a chunk big enough 
-            PMM_POOL_CHUNK_HDR ContigChunk = MmFindNextContiguousChunk(CurrChunk);
-            if (ContigChunk == NULL)
-                break;
-
-            MmCombineChunks(CurrChunk, ContigChunk);
-
-            Iter++;
-        }
-
-        // If we had to combine multiple chunks to meet `Size`, coalesce chunks
-        if (Iter >= 3)
-            MmCoalesceContiguousChunks();
-    }
-
-    // Make sure the chunk is big enough
-    if (CurrChunk->Size >= Size)
-    {
-        // Convert the rest of this chunk into a new chunk if a new chunk header can be fit
-        if (CurrChunk->Size - Size > sizeof(MM_POOL_CHUNK_HDR))
-        {
-            PMM_POOL_CHUNK_HDR SplitChunk = (PMM_POOL_CHUNK_HDR)((ULONG_PTR)CHUNK_ADDR(CurrChunk) + Size);
-
-            // Insert the split chunk
-            PMM_POOL_CHUNK_HDR NextChunk = (PMM_POOL_CHUNK_HDR)CurrChunk->Links.Flink;
-            PMM_POOL_CHUNK_HDR PrevChunk = (PMM_POOL_CHUNK_HDR)CurrChunk->Links.Blink;
-            if (NextChunk != NULL)
-                NextChunk->Links.Blink = &SplitChunk->Links;
-            if (PrevChunk != NULL)
-                PrevChunk->Links.Flink = &SplitChunk->Links;
-
-            SplitChunk->Links.Flink = &NextChunk->Links;
-            SplitChunk->Links.Blink = &PrevChunk->Links;
-            SplitChunk->Size = CurrChunk->Size - Size;
-        }
-
-        MmRemoveChunk(CurrChunk);
-
-        gFreePoolChunkHead = (PMM_POOL_CHUNK_HDR)CurrChunk->Links.Flink;
-
-        return CHUNK_ADDR(CurrChunk);
-    }
-
-    return NULL;
-}
-
-VOID
-MmFreePool(
-    PVOID Addr
-)
-/*++
-Routine Description:
-    Free's a chunk by inserting it back into the linked list before the head entry
---*/
-{
-    PMM_POOL_CHUNK_HDR HeadChunk = gFreePoolChunkHead;
-
-    PMM_POOL_CHUNK_HDR Chunk = CHUNK_HDR(Addr);
-
-    gFreePoolChunkHead = Chunk;
-    Chunk->Links.Flink = &HeadChunk->Links;
-    Chunk->Links.Blink = HeadChunk->Links.Blink;
-    HeadChunk->Links.Blink = &Chunk->Links;  
 }
 
 NTSTATUS
@@ -732,7 +529,7 @@ Routine Description:
 
     // TODO: Think about if that while loop condition is wrong, possibly missing the first after the refactor
     PIMP_ALLOC_RECORD CurrRecord = (PIMP_ALLOC_RECORD)gHostAllocationsHead;
-    while (CurrRecord->Records.Blink != NULL)
+    while (CurrRecord != NULL)
     {
         SIZE_T SizeMapped = 0;
         while (CurrRecord->Size > SizeMapped)
@@ -878,8 +675,7 @@ Routine Description:
     Maps a virtual address to `Vpte` by translating `VirtAddr` through `GuestCr3` and assigning `Vpte` the physical address obtained
 --*/
 {
-    // TODO: Cut down on VPTE allocations during this call, can cause a lot of noise with CPUs trying to access
-    // MmAllocateVpte and MmFreeVpte
+    // TODO: Cut down on VPTE allocations during this call, can cause a lot of noise with CPUs trying to access MmAllocateVpte and MmFreeVpte
     NTSTATUS Status = STATUS_SUCCESS;
 
     X86_LA48 LinearAddr = {
@@ -916,6 +712,8 @@ Routine Description:
     Status = MmReadGuestPhys(PAGE_ADDRESS(Pte.PageFrameNumber) + sizeof(MM_PTE) * LinearAddr.PtIndex, sizeof(MM_PTE), &Pte);
     if (!NT_SUCCESS(Status))
         return Status;
+
+    // TODO: Store this PTE's physaddr so we can read it inside of MmReadGuestVirt
 
     if (!Pte.Present)
         return STATUS_INVALID_PARAMETER;
