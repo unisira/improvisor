@@ -15,7 +15,7 @@
 // The extended hypercall info (RBX) value was invalid 
 #define HRESULT_INVALID_EXT_INFO (0x8105)
 
-typedef struct 
+typedef UINT64 HYPERCALL_RESULT; 
 
 // Information relevant to caching, reading or writing virtual addresses in an address space
 typedef union _HYPERCALL_VIRT_EX 
@@ -37,7 +37,6 @@ typedef union _HYERPCALL_SIGSCAN_EX
     {
         UINT64 Cr3 : 16;
         UINT64 Size : 32;
-        UINT64 
     };
 } HYPERCALL_SIGSCAN_EX, *PHYPERCALL_SIGSCAN_EX;
 
@@ -51,7 +50,18 @@ typedef enum _HYPERCALL_ID
     HYPERCALL_VIRT_SIGSCAN,
     // Shutdown the current VCPU and free its resources
     HYPERCALL_SHUTDOWN_VCPU,
+    // Returns the value of the system CR3 in RAX
+    HYPERCALL_GET_SYSTEM_CR3,
 } HYPERCALL_ID, PHYPERCALL_ID;
+
+typedef enum _HYPERCALL_CACHED_CR3_TARGET
+{
+    INVALID = 0,
+    // Use the system CR3
+    SYSTEM,
+    // Use the current value of GUEST_CR3 in the VMCS 
+    GUEST
+} HYPERCALL_CACHED_CR3_TARGET;
 
 // Hypercall system overview:
 // System register  | Use
@@ -91,11 +101,13 @@ VmHandleHypercall(
 {
     UINT64 GuestCr3 = VmxRead(GUEST_CR3);
 
+    Hypercall->Result = HRESULT_SUCCESS;
+
     switch (Hypercall->Id) 
     {
     case HYPERCALL_READ_VIRT:
     {
-       if (GuestState->Rdx == 0)
+        if (GuestState->Rdx == 0)
             return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
         
         if (GuestState->Rcx == 0)
@@ -126,8 +138,6 @@ VmHandleHypercall(
         }
            
         MmFreeVpte(Vpte);
-
-        Hypercall->Result = HRESULT_SUCCESS; 
     } break;
     case HYPERCALL_WRITE_VIRT: 
     {
@@ -162,8 +172,6 @@ VmHandleHypercall(
         }
 
         MmFreeVpte(Vpte);
-
-        Hypercall->Result = HRESULT_SUCCESS;
     } break;
     case HYPERCALL_VIRT_SIGSCAN: 
     {
