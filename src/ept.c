@@ -1,22 +1,51 @@
 #include "improvisor.h"
+#include "arch/memory.h"
+#include "arch/mtrr.h"
 #include "ept.h"
 #include "vmx.h"
 #include "mm.h"
 
-#define PAGE_FRAME_NUMBER(Addr) ((UINT64)(Addr) >> 12)
-#define PAGE_ADDRESS(Pfn) ((UINT64)(Pfn) << 12)
-
-typedef struct _PHYSICAL_MEMORY_RANGE
+MEMORY_TYPE
+EptGetMtrrMemoryType(
+    _In_ UINT64 PhysAddr
+)
+/*++
+Routine Description:
+    This function gets the 
+--*/
 {
-    PHYSICAL_ADDRESS BaseAddress;
-    LARGE_INTEGER NumberOfBytes;
-} PHYSICAL_MEMORY_RANGE, *PPHYSICAL_MEMORY_RANGE;
+    IA32_MTRR_CAPABILITIES_MSR MtrrCap = {
+        .Value = __rdmsr(IA32_MTRR_CAPABILTIIES)
+    };
 
-NTKERNELAPI
-PPHYSICAL_MEMORY_RANGE
-MmGetPhysicalMemoryRanges(
-    VOID
-);
+    for (SIZE_T i = 0; i < MtrrCap.VariableRangeRegCount; i++)
+    {
+        IA32_MTRR_PHYSBASE_N_MSR Base = {
+            .Value = __readmsr(IA32_MTRR_PHYSBASE_0 + i * 2)
+        };
+
+        IA32_MTRR_PHYSMASK_N_MSR Mask = {
+            .Value = __readmsr(IA32_MTRR_PHYSMASK_0 + i * 2)
+        };
+
+        if (!Mask.Valid)
+            continue;
+
+        const UINT64 PhysBase = PAGE_ADDRESS(Base.Base);
+
+        const ULONG SizeShift = 0;
+        _BitScanForward64(&SizeShift, Mask.Mask << 12);
+
+        if (PhysAddr >= PhysBase && PhysAddr + PAGE_SIZE < PhysBase + (1 << SizeShift))
+            return Base.Type;
+    }
+
+    IA32_MTRR_DEFAULT_TYPE_MSR DefaultType = {
+        .Value = __readmsr(IA32_MTRR_DEFAULT_TYPE)
+    };
+
+    return DefaultType.Type; 
+}
 
 PEPT_PTE 
 EptReadExistingPte(
@@ -47,8 +76,10 @@ NTSTATUS
 EptIdentityMapMemoryRange(
     _In_ PEPT_PTE Pml4,
     _In_ UINT64 PhysAddr,
+    _In_ UINT64 GuestPhysAddr,
     _In_ UINT64 Size,
-    _In_ UINT16 Permissions
+    _In_ UINT16 Permissions,
+    _In_ MEMORY_TYPE Type
 )
 /*++
 Routine Description:
@@ -141,6 +172,8 @@ Routine Description:
         else
             Pte = EptReadExistingPte(Pde->PageFrameNumber, Gpa.PtIndex);
 
+        Pte->MemoryType = Type;
+
         Pte->ReadAccess = TRUE;
         Pte->WriteAccess = TRUE;
         Pte->ExecuteAccess = TRUE;
@@ -167,17 +200,35 @@ Routine Description:
     //
     // 2. This function will take care of hiding data from ANY allocations made by the hypervisor
 
+    // TODO: Optimise this more by using largest pages where possible by checking MTRR range size
+
     NTSTATUS Status = STATUS_SUCCESS;
 
-    // TODO: Dont use this, use MTRR
-    PPHYSICAL_MEMORY_RANGE Range = MmGetPhysicalMemoryRanges();
-    while (Range != NULL)
+    IA32_MTRR_CAPABILITIES_MSR MtrrCap = {
+        .Value = __rdmsr(IA32_MTRR_CAPABILTIIES)
+    };
+
+    for (SIZE_T i = 0; i < MtrrCap.VariableRangeRegCount; i++)
     {
-        Status = EptIdentityMapMemoryRange(Pml4, Range->BaseAddress.QuadPart, Range->NumberOfBytes.QuadPart);
+        IA32_MTRR_PHYSBASE_N_MSR Base = {
+            .Value = __readmsr(IA32_MTRR_PHYSBASE_0 + i * 2)
+        };
+
+        IA32_MTRR_PHYSMASK_N_MSR Mask = {
+            .Value = __readmsr(IA32_MTRR_PHYSMASK_0 + i * 2)
+        };
+
+        if (!Mask.Valid)
+            continue;
+
+        const UINT64 PhysBase = PAGE_ADDRESS(Base.Base);
+
+        const ULONG SizeShift = 0;
+        _BitScanForward64(&SizeShift, Mask.Mask << 12);
+
+        Status = EptMapMemoryRange(Pml4, PhysBase, PhysBase, 1ULL << SizeShift, 0, Base.Type);
         if (!NT_SUCCESS(Status))
             return Status;
-
-        Range++;
     }
 
     return Status;
@@ -191,6 +242,24 @@ Routine Description:
     before other Mm* functions which allocate page tables to improve performance
 --*/
 {
+    // This function should do the following:
+    //
+    // Allocate one PML4 which will map all memory known to man (incredible)
+    //
+    // Check if large PDPTs are supported, and if they are:
+    // Map using large PDPTEs (1GB each) which can be taken from the host page tables
+    //
+    // If not:
+    // Map using large PDEs (2MB each) which can be taken from the host page tables
+    //
+    // On HYPERCALL_EPT_MAP_PAGES:
+    // Remap right the way down to PTE level for the requested GPA and change PageFrameNumber to the PFN of the swap page supplied
+    //
+    // On EPT violation (should only happen for hooked pages):
+    // Try to identity map the region using the largest possible pages
+    // If a hooked page lies within the range, try the next smallest page size and continue
+    //
+
     // TODO: Free stuff
     NTSTATUS Status = STATUS_SUCCESS;
 
@@ -201,6 +270,8 @@ Routine Description:
     Status = EptSetupIdentityMap(Pml4); 
     if (!NT_SUCCESS(Status))
         return Status;
+
+    // TODO: Set up MM information struct containing all sorts
 
     return Status;
 }
