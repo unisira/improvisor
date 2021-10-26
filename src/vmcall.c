@@ -3,19 +3,7 @@
 #include "vmx.h"
 #include "mm.h"
 
-#define HRESULT_SUCCESS (0x8100)
-// Unknown hypercall ID
-#define HRESULT_UNKNOWN_HCID (0x8101) 
-// Invalid target address (RDX) value
-#define HRESULT_INVALID_TARGET_ADDR (0x8102)
-// Invalid buffer address (RCX) value
-#define HRESULT_INVALID_BUFFER_ADDR (0x8103)
-// Insufficient resources to complete the requested task
-#define HRESULT_INSUFFICIENT_RESOURCES (0x8104)
-// The extended hypercall info (RBX) value was invalid 
-#define HRESULT_INVALID_EXT_INFO (0x8105)
 
-typedef UINT64 HYPERCALL_RESULT; 
 
 // Information relevant to caching, reading or writing virtual addresses in an address space
 typedef union _HYPERCALL_VIRT_EX 
@@ -52,6 +40,8 @@ typedef enum _HYPERCALL_ID
     HYPERCALL_SHUTDOWN_VCPU,
     // Returns the value of the system CR3 in RAX
     HYPERCALL_GET_SYSTEM_CR3,
+    // Remap a GPA to a virtual address passed
+    HYPERCALL_EPT_REMAP_PAGES
 } HYPERCALL_ID, PHYPERCALL_ID;
 
 typedef enum _HYPERCALL_CACHED_CR3_TARGET
@@ -189,3 +179,7 @@ VmHandleHypercall(
 
     return VMM_EVENT_CONTINUE;
 }
+
+//
+// VM hypercall wrappers
+//
