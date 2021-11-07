@@ -29,7 +29,7 @@ typedef enum _IMP_ALLOC_FLAGS
 {
     IMP_DEFAULT = (1 << 0),
     IMP_SHADOW_ALLOCATION = (1 << 1)
-};
+} IMP_ALLOC_FLAGS, *PIMP_ALLOC_FLAGS;
 
 extern PIMP_ALLOC_RECORD gHostAllocationsHead;
 

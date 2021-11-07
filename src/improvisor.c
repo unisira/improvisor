@@ -178,7 +178,7 @@ Routine Description:
 PVOID
 ImpAllocateNpPoolEx(
     _In_ SIZE_T Size,
-    _In_ IMP_FLAGS Flags
+    _In_ UINT64 Flags
 )
 /*++
 Routine Description:
