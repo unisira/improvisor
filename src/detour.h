@@ -15,6 +15,7 @@ typedef struct _EH_HOOK_REGISTRATION
     PVOID Trampoline;
     PVOID TargetFunction;
     PVOID CallbackFunction;
+    SIZE_T PrologueSize;
     PMDL LockedTargetPage;
 } EH_HOOK_REGISTRATION, *PEH_HOOK_REGISTRATION;
 

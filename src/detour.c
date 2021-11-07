@@ -158,7 +158,7 @@ Routine Description:
         if (Step == 0 || !ValidateLDasmResult(&Ld))
             return STATUS_INVALID_PARAMETER;
 
-        RtlCopyMemory(Hook->Target, Hook->TargetFunction, Step);
+        RtlCopyMemory((PUCHAR)Hook->Trampoline + SizeCopied, (PUCHAR)Hook->TargetFunction + SizeCopied, Step);
    
         if (Ld.flags & F_RELATIVE)
         {
@@ -212,9 +212,18 @@ Routine Description:
     if (!NT_SUCCESS(EhCreateTrampoline(Hook)))
         return STATUS_INSTRUCTION_MISALIGNMENT;
    
-    // Write 0xCC and nops of size Hook->TrampolineSize - 1 to ShadowPage
-    PUCHAR DetourShellcode = ImpAllocateNpPool() 
+    PUCHAR DetourShellcode = ImpAllocateNpPool(Hook->PrologueSize); 
         
+    *DetourShellcode = 0xCC /* INT 3 */
+
+    for (SIZE_T i = 1; i < Hook->PrologueSize - 1; i++)
+        *(DetourShellcode + i) = 0x90 /* NOP */;
+
+    if (VmWriteSystemMemory(
+                Hook->ShadowPage + PAGE_OFFSET(Hook->TargetFunction), 
+                DetourShellcode, 
+                Hook->PrologueSize) != HRESULT_SUCCESS)
+        return STATUS_CRITICAL_FAILURE;
 
     // Enable the hook using HYPERCALL_EPT_REMAP_PAGES
 
