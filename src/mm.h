@@ -47,8 +47,8 @@ typedef struct _MM_RESERVED_PT
     UINT64 TablePhysAddr;
 } MM_RESERVED_PT, *PMM_RESERVED_PT;
 
-extern PMM_RESERVED_PT gHostPageTablesHead = NULL;
-extern PMM_RESERVED_PT gHostPageTablesTail = NULL;
+extern PMM_RESERVED_PT gHostPageTablesHead;
+extern PMM_RESERVED_PT gHostPageTablesTail;
 
 NTSTATUS
 MmInitialise(

@@ -10,13 +10,6 @@
 #define CHUNK_ADDR(Hdr) ((PVOID)((ULONG_PTR)Hdr + sizeof(MM_POOL_CHUNK_HDR)))
 #define CHUNK_HDR(Chunk) ((PMM_POOL_CHUNK_HDR)((ULONG_PTR)Chunk - sizeof(MM_POOL_CHUNK_HDR)))
 
-typedef struct _MM_RESERVED_PT
-{
-    LIST_ENTRY Links;
-    PVOID TableAddr;
-    UINT64 TablePhysAddr;
-} MM_RESERVED_PT, *PMM_RESERVED_PT;
-
 // TODO: For host page tables, include MM_RESERVED_PT header in the raw PT list allocation
 PMM_RESERVED_PT gHostPageTablesHead = NULL;
 PMM_RESERVED_PT gHostPageTablesTail = NULL;
@@ -172,7 +165,7 @@ Routine Description:
         PMM_RESERVED_PT CurrTable = sPageTableListEntries + i;
 
         CurrTable->TableAddr = (PCHAR)sPageTableListRaw + (i * PAGE_SIZE);
-        CurrTable->TablePhysAddr = MmGetPhysicalAddress(CurrTable->TableAddr);
+        CurrTable->TablePhysAddr = ImpGetPhysicalAddress(CurrTable->TableAddr);
 
         CurrTable->Links.Flink = i < Count  ? &(CurrTable + 1)->Links : NULL;
         CurrTable->Links.Blink = i > 0      ? &(CurrTable - 1)->Links : NULL;
