@@ -100,7 +100,7 @@ Routine Description:
     signals that it should be mapped to an empty page using EPT
 --*/
 {
-    return ImpAllocateContiguousMemory(Size, IMPROVISOR_HIDE_FROM_GUEST);
+    return ImpAllocateContiguousMemory(Size, IMP_SHADOW_ALLOCATION);
 }
 
 PVOID
@@ -138,7 +138,7 @@ Routine Description:
 	
     RtlSecureZeroMemory(Address, Size);
 
-    if (Flags & IMPROVISOR_HIDE_FROM_GUEST)
+    if (Flags & IMP_SHADOW_ALLOCATION)
     {
         if (!NT_SUCCESS(ImpInsertAllocRecord(Address, Size)))
         {
@@ -160,7 +160,7 @@ Routine Description:
     mapped to an empty page using EPT
 --*/
 {
-    return ImpAllocateNpPoolEx(Size, IMPROVISOR_HIDE_FROM_GUEST);
+    return ImpAllocateNpPoolEx(Size, IMP_SHADOW_ALLOCATION);
 }
 
 PVOID
@@ -194,7 +194,7 @@ Routine Description:
 
     RtlSecureZeroMemory(Address, Size);
 
-    if (Flags & IMPROVISOR_HIDE_FROM_GUEST)
+    if (Flags & IMP_SHADOW_ALLOCATION)
     {
         if (!NT_SUCCESS(ImpInsertAllocRecord(Address, Size)))
         {
