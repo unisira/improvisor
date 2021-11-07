@@ -3,6 +3,11 @@
 
 #include <ntdef.h>
 
+#define PAGE_FRAME_NUMBER(Addr) ((UINT64)(Addr) >> 12)
+#define PAGE_ADDRESS(Pfn) ((UINT64)(Pfn) << 12)
+#define PAGE_ALIGN(Addr) ((UINT64)(Addr) & ~0xFFFULL)
+#define PAGE_OFFSET(Addr) ((UINT64)(Addr) & 0xFFFULL)
+
 typedef union _X86_LA48
 {
     UINT64 Value;
