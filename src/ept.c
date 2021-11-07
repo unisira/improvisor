@@ -5,6 +5,10 @@
 #include "vmx.h"
 #include "mm.h"
 
+#define GB(N) ((UINT64)(N) * 1024 * 1024 * 1024)
+#define MB(N) ((UINT64)(N) * 1024 * 1024)
+#define KB(N) ((UINT64)(N) * 1024)
+
 MEMORY_TYPE
 EptGetMtrrMemoryType(
     _In_ UINT64 PhysAddr
@@ -73,7 +77,7 @@ Routine Description:
 }
 
 NTSTATUS
-EptIdentityMapMemoryRange(
+EptLazyMapMemoryRange(
     _In_ PEPT_PTE Pml4,
     _In_ UINT64 PhysAddr,
     _In_ UINT64 GuestPhysAddr,
@@ -121,6 +125,20 @@ Routine Description:
         }
         else
             Pdpte = EptReadExistingPte(Pml4e->PageFrameNumber, Gpa.PdptIndex);
+
+        if (!Pdpte->Present)
+        {
+            if (EptCheckSuperPageSupport() && Size >= GB(1))
+            {
+                Pdpte->LargePage = TRUE;
+                Pdpte->Present = TRUE;
+
+                // TODO: Define and apply permissions properly from `Permissions`
+                Pdpte->ReadAccess = TRUE;
+                Pdpte->WriteAccess = TRUE;
+                Pdpte->ExecuteAccess = TRUE;
+            }
+        }
 
         PEPT_PTE Pde = NULL;
         if (!Pdpte->Present)
@@ -182,7 +200,6 @@ Routine Description:
 
         SizeMapped += PAGE_SIZE;
     }
-
 }
 
 NTSTATUS
@@ -226,7 +243,7 @@ Routine Description:
         const ULONG SizeShift = 0;
         _BitScanForward64(&SizeShift, Mask.Mask << 12);
 
-        Status = EptMapMemoryRange(Pml4, PhysBase, PhysBase, 1ULL << SizeShift, 0, Base.Type);
+        Status = EptLazyMapMemoryRange(Pml4, PhysBase, PhysBase, 1ULL << SizeShift, 0, Base.Type);
         if (!NT_SUCCESS(Status))
             return Status;
     }

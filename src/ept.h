@@ -31,7 +31,7 @@ typedef union _EPT_PTE
         UINT64 ExecuteAccess : 1;
         UINT64 MemoryType : 3;
         UINT64 IgnorePatType : 1;
-        UINT64 Reserved1 : 1;
+        UINT64 LargePage: 1;
         UINT64 Accessed : 1;
         UINT64 Dirty : 1;
         UINT64 UserExecuteAccess : 1;
