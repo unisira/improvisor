@@ -700,8 +700,8 @@ Routine Description:
     //
     Vcpu->TscInfo.SpoofEnabled = TRUE;
 
-    VcpuSetControl(VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
-    VcpuSetControl(VMX_CTL_RDTSC_EXITING, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_RDTSC_EXITING, TRUE);
 
     // Write the TSC watchdog quantum
     VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, VTSC_WATCHDOG_QUANTUM + Vcpu->TscInfo.VmEntryLatency);
@@ -744,14 +744,12 @@ Routine Description:
         VcpuEnableTscSpoofing(Vcpu);
     else
     {
-        // TODO: Ignore the idea of threads and don't account for context switches at all
         // TODO: Also spoof TSC values during EPT violations, some anti-cheats monitor those 
-        // Try find a previous TSC event from this thread
-        PTSC_EVENT_ENTRY LastEntry = VTscFindLastTscEvent(&Vcpu->TscInfo, WinGetCurrentGuestThreadID());
+        // Try find a previous event to base our value off
+        PTSC_EVENT_ENTRY LastEntry = VTscFindLastTscEvent(&Vcpu->TscInfo); 
         if (LastEntry)
         {
             // Calculate the time since the last event during this thread
-            // TODO: Take into account context switch execution latency
             UINT64 ElapsedTime = VTSC_WATCHDOG_QUANTUM - VmxRead(GUEST_VMX_PREEMPTION_TIMER_VALUE);
 
             // Base the new timestamp off the last TSC event for this thread
@@ -761,11 +759,9 @@ Routine Description:
         } 
         else
         {
-            // Context switch occured, we are running a new thread on the same core where a TSC event happened
-            // Estimate TSC value using stored TSC MSR - VM-exit latency + CPUID latency
-            //
-            // TODO: Context switch + quantum running out = big issue, check next scheduled thread?
-            UINT64 Timestamp = Vcpu->MsrStore[MSR_STORE_EXIT][IA32_TIME_STAMP_COUNTER] - Vcpu->TscInfo.VmExitLatency;
+            // No preceeding records, approximate the value of the TSC before exiting using the stored MSR
+            UINT64 Timestamp = 
+                Vcpu->MsrStore[MSR_STORE_EXIT][IA32_TIME_STAMP_COUNTER] - Vcpu->TscInfo.VmExitLatency;
 
             VTscInsertEventEntry(TSC_EVENT_CPUID, Timestamp);
         }
@@ -810,7 +806,7 @@ Routine Description:
         /* RBP */ 0,
         /* RSI */ offsetof(GUEST_STATE, Rsi),
         /* RDI */ offsetof(GUEST_STATE, Rdi),
-        /* R8  */ offsetof(GUEST_STVmmVmExitXsetbvATE, R8),
+        /* R8  */ offsetof(GUEST_STATE, R8),
         /* R9  */ offsetof(GUEST_STATE, R9),
         /* R10 */ offsetof(GUEST_STATE, R10),
         /* R11 */ offsetof(GUEST_STATE, R11),
@@ -1303,7 +1299,7 @@ Routine Description:
 }
 
 VMM_EVENT_STATUS
-VcpuHandleMsrRead(
+VcpuHandleMsrWrite(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState
 )
@@ -1320,13 +1316,13 @@ VcpuHandleMsrRead(
         .HighPart = GuestState->Rdx, .LowPart = GuestState->Rax
     };
 
-    __writemsr(MsrValue.QuadPart);
+    __writemsr(Msr, MsrValue.QuadPart);
 
     return VMM_EVENT_CONTINUE;
 }
 
 VMM_EVENT_STATUS
-VcpuHandleMsrWrite(
+VcpuHandleMsrRead(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState
 )

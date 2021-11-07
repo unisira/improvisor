@@ -5,7 +5,7 @@
 #include "vmx.h"
 #include "cpu.h"
 #include "mm.h"
-#include "tsc.h"
+#include "vtsc.h"
 
 // Emulation was successful, continue execution
 #define VMM_EVENT_CONTINUE (0x00000000)
