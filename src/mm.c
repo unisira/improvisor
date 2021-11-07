@@ -6,9 +6,6 @@
 
 #define VPTE_BASE (0xfffffc9ec0000000)
 
-#define PAGE_FRAME_NUMBER(Addr) ((UINT64)(Addr) >> 12)
-#define PAGE_ADDRESS(Pfn) ((UINT64)(Pfn) << 12)
-
 #define BASE_POOL_CHUNK_SIZE (512)
 #define CHUNK_ADDR(Hdr) ((PVOID)((ULONG_PTR)Hdr + sizeof(MM_POOL_CHUNK_HDR)))
 #define CHUNK_HDR(Chunk) ((PMM_POOL_CHUNK_HDR)((ULONG_PTR)Chunk - sizeof(MM_POOL_CHUNK_HDR)))
@@ -153,14 +150,14 @@ Routine Description:
 {
     NTSTATUS Status = STATUS_SUCCESS; 
 
-    sPageTableListRaw = ImpAllocateNpPool(PAGE_SIZE * Count);
+    sPageTableListRaw = ImpAllocateHostNpPool(PAGE_SIZE * Count);
     if (sPageTableListRaw == NULL)
     {
         Status = STATUS_INSUFFICIENT_RESOURCES;
         goto panic;
     }
 
-    sPageTableListEntries = ImpAllocateNpPool(sizeof(MM_RESERVED_PT) * Count);
+    sPageTableListEntries = ImpAllocateHostNpPool(sizeof(MM_RESERVED_PT) * Count);
     if (sPageTableListEntries == NULL)
     {
         Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -223,7 +220,7 @@ Routine Description:
     mapping guest physical memory
 --*/
 {
-    sVirtualPTEListRaw = ImpAllocateNpPool(sizeof(MM_VPTE) * Count);
+    sVirtualPTEListRaw = ImpAllocateHostNpPool(sizeof(MM_VPTE) * Count);
     if (sPageTableListEntries == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 

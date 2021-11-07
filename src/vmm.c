@@ -50,7 +50,7 @@ Routine Description:
     }
     */
 
-    PVMM_CONTEXT VmmContext = (PVMM_CONTEXT)ImpAllocateNpPool(sizeof(VMM_CONTEXT));
+    PVMM_CONTEXT VmmContext = (PVMM_CONTEXT)ImpAllocateHostNpPool(sizeof(VMM_CONTEXT));
     if (VmmContext == NULL)
     {
         ImpDebugPrint("Failed to allocate VMM context...\n");
@@ -92,6 +92,16 @@ Routine Description:
 
     ImpDebugPrint("Successfully launched hypervisor on %d cores...\n", Params.ActiveVcpuCount);
 
+    // TODO: Here we should use hypercalls to perform initialisation of anything not VMM/VM related...
+    //
+    // Hide Imp* allocation records using HYPERCALL_EPT_MAP_PAGE
+    // Certain sections of this driver should also be hidden, on start up a structure containing info about driver sections will be passed
+    // which will be used to hide certain sections containing VMM only code from the guest OS
+    //
+    // Install basic detours using EhInstallDetour
+    //
+    //
+
     return STATUS_SUCCESS;
 
 panic:
@@ -116,7 +126,7 @@ Routine Description:
     NTSTATUS Status = STATUS_SUCCESS;
     UINT8 CpuCount = VmmContext->CpuCount;
 
-    VmmContext->VcpuTable = (PVCPU)ImpAllocateNpPool(sizeof(VCPU) * CpuCount);
+    VmmContext->VcpuTable = (PVCPU)ImpAllocateHostNpPool(sizeof(VCPU) * CpuCount);
     if (VmmContext->VcpuTable == NULL)
     {
         ImpDebugPrint("Failed to allocate VCPU table...\n");
@@ -216,10 +226,10 @@ Routine Description:
     // Notes (I seriously need to think about this properly):
     // This function is called upon panicking. It should shutdown the current VCPU, and then the rest
     //
-    // 1. Call VcpuShutdownPerCpu, this will VMXOFF the current VCPU and restore CR3 to the system CR3,
+    // 1. Call VcpuShutdownPerCpu via vmcall, this will VMXOFF the current VCPU and restore CR3 to the system CR3,
     //    hopefully allowing kernel functions to be called in turn allowing us to free resources
     //
-    // 2. Next, send an IPI to shutdown each VCPU from the current one, the callback should call VcpuShutdownPerCpu
+    // 2. Next, switch to each core using KeSetSystemAffinityThread and call VcpuShutdownPerCpu
     // 3. Profit
 }
 

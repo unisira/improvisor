@@ -1,9 +1,30 @@
 #include "improvisor.h"
 
+// TODO: Add a logger, and add routine descriptions for everything
+
 PIMP_ALLOC_RECORD gHostAllocationsHead = NULL;
 
 // The raw buffer containing the host allocation records
 static PIMP_ALLOC_RECORD sImpAllocRecordsRaw = NULL;
+
+VOID
+ImpLog(
+    _In_ LPCSTR Fmt, ...
+)
+/*++
+Routine Description:
+    Creates a log entry with the contents of `Fmt` formatted with variadic args
+--*/
+{
+    CHAR Buffer[512];
+
+    va_list Arg;
+    va_start(Arg, Fmt);
+    vsprintf_s(Buffer, 512, Fmt, Arg);
+    va_end(Arg);
+
+    // TODO: Create log record and enter it in list, update log index
+}
 
 NTSTATUS
 ImpInsertAllocRecord(
@@ -13,9 +34,12 @@ ImpInsertAllocRecord(
 /*++
 Routine Description:
     Inserts a new allocation record into the list head
+
+    These records will be used later in VmmStartHypervisor once the hypervisor has started running successfully, they will be iterated over
+    and hidden using HYPERCALL_EPT_MAP_PAGES if the allocation flags say it should be hidden from guest OS 
 --*/
 {
-
+    // TODO: Make this not waste 1 allocation record, same for other funcs in mm.c
     if (gHostAllocationsHead->Records.Flink == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -39,6 +63,7 @@ Routine Description:
     are making 1 more allocation for the actual block of memory containing these records
 --*/
 {
+    // TODO: Add allocation flags (HIDE FROM EPT etc...)
     sImpAllocRecordsRaw = (PIMP_ALLOC_RECORD)ExAllocatePoolWithTag(NonPagedPool, sizeof(IMP_ALLOC_RECORD) * (Count + 1), POOL_TAG);
 
     if (sImpAllocRecordsRaw == NULL)
@@ -65,6 +90,18 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+PVOID
+ImpAllocateHostContiguousMemory(
+    _In_ SIZE_T Size
+)
+/*++
+Routine Description:
+    This function allocates a zero'd contiguous block of memory using ImpAllocateContiguousMemoryEx and 
+    signals that it should be mapped to an empty page using EPT
+--*/
+{
+    return ImpAllocateContiguousMemory(Size, IMPROVISOR_HIDE_FROM_GUEST);
+}
 
 PVOID
 ImpAllocateContiguousMemory(
@@ -72,8 +109,22 @@ ImpAllocateContiguousMemory(
 )
 /*++
 Routine Description:
-    This function will allocate a zero'd block of contiguous memory and keep track of said allocations, 
-    so that they can later be hidden when initialising the EPT identity map for the guest environment
+    This function allocates a zero'd contiguous block of memory using ImpAllocateContiguousMemoryEx 
+--*/
+
+{
+    return ImpAllocateContiguousMemoryEx(Size, 0);
+}
+
+PVOID
+ImpAllocateContiguousMemoryEx(
+    _In_ SIZE_T Size,
+    _In_ UINT64 Flags
+)
+/*++
+Routine Description:
+    This function allocates a zero'd contiguous block of memory using MmAllocateContiguousMemory and records the
+    allocation in the pool records if needed
 --*/
 {
     PVOID Address = NULL;
@@ -87,13 +138,29 @@ Routine Description:
 	
     RtlSecureZeroMemory(Address, Size);
 
-    if (!NT_SUCCESS(ImpInsertAllocRecord(Address, Size)))
+    if (Flags & IMPROVISOR_HIDE_FROM_GUEST)
     {
-        ImpDebugPrint("Couldn't record Alloc(%llX, %x), no more allocation records...\n", Address, Size);
-        return NULL;
+        if (!NT_SUCCESS(ImpInsertAllocRecord(Address, Size)))
+        {
+            ImpDebugPrint("Couldn't record Alloc(%llX, %x), no more allocation records...\n", Address, Size);
+            return NULL;
+        }
     }
 
     return Address;
+}
+
+PVOID
+ImpAllocateHostNpPool(
+    _In_ SIZE_T Size
+)
+/*++
+Routine Description:
+    This function allocates a zero'd non-paged pool using ImpAllocateNpPoolEx and signals that it should be
+    mapped to an empty page using EPT
+--*/
+{
+    return ImpAllocateNpPoolEx(Size, IMPROVISOR_HIDE_FROM_GUEST);
 }
 
 PVOID
@@ -102,8 +169,21 @@ ImpAllocateNpPool(
 )
 /*++
 Routine Description:
+    This function allocates a zero'd non-paged pool of memory using ImpAllocateNpPoolEx
+--*/
+{
+    return ImpAllocateNpPoolEx(Size, 0);
+}    
+
+PVOID
+ImpAllocateNpPoolEx(
+    _In_ SIZE_T Size,
+    _In_ IMP_FLAGS Flags
+)
+/*++
+Routine Description:
     This function allocates a zero'd non-paged pool of memory using ExAllocatePoolWithTag and records the
-    allocation in the pool records
+    allocation in the pool records if needed
 --*/
 {
     PVOID Address = NULL;
@@ -114,14 +194,18 @@ Routine Description:
 
     RtlSecureZeroMemory(Address, Size);
 
-    if (!NT_SUCCESS(ImpInsertAllocRecord(Address, Size)))
+    if (Flags & IMPROVISOR_HIDE_FROM_GUEST)
     {
-        ImpDebugPrint("Couldn't record Alloc(%llX, %x), no more allocation records...\n", Address, Size);
-        return NULL;
+        if (!NT_SUCCESS(ImpInsertAllocRecord(Address, Size)))
+        {
+            ImpDebugPrint("Couldn't record Alloc(%llX, %x), no more allocation records...\n", Address, Size);
+            return NULL;
+        }
     }
 
     return Address;
-}    
+
+}
 
 UINT64
 ImpGetPhysicalAddress(

@@ -65,9 +65,10 @@ VMEXIT_HANDLER VcpuHandleMsrRead;
 VMEXIT_HANDLER VcpuHandleMsrWrite;
 VMEXIT_HANDLER VcpuHandleXSETBV;
 VMEXIT_HANDLER VcpuHandlePreemptionTimerExpire;
+VMEXIT_HANDLER VcpuHandleExternalInterruptNmi;
 
 static VMEXIT_HANDLER* sExitHandlers[] = {
-    VcpuUnknownExitReason, 			// Exception or non-maskable interrupt (NMI)
+    VcpuHandleExternalInterruptNmi, // Exception or non-maskable interrupt (NMI)
     VcpuUnknownExitReason, 			// External interrupt
     VcpuUnknownExitReason, 			// Triple fault
     VcpuUnknownExitReason, 			// INIT signal
@@ -170,7 +171,6 @@ VcpuHandleExit(
     _Inout_ PGUEST_STATE GuestState
 );
 
-
 NTSTATUS
 VcpuSetup(
     _Inout_ PVCPU Vcpu,
@@ -202,7 +202,7 @@ Routine Description:
 
     Vcpu->VmxonPhysical = ImpGetPhysicalAddress(Vcpu->Vmxon);
 
-    Vcpu->MsrBitmap = (PCHAR)ImpAllocateContiguousMemory(PAGE_SIZE);
+    Vcpu->MsrBitmap = (PCHAR)ImpAllocateHostContiguousMemory(PAGE_SIZE);
     if (Vcpu->MsrBitmap == NULL)
     {
         ImpDebugPrint("Failed to allocate MSR bitmap for VCPU #%d...\n", Id);
@@ -211,6 +211,7 @@ Routine Description:
 
     Vcpu->MsrBitmapPhysical = ImpGetPhysicalAddress(Vcpu->MsrBitmap);
     
+    // VCPU stack cant be hidden because it is used breifly after VMLaunch
     Vcpu->Stack = (PVCPU_STACK)ImpAllocateNpPool(sizeof(VCPU_STACK));
     if (Vcpu->Stack == NULL)
     {
@@ -704,6 +705,8 @@ Routine Description:
 
     // Write the TSC watchdog quantum
     VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, VTSC_WATCHDOG_QUANTUM + Vcpu->TscInfo.VmEntryLatency);
+
+    // TODO: Insert entry into TSC event history
 }
 
 VMM_EVENT_STATUS
@@ -741,6 +744,8 @@ Routine Description:
         VcpuEnableTscSpoofing(Vcpu);
     else
     {
+        // TODO: Ignore the idea of threads and don't account for context switches at all
+        // TODO: Also spoof TSC values during EPT violations, some anti-cheats monitor those 
         // Try find a previous TSC event from this thread
         PTSC_EVENT_ENTRY LastEntry = VTscFindLastTscEvent(&Vcpu->TscInfo, WinGetCurrentGuestThreadID());
         if (LastEntry)
@@ -1393,7 +1398,6 @@ VcpuHandleExternalInterruptNmi(
     //      Quantum on this core was reset but has continued, the TSC event handling code will find
     //      the 'marker' entry we insert and will virtualise based off that
     //
-
 
     return VMM_EVENT_CONTINUE;
 }

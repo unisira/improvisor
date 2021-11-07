@@ -29,7 +29,7 @@ Routine Description:
     This function allocates a 1 KiB block of memory and initialises it as a VMX region. 
 --*/
 {
-    PVMX_REGION VmxRegion = (PVMX_REGION)ImpAllocateContiguousMemory(sizeof(VMX_REGION));
+    PVMX_REGION VmxRegion = (PVMX_REGION)ImpAllocateHostContiguousMemory(sizeof(VMX_REGION));
     if (VmxRegion == NULL)
         return NULL;
 

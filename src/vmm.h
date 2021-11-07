@@ -6,6 +6,7 @@
 
 #include "arch/segment.h"
 #include "vcpu.h"
+#include "vtsc.h"
 #include "mm.h"
 
 typedef struct _VMM_CONTEXT
@@ -14,6 +15,7 @@ typedef struct _VMM_CONTEXT
     PVCPU VcpuTable;
     BOOLEAN UseUnrestrictedGuests;
     MM_SUPPORT MmSupport;
+    TSC_STATUS TscStatus;
     X86_PSEUDO_DESCRIPTOR HostInterruptDescriptor;
 } VMM_CONTEXT, * PVMM_CONTEXT;
 

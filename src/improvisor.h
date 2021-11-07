@@ -25,6 +25,12 @@ typedef struct _IMP_ALLOC_RECORD
     SIZE_T Size;
 } IMP_ALLOC_RECORD, *PIMP_ALLOC_RECORD;
 
+typedef enum _IMP_ALLOC_FLAGS
+{
+    IMP_DEFAULT = 0,
+    IMP_SHADOW_ALLOCATION
+}
+
 extern PIMP_ALLOC_RECORD gHostAllocationsHead;
 
 NTSTATUS
@@ -38,8 +44,20 @@ ImpAllocateContiguousMemory(
 );
 
 PVOID
+ImpAllocateContiguousMemoryEx(
+    _In_ SIZE_T Size,
+    _In_ IMP_FLAGS Flags
+);
+
+PVOID
 ImpAllocateNpPool(
     _In_ SIZE_T Size
+);
+
+PVOID
+ImpAllocateNpPoolEx(
+    _In_ SIZE_T Size,
+    _In_ IMP_FLAGS Flags
 );
 
 UINT64
