@@ -1,4 +1,9 @@
 EXTERN VcpuHandleExit: PROC
+EXTERN VcpuShutdownVmx: PROC
+EXTERN __cpu_save_state: PROC
+EXTERN __cpu_restore_state: PROC
+
+VMM_STATUS_ABORT equ 0
 
 GUEST_STATE STRUCT
 _Rax QWORD ?
@@ -76,7 +81,14 @@ __vmexit_entry PROC
 	sub rsp, 28h							; Allocate shadow stack space
 	call VcpuHandleExit						; Call the VM-exit handler
 	add rsp, 28h							; Remove shadow stack space
-	
+
+    cmp rax, VMM_STATUS_ABORT               ; Test if RAX == VMM_STATUS_ABORT
+    jne no_abort                            ; TODO: Check for KVA shadowing
+	sub rsp, 28h							
+	call VcpuShutdownVmx					; Shutdown VMX and restore guest register state
+	add rsp, 28h							
+
+no_abort:
 	ldmxcsr [rsp].GUEST_STATE._MxCsr		; Restore register state
 	mov rax, [rsp].GUEST_STATE._Rip	
 	mov [rsp+SIZEOF GUEST_STATE], rax
