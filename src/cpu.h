@@ -10,7 +10,6 @@ typedef struct _M128
     UINT64 High;
 } M128, *PM128;
 
-#pragma pack(push, 1)
 typedef struct _CPU_STATE
 {
     UINT64 Rax;
@@ -49,7 +48,6 @@ typedef struct _CPU_STATE
     M128 Xmm15;
     UINT64 RFlags;
 } CPU_STATE, *PCPU_STATE;
-#pragma pack(pop)
 
 EXTERN_C
 VOID
