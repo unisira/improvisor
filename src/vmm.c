@@ -186,14 +186,16 @@ Routine Description:
     VmmSetHostInterruptHandler(EXCEPTION_NMI, VmmHandleHostNMI);
     */
 
+    /*
     Status = MmInitialise(&VmmContext->MmSupport);
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Failed to initialise memory manager... (%X)\n", Status);
         return Status;
     }
-
+    */
     VmmContext->UseUnrestrictedGuests = FALSE;
+    VmmContext->UseTscSpoofing = FALSE;
 
     return Status;
 }
