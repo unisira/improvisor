@@ -382,5 +382,3 @@ Routine Description:
 {
     VmxWrite(GUEST_RIP, VmxRead(GUEST_RIP) + VmxRead(VM_EXIT_INSTRUCTION_LEN));
 }
-
-

@@ -73,6 +73,13 @@ typedef struct _VMX_INVVPID_DESCRIPTOR
     UINT64 LinearAddr;
 } VMX_INVVPID_DESCRIPTOR, *PVMX_INVVPID_DESCRIPTOR;
 
+typedef struct _VMX_MSR_ENTRY
+{
+    UINT32 Index;
+    UINT32 Reserved;
+    UINT64 Value;
+} VMX_MSR_ENTRY, *PVMX_MSR_ENTRY;
+
 typedef struct _VMX_STATE
 {
     UINT64 GuestRip;
