@@ -23,6 +23,7 @@ typedef struct _IMP_ALLOC_RECORD
     LIST_ENTRY Records;
     PVOID Address;
     SIZE_T Size;
+    UINT64 Flags;
 } IMP_ALLOC_RECORD, *PIMP_ALLOC_RECORD;
 
 typedef enum _IMP_ALLOC_FLAGS

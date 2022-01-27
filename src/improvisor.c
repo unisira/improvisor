@@ -1,4 +1,5 @@
 #include "improvisor.h"
+#include "util/fmt.h"
 
 // TODO: Add a logger, and add routine descriptions for everything
 
@@ -29,7 +30,8 @@ Routine Description:
 NTSTATUS
 ImpInsertAllocRecord(
     _In_ PVOID Address,
-    _In_ SIZE_T Size
+    _In_ SIZE_T Size,
+    _In_ UINT64 Flags
 )
 /*++
 Routine Description:
@@ -47,6 +49,7 @@ Routine Description:
 
     AllocRecord->Address = Address;
     AllocRecord->Size = Size;
+    AllocRecord->Flags = Flags;
 
     gHostAllocationsHead = (PIMP_ALLOC_RECORD)AllocRecord->Records.Flink; 
 
@@ -84,7 +87,7 @@ Routine Description:
     }
 
     // Insert the record for block of records 
-    if (!NT_SUCCESS(ImpInsertAllocRecord(sImpAllocRecordsRaw, sizeof(IMP_ALLOC_RECORD) * (Count + 1))))
+    if (!NT_SUCCESS(ImpInsertAllocRecord(sImpAllocRecordsRaw, sizeof(IMP_ALLOC_RECORD) * (Count + 1), IMP_DEFAULT)))
         return STATUS_INSUFFICIENT_RESOURCES;
 
     return STATUS_SUCCESS;
@@ -138,13 +141,10 @@ Routine Description:
 	
     RtlSecureZeroMemory(Address, Size);
 
-    if (Flags & IMP_SHADOW_ALLOCATION)
+    if (!NT_SUCCESS(ImpInsertAllocRecord(Address, Size, Flags)))
     {
-        if (!NT_SUCCESS(ImpInsertAllocRecord(Address, Size)))
-        {
-            ImpDebugPrint("Couldn't record Alloc(%llX, %x), no more allocation records...\n", Address, Size);
-            return NULL;
-        }
+        ImpDebugPrint("Couldn't record Alloc(%llX, %x), no more allocation records...\n", Address, Size);
+        return NULL;
     }
 
     return Address;
@@ -194,13 +194,10 @@ Routine Description:
 
     RtlSecureZeroMemory(Address, Size);
 
-    if (Flags & IMP_SHADOW_ALLOCATION)
+    if (!NT_SUCCESS(ImpInsertAllocRecord(Address, Size, Flags)))
     {
-        if (!NT_SUCCESS(ImpInsertAllocRecord(Address, Size)))
-        {
-            ImpDebugPrint("Couldn't record Alloc(%llX, %x), no more allocation records...\n", Address, Size);
-            return NULL;
-        }
+        ImpDebugPrint("Couldn't record Alloc(%llX, %x), no more allocation records...\n", Address, Size);
+        return NULL;
     }
 
     return Address;
