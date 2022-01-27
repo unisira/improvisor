@@ -3,56 +3,17 @@
 #include "arch/cpuid.h"
 #include "arch/msr.h"
 #include "arch/cr.h"
+#include "intrin.h"
 #include "vmcall.h"
 #include "vcpu.h"
 #include "vmm.h"
 
 // The value of the VMX preemption timer used as a watchdog for TSC virtualisation
-#define VTSC_WATCHDOG_QUANTUM 1000
+#define VTSC_WATCHDOG_QUANTUM 4000
 
 EXTERN_C
 VOID
 __vmexit_entry(VOID);
-
-EXTERN_C
-VOID
-__sgdt(PX86_PSEUDO_DESCRIPTOR);
-
-EXTERN_C
-UINT64
-__segmentar(X86_SEGMENT_SELECTOR);
-
-EXTERN_C
-UINT16
-__readldt(VOID);
-
-EXTERN_C
-UINT16
-__readtr(VOID);
-
-EXTERN_C
-UINT16
-__readcs(VOID);
-
-EXTERN_C
-UINT16
-__readss(VOID);
-
-EXTERN_C
-UINT16
-__readds(VOID);
-
-EXTERN_C
-UINT16
-__reades(VOID);
-
-EXTERN_C
-UINT16
-__readfs(VOID);
-
-EXTERN_C
-UINT16
-__readgs(VOID);
 
 VMEXIT_HANDLER VcpuUnknownExitReason;
 VMEXIT_HANDLER VcpuHandleCpuid;
@@ -258,6 +219,8 @@ Routine Description:
 
     Vcpu->Stack->Cache.Vcpu = Vcpu;
 
+    Vcpu->SystemDirectoryBase = __readcr3();
+
     RtlInitializeBitMap(
             &Vcpu->MsrLoReadBitmap, 
             Vcpu->MsrBitmap + VMX_MSR_READ_BITMAP_OFFS + VMX_MSR_LO_BITMAP_OFFS, 
@@ -296,14 +259,9 @@ Routine Description:
     VcpuSetControl(Vcpu, VMX_CTL_ENABLE_INVPCID, TRUE);
 
     // Save GUEST_EFER on VM-exit
-    VcpuSetControl(Vcpu, VMX_CTL_SAVE_EFER_ON_EXIT, TRUE);
+    //VcpuSetControl(Vcpu, VMX_CTL_SAVE_EFER_ON_EXIT, TRUE);
 
-    // Setup MSR load & store regions
-    VmxWrite(CONTROL_VMEXIT_MSR_STORE_COUNT, sizeof(sVmExitMsrStore) / sizeof(*sVmExitMsrStore));
-    //VmxWrite(CONTROL_VMENTRY_MSR_LOAD_COUNT, sizeof(sVmEntryMsrLoad) / sizeof(*sVmEntryMsrLoad));
-
-    VmxWrite(CONTROL_VMEXIT_MSR_STORE_ADDRESS, ImpGetPhysicalAddress(sVmExitMsrStore));
-    //VmxWrite(CONTROL_VMENTRY_MSR_LOAD_ADDRESS, ImpGetPhysicalAddress(sVmEntryMsrLoad));
+    VTscInitialise(&Vcpu->TscInfo);
 
     return STATUS_SUCCESS;
 }
@@ -394,7 +352,7 @@ Routine Description:
     VmxWrite(HOST_CR4, __readcr4());
 
     VmxWrite(GUEST_CR3, __readcr3());
-    VmxWrite(HOST_CR3, __readcr3());
+    VmxWrite(HOST_CR3, Vcpu->SystemDirectoryBase);
     //VmxWrite(HOST_CR3, Vcpu->Vmm->MmSupport->HostDirectoryPhysical);
 
     VmxWrite(GUEST_DR7, __readdr(7));
@@ -487,6 +445,13 @@ Routine Description:
     VmxWrite(HOST_TR_BASE, SegmentBaseAddress(Segment));
     VmxWrite(HOST_TR_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
+    // Setup MSR load & store regions
+    VmxWrite(CONTROL_VMEXIT_MSR_STORE_COUNT, sizeof(sVmExitMsrStore) / sizeof(*sVmExitMsrStore));
+    //VmxWrite(CONTROL_VMENTRY_MSR_LOAD_COUNT, sizeof(sVmEntryMsrLoad) / sizeof(*sVmEntryMsrLoad));
+
+    VmxWrite(CONTROL_VMEXIT_MSR_STORE_ADDRESS, ImpGetPhysicalAddress(sVmExitMsrStore));
+    //VmxWrite(CONTROL_VMENTRY_MSR_LOAD_ADDRESS, ImpGetPhysicalAddress(sVmEntryMsrLoad));
+
     VcpuCommitVmxState(Vcpu);
     
     VmxWrite(HOST_RSP, (UINT64)(Vcpu->Stack->Limit + 0x6000 - 16));
@@ -529,12 +494,14 @@ Routine Description:
         InterlockedIncrement(&Params->ActiveVcpuCount);
         ImpDebugPrint("VCPU #%d is now running...\n", Vcpu->Id);
 
+        /*
         if (!NT_SUCCESS(VcpuPostSpawnInitialisation(Vcpu)))
         {
             // TODO: Panic shutdown here
             ImpDebugPrint("VCPU #%d failed post spawn initialsation...\n", Vcpu->Id);
             return;
         }
+        */
 
         return;
     }
@@ -592,9 +559,9 @@ Routine Description:
     encountered a panic. It restores guest register and non-register state from the current VMCS and terminates VMX operation.
 --*/
 {
+    KeBugCheckEx(0x010101010101, Vcpu->Vmx.ExitReason.BasicExitReason, Vcpu->Id, VmxRead(GUEST_RIP), VmxRead(GUEST_RSP));
 
-
-    __cpu_restore_state(CpuState);
+    //__cpu_restore_state(CpuState);
 }
 
 NTSTATUS
@@ -607,7 +574,7 @@ Routine Description:
 --*/
 {
     VTscEstimateVmExitLatency(&Vcpu->TscInfo);
-    VTscEstimateVmEntryLatency(&Vcpu->TscInfo);
+    //VTscEstimateVmEntryLatency(&Vcpu->TscInfo);
 
     return STATUS_SUCCESS;
 }
@@ -771,6 +738,7 @@ Routine Description:
     UNREFERENCED_PARAMETER(GuestState);
 
     ImpDebugPrint("Unknown VM-exit reason (%d) on VCPU #%d...\n", Vcpu->Vmx.ExitReason.BasicExitReason, Vcpu->Id);
+    
     return VMM_EVENT_ABORT;
 }
 
@@ -873,10 +841,13 @@ Routine Description:
     GuestState->Rcx = CpuidArgs.Ecx;
     GuestState->Rdx = CpuidArgs.Edx;
 
-    if (!Vcpu->TscInfo.SpoofEnabled)
-        VcpuEnableTscSpoofing(Vcpu);
-    
-    VcpuUpdateLastTscEventEntry(Vcpu, TSC_EVENT_CPUID);
+    if (Vcpu->Vmm->UseTscSpoofing)
+    {
+        if (!Vcpu->TscInfo.SpoofEnabled)
+            VcpuEnableTscSpoofing(Vcpu);
+
+        VcpuUpdateLastTscEventEntry(Vcpu, TSC_EVENT_CPUID);
+    }
 
     return VMM_EVENT_CONTINUE;
 }
@@ -1159,64 +1130,14 @@ Routine Description:
 
     switch (ExitQual.ControlRegisterId)
     {
-    case 0: Status = VcpuHandleCr0Write(Vcpu, NewValue);
+    case 0: VmxWrite(GUEST_CR0, NewValue); break;
     case 3:
         {
             // TODO: Validate CR3 value
             VmxWrite(GUEST_CR3, NewValue);
         } break;
 
-    case 4:
-        {
-            UINT64 ControlRegister = VmxRead(GUEST_CR4);
-            UINT64 ShadowableBits = Vcpu->Cr4ShadowableBits;
-            
-            const X86_CR4 DifferentBits = {
-                .Value = NewValue ^ ControlRegister
-            };
-            
-            const X86_CR4 NewCr = {
-                .Value = NewValue
-            };
-
-            // TODO: Check CR4.VMXE being set, make sure its 0 in the read shadow and inject #UD upon trying
-            // to change it
-
-            const IA32_EFER_MSR Efer = {
-                .Value = VmxRead(GUEST_EFER)
-            };
-
-            if (DifferentBits.PCIDEnable && NewCr.PCIDEnable == 1 && 
-                ((VmxRead(GUEST_CR3) & 0xFFF) != 0 || (Efer.LongModeActive == 0)))
-            {
-                VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
-                return VMM_EVENT_INTERRUPT;
-            }
-
-            if (DifferentBits.PhysicalAddressExtension && NewCr.PhysicalAddressExtension == 0 && 
-                Efer.LongModeEnable)
-            {
-                VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
-                return VMM_EVENT_INTERRUPT;
-            }
- 
-            Status = VcpuUpdateGuestCr(
-                ControlRegister,
-                NewValue,
-                DifferentBits.Value,
-                GUEST_CR4,
-                CONTROL_CR4_READ_SHADOW,
-                ShadowableBits,
-                CR4_RESERVED_BITMASK
-            );
-
-            if (DifferentBits.GlobalPageEnable ||
-                DifferentBits.PhysicalAddressExtension ||
-                (DifferentBits.PCIDEnable && NewCr.PCIDEnable == 0) ||
-                (DifferentBits.SmepEnable && NewCr.SmepEnable == 1))
-                VmxInvvpid(INV_SINGLE_CONTEXT, 1);
-        } break;
-
+    case 4: VmxWrite(GUEST_CR4, NewValue); break;
     case 8:
         {
             // TODO: Validate CR8 value
@@ -1418,6 +1339,8 @@ VcpuHandleTimerExpire(
 
         VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, FALSE);
         VcpuSetControl(Vcpu, VMX_CTL_RDTSC_EXITING, FALSE);
+
+        VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, 0);
 
         Vcpu->TscInfo.SpoofEnabled = FALSE;
     }

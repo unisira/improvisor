@@ -49,7 +49,6 @@ typedef struct _GUEST_STATE
     M128 Xmm13;
     M128 Xmm14;
     M128 Xmm15;
-    UINT64 RFlags;
 } GUEST_STATE, *PGUEST_STATE;
 #pragma pack(pop)
 
@@ -105,6 +104,7 @@ typedef struct _VCPU
     TSC_STATUS TscInfo;
     UINT64 Cr0ShadowableBits;
     UINT64 Cr4ShadowableBits;
+    UINT64 SystemDirectoryBase;
     BOOLEAN UnrestrictedGuest;
     struct _VMM_CONTEXT* Vmm; 
 } VCPU, *PVCPU;
