@@ -575,10 +575,11 @@ Routine Description:
     Params->VmmContext = Vcpu->Vmm;
 }
 
+DECLSPEC_NORETURN
 VOID
 VcpuShutdownVmx(
     _Inout_ PVCPU Vcpu,
-    _Inout_ PGUEST_STATE GuestState
+    _Inout_ PCPU_STATE CpuState
 )
 /*++
 Routine Description:
@@ -586,7 +587,7 @@ Routine Description:
     encountered a panic. It restores guest register and non-register state from the current VMCS and terminates VMX operation.
 --*/
 {
-    return;
+    __cpu_restore_state(CpuState);
 }
 
 NTSTATUS
@@ -738,15 +739,7 @@ Routine Description:
         Status = VMM_EVENT_ABORT;
 
     if (Status == VMM_EVENT_ABORT)
-    {
-        // TODO: Set up fake KiKernelIstExit stack inside of __vmexit_trap
-        GuestState->Rip = VmxRead(GUEST_RIP);
-
-        // VMXOFF
-        // Free all resources for this VCPU
-
         return FALSE;
-    }
 
     GuestState->Rip = (UINT64)VcpuResume;
 

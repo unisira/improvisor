@@ -82,11 +82,17 @@ __vmexit_entry PROC
 	call VcpuHandleExit						; Call the VM-exit handler
 	add rsp, 28h							; Remove shadow stack space
 
-    cmp rax, VMM_STATUS_ABORT               ; Test if RAX == VMM_STATUS_ABORT
+    test rax, rax							; Test if RAX == 0
     jne no_abort                            ; TODO: Check for KVA shadowing
+	add rsp, SIZEOF GUEST_STATE				; Get rid of GUEST_STATE data
+	sub rsp, SIZEOF CPU_STATE				; Allocate CPU_STATE
+	lea rcx, [rsp]							; RCX = &CPU_STATE
+	call __cpu_save_state
+	mov rdx, rcx							; Set second parameter as the CPU_STATE
+	mov rcx, [rsp+SIZEOF GUEST_STATE-5FF0h]	; Load the address of the stack cache (PVCPU) into RCX
 	sub rsp, 28h							
 	call VcpuShutdownVmx					; Shutdown VMX and restore guest register state
-	add rsp, 28h							
+	int 3									; VcpuShutdownVmx doesn't return							
 
 no_abort:
 	ldmxcsr [rsp].GUEST_STATE._MxCsr		; Restore register state
