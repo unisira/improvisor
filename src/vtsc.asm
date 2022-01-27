@@ -22,8 +22,6 @@ __vtsc_estimate_vmentry_latency PROC
     mov rbx, 0F2C889114244161Fh
     ; Force a VM-exit, VMX preemption timer will be activated
     vmcall
-    ; Exit again so the elapsed time can be measured
-    vmcall
     ; Restore RBX
     pop rbx
     ; The elapsed time it took to enter then exit again, minus the VM-exit latency is now in RAX
@@ -32,35 +30,40 @@ __vtsc_estimate_vmentry_latency ENDP
 
 __vtsc_estimate_cpuid_latency PROC
     ; Disable interrupts
+    mov rbx, cr8
     mov rax, 0Fh
     mov cr8, rax
     ; Measure TSC just before CPUID execution
     rdtsc
-    ; Store TSC value into RBX
+    ; Store TSC value into R8
     shl rdx, 32
     or rax, rdx
-    mov rbx, rax
+    mov r8, rax
     ; Execute CPUID
+    mov eax, 1
     cpuid
     ; Measure TSC again
     rdtsc
     ; Move TSC value into RAX and subtract the previous value
     shl rdx, 32
     or rax, rdx
-    sub rax, rcx
+    sub rax, r8
+    movzx rbx, bl
+    mov cr8, rbx
     ret
 __vtsc_estimate_cpuid_latency ENDP
 
 __vtsc_estimate_rdtsc_latency PROC
     ; Disable interrupts
+    mov rbx, cr8
     mov rax, 0Fh
     mov cr8, rax
     ; Measure TSC just before CPUID execution
     rdtsc
-    ; Store TSC value into RBX
+    ; Store TSC value into R8
     shl rdx, 32
     or rax, rdx
-    mov rbx, rax
+    mov r8, rax
     ; Execute RDTSC
     rdtsc
     ; Measure TSC again
@@ -68,20 +71,23 @@ __vtsc_estimate_rdtsc_latency PROC
     ; Move TSC value into RAX and subtract the previous value
     shl rdx, 32
     or rax, rdx
-    sub rax, rcx
+    sub rax, r8
+    movzx rbx, bl
+    mov cr8, rbx
     ret
 __vtsc_estimate_rdtsc_latency ENDP
 
 __vtsc_estimate_rdtscp_latency PROC
     ; Disable interrupts
+    mov rbx, cr8
     mov rax, 0Fh
     mov cr8, rax
     ; Measure TSC just before CPUID execution
     rdtsc
-    ; Store TSC value into RBX
+    ; Store TSC value into R8
     shl rdx, 32
     or rax, rdx
-    mov rbx, rax
+    mov r8, rax
     ; Execute RDTSCP
     rdtscp
     lfence                  ; Make sure RDTSCP has finished
@@ -90,7 +96,9 @@ __vtsc_estimate_rdtscp_latency PROC
     ; Move TSC value into RAX and subtract the previous value
     shl rdx, 32
     or rax, rdx
-    sub rax, rcx
+    sub rax, r8
+    movzx rbx, bl
+    mov cr8, rbx
     ret
 __vtsc_estimate_rdtscp_latency ENDP
 
