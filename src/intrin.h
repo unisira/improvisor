@@ -41,5 +41,8 @@ EXTERN_C
 UINT16
 __readgs(VOID);
 
+EXTERN_C
+VOID
+__enable(VOID);
 
 #endif
