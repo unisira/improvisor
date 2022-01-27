@@ -3,8 +3,6 @@
 #include "vmx.h"
 #include "mm.h"
 
-
-
 // Information relevant to caching, reading or writing virtual addresses in an address space
 typedef union _HYPERCALL_VIRT_EX 
 {
@@ -41,7 +39,9 @@ typedef enum _HYPERCALL_ID
     // Returns the value of the system CR3 in RAX
     HYPERCALL_GET_SYSTEM_CR3,
     // Remap a GPA to a virtual address passed
-    HYPERCALL_EPT_REMAP_PAGES
+    HYPERCALL_EPT_REMAP_PAGES,
+    // Send a PDB to be used by the hypervisor
+    HYPERCALL_PDB_BUFFER,
 } HYPERCALL_ID, PHYPERCALL_ID;
 
 typedef enum _HYPERCALL_CACHED_CR3_TARGET
@@ -170,6 +170,11 @@ VmHandleHypercall(
     case HYPERCALL_SHUTDOWN_VCPU:
     {
         Vcpu->IsShuttingDown = TRUE;
+
+        // Write the current VCPU to GuestState->Rdx, the VCPU table are mapped as host memory,
+        // but by the time this function returns VcpuLeaveVmx will have disabled EPT
+        if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(PVCPU), Vcpu)))
+            return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
     } break;
     default:
         Hypercall->Result = HRESULT_UNKNOWN_HCID;

@@ -53,13 +53,26 @@ typedef struct _GUEST_STATE
 } GUEST_STATE, *PGUEST_STATE;
 #pragma pack(pop)
 
+// Base of other VCPU delegates so Status can be generically accessed
 typedef struct _VCPU_DELEGATE_PARAMS
 {
+    NTSTATUS Status;
+} VCPU_DELEGATE_PARAMS, *PVCPU_DELEGATE_PARAMS;
+
+typedef struct _VCPU_SPAWN_PARAMS
+{
+    NTSTATUS Status;
     struct _VMM_CONTEXT* VmmContext;
     ULONG ActiveVcpuCount;
     ULONG FailedCoreMask;
+} VCPU_SPAWN_PARAMS, *PVCPU_SPAWN_PARAMS;
+
+typedef struct _VCPU_SHUTDOWN_PARAMS
+{
     NTSTATUS Status;
-} VCPU_DELEGATE_PARAMS, *PVCPU_DELEGATE_PARAMS;
+    struct _VMM_CONTEXT* VmmContext;
+    ULONG FailedCoreMask;
+} VCPU_SHUTDOWN_PARAMS, *PVCPU_SHUTDOWN_PARAMS;
 
 typedef union _VCPU_STACK
 {
@@ -119,12 +132,18 @@ VcpuDestroy(
 
 VOID
 VcpuSpawnPerCpu(
-    _Inout_ PVCPU_DELEGATE_PARAMS Params
+    _Inout_ PVCPU_SPAWN_PARAMS Params
 );
 
 VOID
 VcpuShutdownPerCpu(
-    _Inout_ PVCPU Vcpu 
+    _Inout_ PVCPU_SHUTDOWN_PARAMS Params
+);
+
+VOID
+VcpuShutdownVmx(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
 );
 
 #endif

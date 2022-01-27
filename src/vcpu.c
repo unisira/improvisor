@@ -61,11 +61,19 @@ VMEXIT_HANDLER VcpuHandleCrAccess;
 VMEXIT_HANDLER VcpuHandleVmxInstruction;
 VMEXIT_HANDLER VcpuHandleHypercall;
 VMEXIT_HANDLER VcpuHandleRdtsc;
+VMEXIT_HANDLER VcpuHandleRdtscp;
+VMEXIT_HANDLER VcpuHandleTimerExpire;
 VMEXIT_HANDLER VcpuHandleMsrRead;
 VMEXIT_HANDLER VcpuHandleMsrWrite;
 VMEXIT_HANDLER VcpuHandleXSETBV;
 VMEXIT_HANDLER VcpuHandlePreemptionTimerExpire;
 VMEXIT_HANDLER VcpuHandleExternalInterruptNmi;
+VMEXIT_HANDLER VcpuHandleNmiWindow;
+VMEXIT_HANDLER VcpuHandleInterruptWindow;
+VMEXIT_HANDLER VcpuHandleMTFExit;
+VMEXIT_HANDLER VcpuHandleWbinvd;
+VMEXIT_HANDLER VcpuHandleXsetbv;
+VMEXIT_HANDLER VcpuHandleInvlpg;
 
 static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuHandleExternalInterruptNmi, // Exception or non-maskable interrupt (NMI)
@@ -119,8 +127,8 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason, 			// EPT violation
     VcpuUnknownExitReason, 			// EPT misconfiguration
     VcpuHandleVmxInstruction, 		// INVEPT
-    VcpuHandleRdtsc,     			// RDTSCP
-    VcpuUnknownExitReason, 			// VMX-preemption timer expired
+    VcpuHandleRdtscp,     			// RDTSCP
+    VcpuHandleTimerExpire,          // VMX-preemption timer expired
     VcpuHandleVmxInstruction, 		// INVVPID
     VcpuUnknownExitReason, 			// WBINVD or WBNOINVD
     VcpuUnknownExitReason, 			// XSETBV
@@ -139,6 +147,20 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason, 			// TPAUSE
     VcpuUnknownExitReason, 			// LOADIWKEY
 };
+
+#define CREATE_MSR_ENTRY(Msr) \
+    {Msr, 0UL, 0ULL}
+
+static DECLSPEC_ALIGN(16) VMX_MSR_ENTRY sVmExitMsrStore[] = {
+    CREATE_MSR_ENTRY(IA32_TIME_STAMP_COUNTER)
+};
+
+/*
+static DECLSPEC_ALIGN(16) VMX_MSR_ENTRY sVmEntryMsrLoad[] = {
+};
+*/
+
+#undef CREATE_MSR_ENTRY
 
 VOID
 VcpuSetControl(
@@ -165,10 +187,20 @@ VcpuToggleExitOnMsr(
     _In_ MSR_ACCESS Access
 );
 
-VOID
+BOOLEAN
 VcpuHandleExit(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState
+);
+
+NTSTATUS
+VcpuPostSpawnInitialisation(
+    _Inout_ PVCPU Vcpu
+);
+
+UINT64
+VcpuGetVmExitStoreValue(
+    _In_ UINT32 Index
 );
 
 NTSTATUS
@@ -261,6 +293,13 @@ Routine Description:
     // Save GUEST_EFER on VM-exit
     VcpuSetControl(Vcpu, VMX_CTL_SAVE_EFER_ON_EXIT, TRUE);
 
+    // Setup MSR load & store regions
+    VmxWrite(CONTROL_VMEXIT_MSR_STORE_COUNT, sizeof(sVmExitMsrStore) / sizeof(*sVmExitMsrStore));
+    //VmxWrite(CONTROL_VMENTRY_MSR_LOAD_COUNT, sizeof(sVmEntryMsrLoad) / sizeof(*sVmEntryMsrLoad));
+
+    VmxWrite(CONTROL_VMEXIT_MSR_STORE_ADDRESS, ImpGetPhysicalAddress(sVmExitMsrStore));
+    //VmxWrite(CONTROL_VMENTRY_MSR_LOAD_ADDRESS, ImpGetPhysicalAddress(sVmEntryMsrLoad));
+
     return STATUS_SUCCESS;
 }
 
@@ -270,7 +309,7 @@ VcpuDestroy(
 )
 /*++
 Routine Description:
-    Frees all resources allocated for VCPU's
+    Frees all resources allocated for a VCPU
 --*/
 {
     // TODO: Finish this 
@@ -460,7 +499,7 @@ Routine Description:
 
 VOID
 VcpuSpawnPerCpu(
-    _Inout_ PVCPU_DELEGATE_PARAMS Params
+    _Inout_ PVCPU_SPAWN_PARAMS Params
 )
 /*++
 Routine Description:
@@ -484,6 +523,14 @@ Routine Description:
     {
         InterlockedIncrement(&Params->ActiveVcpuCount);
         ImpDebugPrint("VCPU #%d is now running...\n", Vcpu->Id);
+
+        if (!NT_SUCCESS(VcpuPostSpawnInitialisation(Vcpu)))
+        {
+            // TODO: Panic shutdown here
+            ImpDebugPrint("VCPU #%d failed post spawn initialsation...\n", Vcpu->Id);
+            return;
+        }
+
         return;
     }
 
@@ -504,15 +551,73 @@ Routine Description:
 
 VOID
 VcpuShutdownPerCpu(
-    _Inout_ PVCPU Vcpu 
+    _Inout_ PVCPU_SHUTDOWN_PARAMS Params
 )
 /*++
 Routine Description:
-    Checks if this core has been virtualised, and stops VMX operation if so.
+    Checks if this core has been virtualised, and stops VMX operation if so. This function will call
+    many Windows functions and therefore may be considered unsafe when operating under an anti-cheat.
+    This function returns the VMM context pointer in VCPU::Vmm to VmmShutdownHypervisor so it can free VMM resources
 --*/
 {
-    // TODO: Complete this
-    // TODO: VMXOFF, Restore CR3, Free resources and return
+    PVCPU Vcpu = NULL;
+    if (VmShutdownVcpu(&Vcpu) != HRESULT_SUCCESS)
+    {
+        Params->Status = STATUS_FATAL_APP_EXIT;
+        return;
+    }
+
+    // Free all VCPU related resources
+    VcpuDestroy(Vcpu);
+    
+    // The VMM context and the VCPU table are allocated as host memory, but after VmShutdownVcpu, all EPT will be disabled
+    // and any host memory will be visible again
+    Params->VmmContext = Vcpu->Vmm;
+}
+
+VOID
+VcpuShutdownVmx(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+/*++
+Routine Description:
+    This function is called by __vmexit_entry when either HYPERCALL_SHUTDOWN_VCPU has been requested, or the VM-exit handler 
+    encountered a panic. It restores guest register and non-register state from the current VMCS and terminates VMX operation.
+--*/
+{
+    return;
+}
+
+NTSTATUS
+VcpuPostSpawnInitialisation(
+    _Inout_ PVCPU Vcpu
+)
+/*++
+Routine Description:
+    This function performs all post-VMLAUNCH initialisation that might be required, such as measuing VM-exit and VM-entry latencies
+--*/
+{
+    VTscEstimateVmExitLatency(&Vcpu->TscInfo);
+    VTscEstimateVmEntryLatency(&Vcpu->TscInfo);
+
+    return STATUS_SUCCESS;
+}
+
+UINT64
+VcpuGetVmExitStoreValue(
+    _In_ UINT32 Index
+)
+/*++
+Routine Description:
+    This function looks for `Index` inside an MSR load/store region and returns the value
+--*/
+{
+    for (SIZE_T i = 0; i < sizeof(sVmExitMsrStore) / sizeof(*sVmExitMsrStore); i++)
+        if (sVmExitMsrStore[i].Index == Index)
+            return sVmExitMsrStore[i].Value;
+
+    return -1;
 }
 
 VOID
@@ -632,7 +737,6 @@ Routine Description:
     if (Vcpu->IsShuttingDown)
         Status = VMM_EVENT_ABORT;
 
-    /*
     if (Status == VMM_EVENT_ABORT)
     {
         // TODO: Set up fake KiKernelIstExit stack inside of __vmexit_trap
@@ -643,7 +747,6 @@ Routine Description:
 
         return FALSE;
     }
-    */
 
     GuestState->Rip = (UINT64)VcpuResume;
 
@@ -667,7 +770,6 @@ Routine Description:
 {
     UNREFERENCED_PARAMETER(GuestState);
 
-    // TODO: Shutdown entire hypervisor from here
     ImpDebugPrint("Unknown VM-exit reason (%d) on VCPU #%d...\n", Vcpu->Vmx.ExitReason.BasicExitReason, Vcpu->Id);
     return VMM_EVENT_ABORT;
 }
@@ -681,23 +783,6 @@ Routine Description:
     This function enables TSC spoofing for the next while
 --*/
 {
-    // TSC Spoofing:
-    //
-    // Save TSC MSR on VM-exit always
-    //
-    // on CPUID VM-exit:
-    //      Enable VMX preemption timer set to 4000
-    //      Enable RDTSC exiting
-    //      Store TSC MSR value saved on exit + CPUID latency - VM-entry latency in TSC event history
-    //
-    // on RDTSC/P VM-exit with spoofing:
-    //      Read last history with same caller ID
-    //      Set TSC value to last history value + guest exeuction time obtained from VMX preemption timer value
-    //      
-    // on VMX preemption timer expiration VM-exit:
-    //      Disable RDTSC exiting
-    //      Disable VMX preemption timer
-    //
     Vcpu->TscInfo.SpoofEnabled = TRUE;
 
     VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
@@ -705,8 +790,56 @@ Routine Description:
 
     // Write the TSC watchdog quantum
     VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, VTSC_WATCHDOG_QUANTUM + Vcpu->TscInfo.VmEntryLatency);
+}
 
-    // TODO: Insert entry into TSC event history
+UINT64
+VcpuGetTscEventLatency(
+    _In_ PVCPU Vcpu,
+    _In_ TSC_EVENT_TYPE Type
+)
+{
+    switch (Type) 
+    {
+    case TSC_EVENT_CPUID: return Vcpu->TscInfo.CpuidLatency;
+    case TSC_EVENT_RDTSC: return Vcpu->TscInfo.RdtscLatency;
+    case TSC_EVENT_RDTSCP: return Vcpu->TscInfo.RdtscpLatency;
+    default: return 0;
+    }
+}
+
+VOID
+VcpuUpdateLastTscEventEntry(
+    _Inout_ PVCPU Vcpu,
+    _In_ TSC_EVENT_TYPE Type
+)
+{
+    // TODO: Also spoof TSC values during EPT violations, some anti-cheats monitor those 
+    
+    // Try find a previous event to base our value off
+    PTSC_EVENT_ENTRY PrevEvent = &Vcpu->TscInfo.PrevEvent; 
+    if (PrevEvent->Valid)
+    {
+        // Calculate the time since the last event during this thread
+        UINT64 ElapsedTime = VTSC_WATCHDOG_QUANTUM - VmxRead(GUEST_VMX_PREEMPTION_TIMER_VALUE);
+
+        // Base the new timestamp off the last TSC event for this thread
+        UINT64 Timestamp = PrevEvent->Timestamp + PrevEvent->Latency + ElapsedTime;
+
+        PrevEvent->Type = Type;
+        PrevEvent->Timestamp = Timestamp;
+        PrevEvent->Latency = VcpuGetTscEventLatency(Vcpu, Type);
+    } 
+    else
+    {
+        // No preceeding records, approximate the value of the TSC before exiting using the stored MSR
+        UINT64 Timestamp = 
+            VcpuGetVmExitStoreValue(IA32_TIME_STAMP_COUNTER) - Vcpu->TscInfo.VmExitLatency;
+
+        PrevEvent->Valid = TRUE;
+        PrevEvent->Type = Type;
+        PrevEvent->Timestamp = Timestamp;
+        PrevEvent->Latency = VcpuGetTscEventLatency(Vcpu, Type);
+    }
 }
 
 VMM_EVENT_STATUS
@@ -742,30 +875,8 @@ Routine Description:
 
     if (!Vcpu->TscInfo.SpoofEnabled)
         VcpuEnableTscSpoofing(Vcpu);
-    else
-    {
-        // TODO: Also spoof TSC values during EPT violations, some anti-cheats monitor those 
-        // Try find a previous event to base our value off
-        PTSC_EVENT_ENTRY LastEntry = VTscFindLastTscEvent(&Vcpu->TscInfo); 
-        if (LastEntry)
-        {
-            // Calculate the time since the last event during this thread
-            UINT64 ElapsedTime = VTSC_WATCHDOG_QUANTUM - VmxRead(GUEST_VMX_PREEMPTION_TIMER_VALUE);
-
-            // Base the new timestamp off the last TSC event for this thread
-            UINT64 Timestamp = LastEntry->Timestamp + LastEntry->Latency + ElapsedTime;
-
-            VTscInsertEventEntry(TSC_EVENT_CPUID, Timestamp);
-        } 
-        else
-        {
-            // No preceeding records, approximate the value of the TSC before exiting using the stored MSR
-            UINT64 Timestamp = 
-                Vcpu->MsrStore[MSR_STORE_EXIT][IA32_TIME_STAMP_COUNTER] - Vcpu->TscInfo.VmExitLatency;
-
-            VTscInsertEventEntry(TSC_EVENT_CPUID, Timestamp);
-        }
-    }
+    
+    VcpuUpdateLastTscEventEntry(Vcpu, TSC_EVENT_CPUID);
 
     return VMM_EVENT_CONTINUE;
 }
@@ -890,6 +1001,141 @@ Routine Description:
 }
 
 VMM_EVENT_STATUS
+VcpuHandleCr0Write(
+    _Inout_ PVCPU Vcpu,
+    _In_ UINT64 NewValue
+)
+{
+    VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
+
+    UINT64 ControlRegister = VmxRead(GUEST_CR0);
+    UINT64 ShadowableBits = Vcpu->Cr0ShadowableBits;
+
+    const X86_CR0 DifferentBits = {
+        .Value = NewValue ^ ControlRegister
+    };
+
+    const X86_CR0 NewCr = {
+        .Value = NewValue
+    };
+
+    BOOLEAN PagingDisabled = (DifferentBits.Paging && NewCr.Paging == 0);
+    BOOLEAN ProtectedModeDisabled = (DifferentBits.ProtectedMode && NewCr.ProtectedMode == 0);
+
+    // VM-entry requires CR0.PG and CR0.PE to be enabled without unrestricted guest
+    if (PagingDisabled || ProtectedModeDisabled)
+    {
+        if (Vcpu->Vmm->UseUnrestrictedGuests &&
+            VcpuIsControlSupported(Vcpu, VMX_CTL_UNRESTRICTED_GUEST))
+        {
+            // TODO: Create identity map CR3
+            VcpuSetControl(Vcpu, VMX_CTL_UNRESTRICTED_GUEST, TRUE);
+
+            // Remove CR0.PG and CR0.PE from the shadowable bits bitmask, as they can now be modified
+            ShadowableBits &= ~CR0_PE_PG_BITMASK;
+
+            Vcpu->UnrestrictedGuest = TRUE;
+        }
+        else
+        {
+            // TODO: Shutdown the VMM and report to the client what happened.
+            // Do we really need to abort here?
+            return VMM_EVENT_ABORT;
+        }
+    }
+
+    // Disable unrestricted guest if paging is enabled again
+    if (!PagingDisabled && !ProtectedModeDisabled)
+    {
+        VcpuSetControl(Vcpu, VMX_CTL_UNRESTRICTED_GUEST, FALSE);
+        Vcpu->UnrestrictedGuest = FALSE;
+    }
+
+    // Handle invalid states of CR0.PE and CR0.PG when unrestricted guest is on
+    if (Vcpu->UnrestrictedGuest)
+    {
+        if (NewCr.Paging && !NewCr.ProtectedMode)
+        {
+            VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+            return VMM_EVENT_INTERRUPT;
+        }
+
+        X86_CR4 Cr4 = {
+            .Value = VmxRead(GUEST_CR4)
+        };
+
+        if (DifferentBits.Paging && !NewCr.Paging && Cr4.PCIDEnable)
+        {
+            VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+            return VMM_EVENT_INTERRUPT;
+        }
+
+        // If CR0.PG is changed to a 0, all TLBs are invalidated
+        if (DifferentBits.Paging && !NewCr.Paging)
+            VmxInvvpid(INV_SINGLE_CONTEXT, 1);
+    }
+
+    // If CR0.PG has been changed, update IA32_EFER.LMA
+    if (DifferentBits.Paging)
+    {
+        IA32_EFER_MSR Efer = {
+            .Value = VmxRead(GUEST_EFER)
+        };
+
+        // IA32_EFER.LMA = CR0.PG & IA32_EFER.LME, VM-entry sets IA32_EFER.LMA for the guest
+        // from the guest address space size control
+        VcpuSetControl(Vcpu, VMX_CTL_GUEST_ADDRESS_SPACE_SIZE, (Efer.LongModeEnable && NewCr.Paging));
+
+        X86_CR4 Cr4 = {
+            .Value = VmxRead(GUEST_CR4)
+        };
+
+        // If CR0.PG has been enabled, we must check if we are in PAE paging
+        if (NewCr.Paging && !Efer.LongModeEnable && Cr4.PhysicalAddressExtension)
+        {
+            // TODO: Setup PDPTR in VMCS
+        }
+    }
+
+    if (!NewCr.CacheDisable && NewCr.NotWriteThrough)
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
+    return VcpuUpdateGuestCr(
+        ControlRegister,			// Control registers current value
+        NewValue,					// The value being written
+        DifferentBits.Value,		// Bits which have been modified
+        GUEST_CR0,					// The VMCS encoding for the CR
+        CONTROL_CR0_READ_SHADOW,	// The VMCS encoding for the CR's read shadow
+        ShadowableBits,				// Host-maskable bits (bits that can be changed in the read shadow)
+        CR0_RESERVED_BITMASK		// Reserved bits in the CR which shouldn't be set
+    );
+
+    // TODO: Remove this and emulate instead
+    // If NW or CD has been modified, instead of emulating the effects of these bits, instead 
+    // remove all changes to any host-owned bits in the register writing to CR0 then return 
+    // VMM_EVENT_INTERRUPT so the instruction gets executed upon VM-entry but doesn't cause an exit
+    // NOTE: This is kinda dangerous but I'm lazy and dont want to emulate CD or NW but i will in the 
+    // future.
+    /*
+    if (DifferentBits.NotWriteThrough ||
+        DifferentBits.CacheDisable)
+    {
+        const PUINT64 TargetReg = LookupTargetReg(GuestState, ExitQual.RegisterId);
+
+        // Reset any host owned bits to the CR value 
+        *TargetReg &= ~(DifferentBits.Value & ShadowableBits);
+        *TargetReg |= ControlRegister & ShadowableBits;
+
+        // TODO: Enable MTF interrupt and push a pending CR spoof
+        return VMM_EVENT_INTERRUPT;
+    }
+    */
+}
+
+VMM_EVENT_STATUS
 VcpuHandleCrWrite(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState,
@@ -913,136 +1159,7 @@ Routine Description:
 
     switch (ExitQual.ControlRegisterId)
     {
-    case 0:
-        {
-            UINT64 ControlRegister = VmxRead(GUEST_CR0);
-            UINT64 ShadowableBits = Vcpu->Cr0ShadowableBits;     		
-
-            const X86_CR0 DifferentBits = {
-                .Value = NewValue ^ ControlRegister
-            };
-        
-            const X86_CR0 NewCr = {
-                .Value = NewValue
-            };
-
-            BOOLEAN PagingDisabled = (DifferentBits.Paging && NewCr.Paging == 0);
-            BOOLEAN ProtectedModeDisabled = (DifferentBits.ProtectedMode && NewCr.ProtectedMode == 0);
-
-            // VM-entry requires CR0.PG and CR0.PE to be enabled without unrestricted guest
-            if (PagingDisabled || ProtectedModeDisabled)
-            {
-                if (Vcpu->Vmm->UseUnrestrictedGuests && 
-                    VcpuIsControlSupported(Vcpu, VMX_CTL_UNRESTRICTED_GUEST)) 
-                {
-                    // TODO: Create identity map CR3
-                    VcpuSetControl(Vcpu, VMX_CTL_UNRESTRICTED_GUEST, TRUE);
-
-                    // Remove CR0.PG and CR0.PE from the shadowable bits bitmask, as they can now be modified
-                    ShadowableBits &= ~CR0_PE_PG_BITMASK;
-                    
-                    Vcpu->UnrestrictedGuest = TRUE;
-                }
-                else
-                {
-                    // TODO: Shutdown the VMM and report to the client what happened.
-                    return VMM_EVENT_ABORT;
-                }
-            }
-
-            // Disable unrestricted guest if paging is enabled again
-            if (!PagingDisabled && ProtectedModeDisabled == 0)
-            {
-                VcpuSetControl(Vcpu, VMX_CTL_UNRESTRICTED_GUEST, FALSE);
-                Vcpu->UnrestrictedGuest = FALSE;
-            }
-
-            // Handle invalid states of CR0.PE and CR0.PG when unrestricted guest is on
-            if (Vcpu->UnrestrictedGuest)
-            {
-                if (NewCr.Paging && !NewCr.ProtectedMode)
-                {
-                    VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
-                    return VMM_EVENT_INTERRUPT;
-                }
-
-                X86_CR4 Cr4 = {
-                    .Value = VmxRead(GUEST_CR4)
-                };
-
-                if (DifferentBits.Paging && !NewCr.Paging && Cr4.PCIDEnable)
-                {
-                    VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
-                    return VMM_EVENT_INTERRUPT;
-                }
-
-                // If CR0.PG is changed to a 0, all TLBs are invalidated
-                if (DifferentBits.Paging && !NewCr.Paging)
-                    VmxInvvpid(INV_SINGLE_CONTEXT, 1);
-            }
-            
-            // If CR0.PG has been changed, update IA32_EFER.LMA
-            if (DifferentBits.Paging)
-            {
-                IA32_EFER_MSR Efer = {
-                    .Value = VmxRead(GUEST_EFER)
-                };
-
-                // IA32_EFER.LMA = CR0.PG & IA32_EFER.LME, VM-entry sets IA32_EFER.LMA for the guest
-                // from the guest address space size control
-                VcpuSetControl(Vcpu, VMX_CTL_GUEST_ADDRESS_SPACE_SIZE, (Efer.LongModeEnable && NewCr.Paging));
-            
-                X86_CR4 Cr4 = {
-                    .Value = VmxRead(GUEST_CR4)
-                };
-
-                // If CR0.PG has been enabled, we must check if we are in PAE paging
-                if (NewCr.Paging && !Efer.LongModeEnable && Cr4.PhysicalAddressExtension)
-                {
-                    // TODO: Setup PDPTR in VMCS
-                }
-            }
-
-            if (!NewCr.CacheDisable && NewCr.NotWriteThrough)
-            {
-                VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
-                return VMM_EVENT_INTERRUPT;
-            }
-
-            Status = VcpuUpdateGuestCr(
-                ControlRegister,			// Control registers current value
-                NewValue,					// The value being written
-                DifferentBits.Value,		// Bits which have been modified
-                GUEST_CR0,					// The VMCS encoding for the CR
-                CONTROL_CR0_READ_SHADOW,	// The VMCS encoding for the CR's read shadow
-                ShadowableBits,				// Host-maskable bits (bits that can be changed in the read shadow)
-                CR0_RESERVED_BITMASK		// Reserved bits in the CR which shouldn't be set
-            );
-
-            // If something went wrong updating the guest's CR, return now
-            if (Status != VMM_EVENT_CONTINUE)
-                return Status;
-
-            // TODO: Remove this and emulate instead
-            // If NW or CD has been modified, instead of emulating the effects of these bits, instead 
-            // remove all changes to any host-owned bits in the register writing to CR0 then return 
-            // VMM_EVENT_INTERRUPT so the instruction gets executed upon VM-entry but doesn't cause an exit
-            // NOTE: This is kinda dangerous but I'm lazy and dont want to emulate CD or NW but i will in the 
-            // future.
-            if (DifferentBits.NotWriteThrough ||
-                DifferentBits.CacheDisable)
-            {
-                const PUINT64 TargetReg = LookupTargetReg(GuestState, ExitQual.RegisterId);
-
-                // Reset any host owned bits to the CR value 
-                *TargetReg &= ~(DifferentBits.Value & ShadowableBits);
-                *TargetReg |= ControlRegister & ShadowableBits;
-
-                // TODO: Enable MTF interrupt and push a pending CR spoof
-                return VMM_EVENT_INTERRUPT;
-            }
-        } break;
-
+    case 0: Status = VcpuHandleCr0Write(Vcpu, NewValue);
     case 3:
         {
             // TODO: Validate CR3 value
@@ -1149,6 +1266,16 @@ VcpuHandleCrAccess(
         .Value = VmxRead(VM_EXIT_QUALIFICATION)
     };
 
+    X86_SEGMENT_ACCESS_RIGHTS GuestCsAr = {
+        .Value = VmxRead(GUEST_CS_ACCESS_RIGHTS)
+    };
+
+    if (GuestCsAr.Dpl != 0)
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
     switch (ExitQual.AccessType)
     {
     case CR_ACCESS_READ: Status = VcpuHandleCrRead(Vcpu, GuestState, ExitQual); break;
@@ -1185,32 +1312,21 @@ Routine Description:
     to interact with the driver and control or use the functionality built into it
 --*/
 {
+    // Check if we are measuring VM-exit latency
+    if (GuestState->Rbx == 0x1FF2C88911424416 && Vcpu->TscInfo.VmExitLatency == 0)
+    {
+        LARGE_INTEGER PreTsc = {
+            .LowPart = GuestState->Rax,
+            .HighPart = GuestState->Rdx
+        };
+
+        GuestState->Rax = VcpuGetVmExitStoreValue(IA32_TIME_STAMP_COUNTER) - PreTsc.QuadPart;
+
+        return VMM_EVENT_CONTINUE;
+    }
+
     PHYPERCALL_INFO Hypercall = (PHYPERCALL_INFO)&GuestState->Rax;
     return VmHandleHypercall(Vcpu, GuestState, Hypercall);
-}
-
-VOID
-VcpuSpoofTscValue(
-    _Inout_ PVCPU Vcpu,
-    _Inout_ PGUEST_STATE GuestState
-    _Out_ PLARGE_INTEGER Tsc
-)
-{
-    // Must handle multiple threads/ CPUID executions
-    //
-    // 
-    //
-
-    PTSC_EVENT_ENTRY CurrEvent = Vcpu->TscInfo.EventHistoryHead;
-    while (CurrEvent != NULL)
-    {
-        if (WinGetCurrentGuestThreadID() == CurrEvent->ThreadID)
-        {
-            
-        }
-        
-        CurrEvent = (PTSC_EVENT_ENTRY)CurrEvent->Links.Blink;
-    }
 }
 
 VMM_EVENT_STATUS
@@ -1219,29 +1335,31 @@ VcpuHandleRdtsc(
     _Inout_ PGUEST_STATE GuestState
 )
 {
-    // CPUID Exit - Estimate TSC for after VMENTRY and record it
+    X86_CR4 Cr4 = {
+        .Value = VmxRead(CONTROL_CR4_READ_SHADOW)
+    };
 
-    // TODO: PLAN
-    // On CPUID VM-exit
-    //      Enable VMX preemption timer to some predefined quantum
-    //      Enable RDTSC exiting
-    //      Store RDTSC of current time (Current - VMENTRY_LATENCY)
-    //
-    // On RDTSC VM-exit
-    //      Query value of VMX preemption timer (amount of time the guest has ran in between)
-    //      Set TSC to the value of the previous TSC stored + instruction latency (calculated previously)
-    //
-    // On VMX preemption timer exit
-    //      Disable RDTSC exiting and VMX preemption timer
-    //
-    //
+    X86_SEGMENT_ACCESS_RIGHTS GuestCsAr = {
+        .Value = VmxRead(GUEST_CS_ACCESS_RIGHTS)
+    };
+
+    if (Cr4.TimeStampDisable && GuestCsAr.Dpl != 0)
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
 
     LARGE_INTEGER Tsc = {
         .QuadPart = __rdtsc()
     };
 
     if (Vcpu->TscInfo.SpoofEnabled)
-        VcpuSpoofTscValue(Vcpu, GuestState, &Tsc);
+    {
+        VcpuUpdateLastTscEventEntry(Vcpu, TSC_EVENT_RDTSC);
+
+        PTSC_EVENT_ENTRY PrevEvent = &Vcpu->TscInfo.PrevEvent;
+        Tsc.QuadPart = PrevEvent->Timestamp + PrevEvent->Latency; 
+    }
 
     GuestState->Rdx = Tsc.HighPart;
     GuestState->Rax = Tsc.LowPart;
@@ -1255,32 +1373,54 @@ VcpuHandleRdtscp(
     _Inout_ PGUEST_STATE GuestState
 )
 {
-    // CPUID Exit - Estimate TSC for after VMENTRY and record it
+    X86_CR4 Cr4 = {
+        .Value = VmxRead(CONTROL_CR4_READ_SHADOW)
+    };
 
-    // TODO: PLAN
-    // On CPUID VM-exit
-    //      Enable VMX preemption timer to some predefined quantum
-    //      Enable RDTSC exiting
-    //      Store RDTSC of current time (Current - VMENTRY_LATENCY)
-    //
-    // On RDTSC VM-exit
-    //      Query value of VMX preemption timer (amount of time the guest has ran in between)
-    //      Set TSC to the value of the previous TSC stored + instruction latency (calculated previously)
-    //
-    // On VMX preemption timer exit
-    //      Disable RDTSC exiting and VMX preemption timer
-    //
-    //
+    X86_SEGMENT_ACCESS_RIGHTS GuestCsAr = {
+        .Value = VmxRead(GUEST_CS_ACCESS_RIGHTS)
+    };
+
+    if (Cr4.TimeStampDisable && GuestCsAr.Dpl != 0)
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
 
     LARGE_INTEGER Tsc = {
-        .QuadPart = __rdtsc()
+        .QuadPart = __rdtscp(&GuestState->Rcx)
     };
 
     if (Vcpu->TscInfo.SpoofEnabled)
-        VcpuSpoofTscValue(Vcpu, GuestState, &Tsc);
+    {
+        VcpuUpdateLastTscEventEntry(Vcpu, TSC_EVENT_RDTSCP);
+
+        PTSC_EVENT_ENTRY PrevEvent = &Vcpu->TscInfo.PrevEvent;
+        Tsc.QuadPart = PrevEvent->Timestamp + PrevEvent->Latency; 
+    }
 
     GuestState->Rdx = Tsc.HighPart;
     GuestState->Rax = Tsc.LowPart;
+
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleTimerExpire(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    // TODO: Disable VMX preemption timer and TSC spoofing
+    if (Vcpu->TscInfo.SpoofEnabled)
+    {
+        Vcpu->TscInfo.PrevEvent.Valid = FALSE;
+
+        VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, FALSE);
+        VcpuSetControl(Vcpu, VMX_CTL_RDTSC_EXITING, FALSE);
+
+        Vcpu->TscInfo.SpoofEnabled = FALSE;
+    }
 
     return VMM_EVENT_CONTINUE;
 }
@@ -1355,47 +1495,10 @@ VcpuHandleXSETBV(
 }
 
 VMM_EVENT_STATUS
-VcpuHandlePreemptionTimerExpire(
-    _Inout_ PVCPU Vcpu,
-    _Inout_ PGUEST_STATE GuestState
-)
-{
-    // TODO: Disable VMX preemption timer and TSC spoofing
-    if (Vcpu->TscInfo.SpoofEnabled)
-    {
-
-        Vcpu->TscInfo.SpoofEnabled = FALSE;
-    }
-
-
-    return VMM_EVENT_CONTINUE;
-}
-
-VMM_EVENT_STATUS
 VcpuHandleExternalInterruptNmi(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState
 )
 {
-    // If a context switch happens and we execute on another core, theres no way to tell how long
-    // it has been since execution of a TSC. I must use external interrupt exiting and add a new TSC
-    // event for when this happens to reset the watchdog quantum just in case
-
-    // Context switches switch THREADS not CORES
-    // On CONTEXT SWITCH INTERRUPT:
-    //      RESET QUANTUM, INSERT MARKER TSC EVENT 
-    //
-    // Context switch 1:
-    //      Current thread stops running, runs new thread that does nothing
-    //      Quantum on this core is reset but a 'marker' entry with the old thread ID is inserted
-    //
-    // Context switch 2:
-    //      Current thread gets queued again, code runs and causes the TSC event that was anticipated
-    //      Quantum on this core was reset but has continued, the TSC event handling code will find
-    //      the 'marker' entry we insert and will virtualise based off that
-    //
-
     return VMM_EVENT_CONTINUE;
 }
-
-

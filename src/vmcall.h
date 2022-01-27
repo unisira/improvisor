@@ -46,4 +46,16 @@ VmReadSystemMemory(
     _In_ SIZE_T Size
 );
 
+HYPERCALL_RESULT
+VmWriteSystemMemory(
+    _In_ PVOID Src,
+    _In_ PVOID Dst,
+    _In_ SIZE_T Size
+);
+
+HYPERCALL_RESULT
+VmShutdownVcpu(
+    PVCPU* pVcpu
+);
+
 #endif
