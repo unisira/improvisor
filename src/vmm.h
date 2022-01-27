@@ -15,7 +15,6 @@ typedef struct _VMM_CONTEXT
     PVCPU VcpuTable;
     BOOLEAN UseUnrestrictedGuests;
     MM_SUPPORT MmSupport;
-    TSC_STATUS TscStatus;
     X86_PSEUDO_DESCRIPTOR HostInterruptDescriptor;
 } VMM_CONTEXT, * PVMM_CONTEXT;
 
@@ -26,7 +25,7 @@ VmmStartHypervisor(
 
 VOID 
 VmmShutdownHypervisor(
-   _Inout_ PVMM_CONTEXT Vmm 
+   VOID 
 );
 
 #endif

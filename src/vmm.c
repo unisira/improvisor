@@ -16,7 +16,12 @@ VmmPrepareSystemResources(
 NTSTATUS
 VmmSpawnVcpuDelegates(
     _In_ PVOID Func,
-    _In_ PVCPU_DELEGATE_PARAMS Param
+    _In_ PVOID Param
+);
+
+NTSTATUS
+VmmPostLaunchInitialisation(
+    _In_ PVMM_CONTEXT VmmContext
 );
 
 VOID
@@ -75,7 +80,7 @@ Routine Description:
         goto panic;
     }
 
-    VCPU_DELEGATE_PARAMS Params = {
+    VCPU_SPAWN_PARAMS Params = {
         .VmmContext = VmmContext,
         .ActiveVcpuCount = 0,
         .FailedCoreMask = 0,
@@ -92,7 +97,7 @@ Routine Description:
 
     ImpDebugPrint("Successfully launched hypervisor on %d cores...\n", Params.ActiveVcpuCount);
 
-    // TODO: Here we should use hypercalls to perform initialisation of anything not VMM/VM related...
+    // TODO: Here we should use hypercalls to perform initialisation of anything not VMM related...
     //
     // Hide Imp* allocation records using HYPERCALL_EPT_MAP_PAGE
     // Certain sections of this driver should also be hidden, on start up a structure containing info about driver sections will be passed
@@ -196,7 +201,7 @@ Routine Description:
 NTSTATUS
 VmmSpawnVcpuDelegates(
     _In_ PVOID Func, 
-    _In_ PVCPU_DELEGATE_PARAMS Param
+    _In_ PVOID Param
 )
 /*++
 Routine Description:
@@ -208,29 +213,46 @@ Routine Description:
 
     KeIpiGenericCall(Worker, Context);
       
-    return Param->Status;
+    return ((PVCPU_DELEGATE_PARAMS)Param)->Status;
+}
+
+NTSTATUS
+VmmPostLaunchInitialisation(
+    _In_ PVMM_CONTEXT VmmContext
+)
+/*++
+Routine Description:
+    This function does all VMM initialisation after it has launched, this includes things like detours.
+--*/
+{
+    return STATUS_SUCCESS;
 }
 
 VOID
-VmmShutdownHypervisor(
-    _Inout_ PVMM_CONTEXT Vmm 
-)
+VmmShutdownHypervisor(VOID)
 /*++
 Routine Description:
 	Shuts down the hypervisor by sending an NMI out to all active processors, and shutting them down   
     individually
  */
 {
-	// TODO: Complete this
-    //
-    // Notes (I seriously need to think about this properly):
-    // This function is called upon panicking. It should shutdown the current VCPU, and then the rest
-    //
-    // 1. Call VcpuShutdownPerCpu via vmcall, this will VMXOFF the current VCPU and restore CR3 to the system CR3,
-    //    hopefully allowing kernel functions to be called in turn allowing us to free resources
-    //
-    // 2. Next, switch to each core using KeSetSystemAffinityThread and call VcpuShutdownPerCpu
-    // 3. Profit
+    PKIPI_BROADCAST_WORKER Worker = (PKIPI_BROADCAST_WORKER)VcpuShutdownPerCpu;
+
+    VCPU_SHUTDOWN_PARAMS Params = {
+        .Status = STATUS_SUCCESS,
+        .FailedCoreMask = 0,
+        .VmmContext = NULL
+    };
+
+    VmmSpawnVcpuDelegates(VcpuShutdownPerCpu, &Params);
+    if (!NT_SUCCESS(Params.Status) || Params.VmmContext == NULL)
+    {
+        ImpDebugPrint("Failed to shutdown VCPU on cores (%x)... (%x)", Params.FailedCoreMask, Params.Status);
+        // TODO: Panic
+        return;
+    }
+
+    VmmFreeResources(Params.VmmContext);
 }
 
 VOID
