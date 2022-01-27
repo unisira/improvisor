@@ -125,11 +125,6 @@ VcpuSetup(
     _In_ UINT8 Id
 );
 
-NTSTATUS
-VcpuDestroy(
-    _Inout_ PVCPU Vcpu
-);
-
 VOID
 VcpuSpawnPerCpu(
     _Inout_ PVCPU_SPAWN_PARAMS Params
@@ -143,7 +138,7 @@ VcpuShutdownPerCpu(
 VOID
 VcpuShutdownVmx(
     _Inout_ PVCPU Vcpu,
-    _Inout_ PGUEST_STATE GuestState
+    _Inout_ PCPU_STATE GuestState
 );
 
 #endif

@@ -193,6 +193,11 @@ VcpuHandleExit(
     _Inout_ PGUEST_STATE GuestState
 );
 
+VOID
+VcpuDestroy(
+    _Inout_ PVCPU Vcpu
+);
+
 NTSTATUS
 VcpuPostSpawnInitialisation(
     _Inout_ PVCPU Vcpu
@@ -303,7 +308,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
+VOID
 VcpuDestroy(
     _Inout_ PVCPU Vcpu
 )
@@ -587,6 +592,8 @@ Routine Description:
     encountered a panic. It restores guest register and non-register state from the current VMCS and terminates VMX operation.
 --*/
 {
+
+
     __cpu_restore_state(CpuState);
 }
 
