@@ -192,9 +192,10 @@ Routine Description:
     Allocates a host page table from the linked list and returns it
 --*/
 {
-    PMM_RESERVED_PT ReservedPt = gHostPageTablesHead;
-    if (ReservedPt == NULL)
+    if (gHostPageTablesHead->Links.Flink == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
+
+    PMM_RESERVED_PT ReservedPt = gHostPageTablesHead;
 
     *pTable = ReservedPt->TableAddr;
 
@@ -517,7 +518,7 @@ Routine Description:
 
     MmSupport->HostDirectoryPhysical = ImpGetPhysicalAddress(HostPml4);
 
-    // TODO: Think about if that while loop condition is wrong, possibly missing the first after the refactor
+    // Loop condition is not wrong, head is always the last one used, one is ignored at the end
     PIMP_ALLOC_RECORD CurrRecord = (PIMP_ALLOC_RECORD)gHostAllocationsHead;
     while (CurrRecord != NULL)
     {
@@ -702,8 +703,6 @@ Routine Description:
     Status = MmReadGuestPhys(PAGE_ADDRESS(Pte.PageFrameNumber) + sizeof(MM_PTE) * LinearAddr.PtIndex, sizeof(MM_PTE), &Pte);
     if (!NT_SUCCESS(Status))
         return Status;
-
-    // TODO: Store this PTE's physaddr so we can read it inside of MmReadGuestVirt
 
     if (!Pte.Present)
         return STATUS_INVALID_PARAMETER;
