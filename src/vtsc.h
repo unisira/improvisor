@@ -13,7 +13,6 @@ typedef enum _TSC_EVENT_TYPE
 
 typedef struct _TSC_EVENT_ENTRY
 {
-    LIST_ENTRY Links;
     BOOLEAN Valid;
     TSC_EVENT_TYPE Type;
     UINT64 Latency;
