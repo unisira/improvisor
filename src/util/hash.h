@@ -12,7 +12,7 @@
 typedef ULONG FNV1A;
 
 FNV1A FNV1AHashStr(
-    _In_ LPCSTR Byte,
+    _In_ LPCSTR Str,
     _In_ ULONG Hash 
 );
 

@@ -16,7 +16,7 @@ FNV1AHashStr(
 )
 {
     if (!*Str) 
-        return Offset;
+        return Hash;
 
     return FNV1AHashStr(Str + 1, FNV1AHashQuanta(*Str, Hash));
 }
