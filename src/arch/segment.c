@@ -1,4 +1,5 @@
 #include "../improvisor.h"
+#include "../intrin.h"
 #include "segment.h"
 
 PX86_SEGMENT_DESCRIPTOR
