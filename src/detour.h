@@ -2,6 +2,7 @@
 #define IMP_DETOUR_H
 
 #include "util/hash.h"
+#include "vcpu.h"
 
 #include <ntdef.h>
 #include <wdm.h>
@@ -58,7 +59,10 @@ EhInitialise(VOID);
 VOID
 EhHandleEptViolation(VOID);
 
-VOID
-EhHandleBp(VOID);
+VMM_EVENT_STATUS
+EhHandleBreakpoint(
+    _In_ PVCPU Vcpu,
+    _In_ PGUEST_STATE GuestState
+);
 
 #endif

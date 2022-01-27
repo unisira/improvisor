@@ -1,4 +1,5 @@
 #include "improvisor.h"
+#include "arch/memory.h"
 #include "util/spinlock.h"
 #include "util/hash.h"
 #include "detour.h"
@@ -69,6 +70,8 @@ Routine Description:
     This function registers a hook in the list and records the target function and callback routines.
 --*/
 {
+    SpinLock(&gHookRegistrationLock);
+
     // TODO: We have to waste 1, in EhReserveHookRecords increment Count by one
     PEH_HOOK_REGISTRATION Hook = gHookRegistrationHead;
     if (Hook->Links.Flink == NULL)
@@ -81,7 +84,31 @@ Routine Description:
 
     gHookRegistrationHead = (PEH_HOOK_REGISTRATION)Hook->Links.Flink;
 
+    SpinUnlock(&gHookRegistrationLock);
+
     return STATUS_SUCCESS;
+}
+
+VOID
+EhUnregisterHook(
+    _In_ PEH_HOOK_REGISTRATION Hook
+)
+/*++
+Routine Description:
+    This function unregisters and clears a hook entry, moving it to the head of the list, the entry must 
+    already be 'uninitialised', meaning its MDL has been free'd if needs be etc.
+--*/
+{
+    SpinLock(&gHookRegistrationLock); 
+
+    PEH_HOOK_REGISTRATION HeadEntry = gHookRegistrationHead;
+
+    Hook->Hash = 0;
+    Hook->Mdl = 0;
+
+    SpinUnlock(&gHookRegistrationLock);
+
+    return;
 }
 
 PEH_HOOK_REGISTRATION
@@ -93,6 +120,8 @@ Routine Description:
     This function provides a simple way of searching for a hook registration by using a hashed string
 --*/
 {
+    SpinLock(&gHookRegistrationLock);
+
     PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
     while (CurrHook != NULL)
     {
@@ -102,6 +131,8 @@ Routine Description:
 
         CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
     }
+
+    SpinUnlock(&gHookRegistrationLock);
 
     return NULL;
 }
@@ -123,7 +154,7 @@ Routine Description:
         // Detour must be installed for it to have a target page MDL 
         if (CurrHook->State == EH_DETOUR_INSTALLED)
         {
-            if (PAGE_FRAME_NUMBER(CurrHook->Target) == PAGE_FRAME_NUMBER(TargetPage))
+            if (PAGE_FRAME_NUMBER(CurrHook->TargetFunction) == PAGE_FRAME_NUMBER(TargetPage))
                 return CurrHook->LockedTargetPage;
         }
 
@@ -131,6 +162,39 @@ Routine Description:
     }
 
     SpinUnlock(&gHookRegistrationLock);
+
+    return NULL;
+}
+
+BOOLEAN
+EhFixupRelativeInstruction(
+    _In_ PVOID InstructionAddr,
+    _In_ PVOID DestInstruction,
+    _In_ SIZE_T InstructionSz,
+    _In_ ldasm_data* Ld
+)
+/*++
+Routine Description:
+    This function relocates relative instructions so their target is still valid
+--*/
+{
+    SIZE_T DspOffset = Ld->disp_offset ? Ld->disp_offset : Ld->imm_offset;
+    SIZE_T DspSize = Ld->disp_size ? Ld->disp_size : Ld->imm_size;
+
+    // Copy the displacement from the instruction
+    SIZE_T Disp = 0;
+    if (VmReadSystemMemory(InstructionAddr + DspOffset, &Disp, DspSize) != HRESULT_SUCCESS)
+        return FALSE;
+
+    // Calculate the target address from the displacement
+    UINT64 TargetAddr = (UINT64)InstructionAddr + InstructionSz + Disp;
+    // Work out the new target
+    UINT64 NewDisp = TargetAddr - (UINT64)DestInstruction + InstructionSz;
+
+    if (VmWriteSystemMemory(DestInstruction + DspOffset, &NewDisp, DspSize) != HRESULT_SUCCESS)
+        return FALSE;
+
+    return TRUE;
 }
 
 NTSTATUS
@@ -143,10 +207,10 @@ Routine Description:
     to the second instruction of TargetFunction, which can be called to call the original function of the hook
 --*/
 {
-    const UINT64 MINIMUM_OFFSET = 0x01 // 1 Instruction, 0xCC
+    const UINT64 MINIMUM_OFFSET = 0x01; // 1 Instruction, 0xCC
 
     // TODO: Convert from psuedocode to real code
-    Hook->Trampoline = AllocateNonEptBlock(PAGE_SIZE);
+    Hook->Trampoline = ImpAllocateNpPool(PAGE_SIZE);
     if (Hook->Trampoline == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -158,18 +222,19 @@ Routine Description:
         if (Step == 0 || !ValidateLDasmResult(&Ld))
             return STATUS_INVALID_PARAMETER;
 
-        RtlCopyMemory((PUCHAR)Hook->Trampoline + SizeCopied, (PUCHAR)Hook->TargetFunction + SizeCopied, Step);
+        if (VmWriteSystemMemory((PUCHAR)Hook->Trampoline + SizeCopied, (PUCHAR)Hook->TargetFunction + SizeCopied, Step) != HRESULT_SUCCESS)
+            return STATUS_INVALID_PARAMETER;
    
         if (Ld.flags & F_RELATIVE)
-        {
-            Step = EhFixupRelativeInstruction();
-            if (Step == 0)
+            if (!EhFixupRelativeInstruction((PUCHAR)Hook->TargetFunction + SizeCopied, (PUCHAR)Hook->Trampoline + SizeCopied, Step, &Ld))
                 return STATUS_INVALID_PARAMETER;
-        }
 
+        Hook->PrologueSize += Step;
 
         SizeCopied += Step;
     }
+
+    // Write JMP thunk to TargetFunction + SizeCopied
 
     return STATUS_SUCCESS;
 }
@@ -220,31 +285,12 @@ Routine Description:
         *(DetourShellcode + i) = 0x90 /* NOP */;
 
     if (VmWriteSystemMemory(
-                Hook->ShadowPage + PAGE_OFFSET(Hook->TargetFunction), 
-                DetourShellcode, 
-                Hook->PrologueSize) != HRESULT_SUCCESS)
+            Hook->ShadowPage + PAGE_OFFSET(Hook->TargetFunction), 
+            DetourShellcode, 
+            Hook->PrologueSize) != HRESULT_SUCCESS)
         return STATUS_CRITICAL_FAILURE;
 
     // Enable the hook using HYPERCALL_EPT_REMAP_PAGES
-
-    // NOTES:
-    // This function is called in VMX-non root mode
-    //
-    // Hook->TargetFunction must be locked so that it doesn't get unmapped and mapped to a different GPA
-    //
-    // PEH_HOOK_REGISTRATION etc.. will be hidden because all VMM allocated data is hidden using EPT.
-    // Add VMCALL to remap this stuff back into the EPT tables so it can be accessed briefly
-    //
-    // When reading from Hook->TargetFunction, use VPTE VMCALLs to read the contents of it so we don't taint
-    // any PTEs
-    //
-    // Trampoline is created by copying out first instruction of Hook->TargetFunction and putting a JMP to 
-    // the second instruction in Hook->TargetFunction
-    // Care should be taken when relative instructions are copied out into the trampoline
-    //
-    // Hook->ExecutionPage be a copy of the page containing Hook->TargetFunction and Hook->TargetFunction's first
-    // instruction will be replaced with 0xCC and remaining NOPs until the second instruction
-    //
 
     return STATUS_SUCCESS;
 }
@@ -302,7 +348,7 @@ EhDestroyDetour(
 )
 /*++
 Routine Description:
-    This function frees all resources used by a detour
+    This function frees all resources used by a detour and reverts its changes
 --*/
 {
     SpinLock(&gHookRegistrationLock);
@@ -322,6 +368,8 @@ Routine Description:
 
         Hook->LockedTargetPage = NULL;
     }
+
+    // TODO: Free PEH_HOOK_REGISTRATION
 
     SpinUnlock(&gHookRegistrationLock);
 }
@@ -368,4 +416,29 @@ Routine Description:
     EhRegisterHook(FNV1A_HASH("PsCallImageLoadCallbacks"));
 
     return Status;
+}
+
+VOID
+EhHandleEptViolation(VOID)
+{
+    return;
+}
+
+VMM_EVENT_STATUS
+EhHandleBreakpoint(
+    _In_ PVCPU Vcpu,
+    _In_ PGUEST_STATE GuestState
+)
+{
+    PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
+    while (CurrHook != NULL)
+    {
+        if (CurrHook->State == EH_DETOUR_INSTALLED && Vcpu->Vmx.GuestRip == CurrHook->ShadowPage + PAGE_OFFSET(CurrHook->TargetFunction))
+            VmxWrite(GUEST_RIP, (UINT64)CurrHook->CallbackFunction); 
+
+        CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
+    }
+
+    // Don't advance RIP
+    return VMM_EVENT_INTERRUPT;
 }
