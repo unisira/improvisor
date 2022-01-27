@@ -21,6 +21,7 @@ wdk_add_driver(improvisor
     src/vmm.c
     src/vmx.c
     src/vtsc.asm
+    src/vmcall.asm
     src/vmexit.asm
     src/cpu_state.asm
     src/intrin.asm

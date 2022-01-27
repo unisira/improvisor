@@ -4,7 +4,7 @@
 __vtsc_estimate_vmexit_latency PROC
     push rbx
     ; VcpuHandleHypercall checks GuestState::Rbx to be this value
-    mov rbx, 1FF2C88911424416h
+    mov rbx, 01FF2C88911424416h
     ; Measure TSC right before forcing a VM-exit
     rdtsc
     ; VMCALL is quickest VM-exiting instruction, its only purpose is to exit
@@ -13,13 +13,13 @@ __vtsc_estimate_vmexit_latency PROC
     pop rbx
     ; The difference between RAX:RDX and the value stored in the VM-exit MSR store area
     ; is stored in RAX, we can just return
-    retn
+    ret
 __vtsc_estimate_vmexit_latency ENDP
 
 __vtsc_estimate_vmentry_latency PROC
     push rbx
     ; VcpuHandleHypercall checks GuestState::Rbx to be this value
-    mov rbx, F2C889114244161Fh
+    mov rbx, 0F2C889114244161Fh
     ; Force a VM-exit, VMX preemption timer will be activated
     vmcall
     ; Exit again so the elapsed time can be measured
@@ -27,15 +27,13 @@ __vtsc_estimate_vmentry_latency PROC
     ; Restore RBX
     pop rbx
     ; The elapsed time it took to enter then exit again, minus the VM-exit latency is now in RAX
-    retn
+    ret
 __vtsc_estimate_vmentry_latency ENDP
 
 __vtsc_estimate_cpuid_latency PROC
-    push rax
-    push rdx
-    push r8
     ; Disable interrupts
-    mov cr8, Fh
+    mov rax, 0Fh
+    mov cr8, rax
     ; Measure TSC just before CPUID execution
     rdtsc
     ; Store TSC value into RBX
@@ -50,15 +48,13 @@ __vtsc_estimate_cpuid_latency PROC
     shl rdx, 32
     or rax, rdx
     sub rax, rcx
-    retn
+    ret
 __vtsc_estimate_cpuid_latency ENDP
 
 __vtsc_estimate_rdtsc_latency PROC
-    push rax
-    push rdx
-    push r8
     ; Disable interrupts
-    mov cr8, Fh
+    mov rax, 0Fh
+    mov cr8, rax
     ; Measure TSC just before CPUID execution
     rdtsc
     ; Store TSC value into RBX
@@ -73,15 +69,13 @@ __vtsc_estimate_rdtsc_latency PROC
     shl rdx, 32
     or rax, rdx
     sub rax, rcx
-    retn
+    ret
 __vtsc_estimate_rdtsc_latency ENDP
 
 __vtsc_estimate_rdtscp_latency PROC
-    push rax
-    push rdx
-    push r8
     ; Disable interrupts
-    mov cr8, Fh
+    mov rax, 0Fh
+    mov cr8, rax
     ; Measure TSC just before CPUID execution
     rdtsc
     ; Store TSC value into RBX
@@ -97,7 +91,7 @@ __vtsc_estimate_rdtscp_latency PROC
     shl rdx, 32
     or rax, rdx
     sub rax, rcx
-    retn
+    ret
 __vtsc_estimate_rdtscp_latency ENDP
 
 END

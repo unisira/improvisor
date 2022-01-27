@@ -53,6 +53,15 @@ typedef enum _HYPERCALL_CACHED_CR3_TARGET
     GUEST
 } HYPERCALL_CACHED_CR3_TARGET;
 
+EXTERN_C
+HYPERCALL_INFO
+__vmcall(
+    HYPERCALL_INFO HypercallInfo,
+    UINT64 ExtHypercallInfo,
+    PVOID BufferAddress,
+    PVOID TargetAddress
+);
+
 // Hypercall system overview:
 // System register  | Use
 // RAX              | HYPERCALL_INFO structure
@@ -188,3 +197,17 @@ VmHandleHypercall(
 //
 // VM hypercall wrappers
 //
+HYPERCALL_RESULT
+VmShutdownVcpu(
+    PVCPU* pVcpu
+)
+{
+    HYPERCALL_INFO Hypercall = {
+        .Id = HYPERCALL_SHUTDOWN_VCPU,
+        .Result = HRESULT_SUCCESS
+    };
+
+    Hypercall = __vmcall(Hypercall, 0, NULL, NULL);
+
+    return Hypercall.Result;
+}
