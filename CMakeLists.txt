@@ -10,17 +10,20 @@ find_package(WDK REQUIRED)
 
 wdk_add_driver(improvisor
     src/arch/cpuid.c
+    src/arch/segment.c
+    src/util/fmt.c
     src/util/spinlock.c
     src/improvisor.c
-    src/cpuid.c
+    src/mm.c
+    src/vmcall.c
     src/vcpu.c
+    src/vtsc.c
     src/vmm.c
     src/vmx.c
     src/vmexit.asm
     src/cpu_state.asm
-    src/vmcall.asm
     src/intrin.asm
     src/main.c
     )
 
-target_include_directories(improvisor INTERFACE .)
+target_include_directories(improvisor INTERFACE src/)
