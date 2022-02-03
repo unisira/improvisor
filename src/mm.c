@@ -222,7 +222,7 @@ Routine Description:
 
     for (SIZE_T i = 0; i < Count; i++)
     {
-        PMM_VPTE CurrVpte = &sVirtualPTEListRaw[i];
+        PMM_VPTE CurrVpte = sVirtualPTEListRaw + i;
 
         CurrVpte->Links.Flink = i < Count   ? &(CurrVpte + 1)->Links : NULL;
         CurrVpte->Links.Blink = i > 0       ? &(CurrVpte - 1)->Links : NULL;
@@ -519,7 +519,7 @@ Routine Description:
     MmSupport->HostDirectoryPhysical = ImpGetPhysicalAddress(HostPml4);
 
     // Loop condition is not wrong, head is always the last one used, one is ignored at the end
-    PIMP_ALLOC_RECORD CurrRecord = (PIMP_ALLOC_RECORD)gHostAllocationsHead;
+    PIMP_ALLOC_RECORD CurrRecord = gHostAllocationsHead;
     while (CurrRecord != NULL)
     {
         SIZE_T SizeMapped = 0;
