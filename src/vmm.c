@@ -1,7 +1,9 @@
 #include "vmm.h"
 
 NTSTATUS
-VmmEnsureFeatureSupport(VOID);
+VmmEnsureFeatureSupport(
+    _Inout_ PVMM_CONTEXT VmmContext
+);
 
 NTSTATUS
 VmmPrepareCpuResources(
@@ -91,7 +93,7 @@ Routine Description:
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Failed to spawn VCPU on cores (%x)... (%x)", Params.FailedCoreMask, Status);
-        VmmShutdownHypervisor(VmmContext);
+        VmmShutdownHypervisor();
         goto panic;
     }
 
@@ -186,16 +188,16 @@ Routine Description:
     VmmSetHostInterruptHandler(EXCEPTION_NMI, VmmHandleHostNMI);
     */
 
-    /*
+    
     Status = MmInitialise(&VmmContext->MmSupport);
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Failed to initialise memory manager... (%X)\n", Status);
         return Status;
     }
-    */
+    
     VmmContext->UseUnrestrictedGuests = FALSE;
-    VmmContext->UseTscSpoofing = FALSE;
+    VmmContext->UseTscSpoofing = VmxCheckPreemptionTimerSupport();
 
     return Status;
 }
@@ -272,7 +274,9 @@ Routine Description:
 }
 
 NTSTATUS
-VmmEnsureFeatureSupport(VOID)
+VmmEnsureFeatureSupport(
+    _Inout_ PVMM_CONTEXT VmmContext
+)
 /*++
 Routine Description:
     Checks if all the features required for this hypervisor are present and useable on the current hardware
@@ -283,7 +287,7 @@ Routine Description:
     // TODO: Check EPT feature support here in the future, maybe MTRR support too?
     if (!VmxCheckSupport())
         return STATUS_NOT_SUPPORTED;
-   
+
     return Status;
 }
 
