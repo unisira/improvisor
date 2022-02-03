@@ -83,6 +83,17 @@ typedef union _VCPU_STACK
     } Cache;
 } VCPU_STACK, *PVCPU_STACK;
 
+typedef enum _MTF_EVENT_TYPE
+{
+    MTF_EVENT_MEASURE_VMENTRY
+} MTF_EVENT_TYPE, *PMTF_EVENT_TYPE;
+
+typedef struct _MTF_EVENT_ENTRY
+{
+    LIST_ENTRY Links;
+    MTF_EVENT_TYPE Type;
+} MTF_EVENT_ENTRY, *PMTF_EVENT_ENTRY;
+
 typedef struct _VCPU
 {
     UINT8 Id;
@@ -102,6 +113,7 @@ typedef struct _VCPU
     CPU_STATE LaunchState;
     VMX_STATE Vmx;
     TSC_STATUS TscInfo;
+    PMTF_EVENT_ENTRY MtfEventHead;
     UINT64 Cr0ShadowableBits;
     UINT64 Cr4ShadowableBits;
     UINT64 SystemDirectoryBase;

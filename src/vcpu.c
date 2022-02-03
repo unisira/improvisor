@@ -559,9 +559,7 @@ Routine Description:
     encountered a panic. It restores guest register and non-register state from the current VMCS and terminates VMX operation.
 --*/
 {
-    KeBugCheckEx(0x010101010101, Vcpu->Vmx.ExitReason.BasicExitReason, Vcpu->Id, VmxRead(GUEST_RIP), VmxRead(GUEST_RSP));
-
-    //__cpu_restore_state(CpuState);
+    __cpu_restore_state(CpuState);
 }
 
 NTSTATUS
@@ -753,6 +751,7 @@ Routine Description:
 {
     Vcpu->TscInfo.SpoofEnabled = TRUE;
 
+    VcpuSetControl(Vcpu, VMX_CTL_SAVE_VMX_PREEMPTION_VALUE, TRUE);
     VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
     VcpuSetControl(Vcpu, VMX_CTL_RDTSC_EXITING, TRUE);
 
@@ -796,6 +795,8 @@ VcpuUpdateLastTscEventEntry(
         PrevEvent->Type = Type;
         PrevEvent->Timestamp = Timestamp;
         PrevEvent->Latency = VcpuGetTscEventLatency(Vcpu, Type);
+
+        ImpDebugPrint("[02%X] PrevEvent->Valid: TSC = %u + %u + %u\n", Vcpu->Id, PrevEvent->Timestamp, PrevEvent->Latency, ElapsedTime);
     } 
     else
     {
@@ -807,6 +808,8 @@ VcpuUpdateLastTscEventEntry(
         PrevEvent->Type = Type;
         PrevEvent->Timestamp = Timestamp;
         PrevEvent->Latency = VcpuGetTscEventLatency(Vcpu, Type);
+
+        ImpDebugPrint("[02%X] !PrevEvent->Valid: TSC = %u + %u\n", Vcpu->Id, Timestamp, PrevEvent->Latency);
     }
 }
 
@@ -1107,6 +1110,63 @@ VcpuHandleCr0Write(
 }
 
 VMM_EVENT_STATUS
+VcpuHandleCr4Write(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ UINT64 NewValue
+)
+{
+    VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
+
+    UINT64 ControlRegister = VmxRead(GUEST_CR4);
+    UINT64 ShadowableBits = Vcpu->Cr4ShadowableBits;
+
+    const X86_CR4 DifferentBits = {
+        .Value = NewValue ^ ControlRegister
+    };
+
+    const X86_CR4 NewCr = {
+        .Value = NewValue
+    };
+
+    // TODO: Check CR4.VMXE being set, make sure its 0 in the read shadow and inject #UD upon trying
+    // to change it
+
+    const IA32_EFER_MSR Efer = {
+        .Value = VmxRead(GUEST_EFER)
+    };
+
+    if (DifferentBits.PCIDEnable && NewCr.PCIDEnable == 1 &&
+        ((VmxRead(GUEST_CR3) & 0xFFF) != 0 || (Efer.LongModeActive == 0)))
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
+    if (DifferentBits.PhysicalAddressExtension && NewCr.PhysicalAddressExtension == 0 &&
+        Efer.LongModeEnable)
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
+    Status = VcpuUpdateGuestCr(
+        ControlRegister,
+        NewValue,
+        DifferentBits.Value,
+        GUEST_CR4,
+        CONTROL_CR4_READ_SHADOW,
+        ShadowableBits,
+        CR4_RESERVED_BITMASK
+    );
+
+    if (DifferentBits.GlobalPageEnable ||
+        DifferentBits.PhysicalAddressExtension ||
+        (DifferentBits.PCIDEnable && NewCr.PCIDEnable == 0) ||
+        (DifferentBits.SmepEnable && NewCr.SmepEnable == 1))
+        VmxInvvpid(INV_SINGLE_CONTEXT, 1);
+}
+
+VMM_EVENT_STATUS
 VcpuHandleCrWrite(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState,
@@ -1130,14 +1190,14 @@ Routine Description:
 
     switch (ExitQual.ControlRegisterId)
     {
-    case 0: VmxWrite(GUEST_CR0, NewValue); break;
+    case 0: VcpuHandleCr0Write(Vcpu, NewValue); break;
     case 3:
         {
             // TODO: Validate CR3 value
             VmxWrite(GUEST_CR3, NewValue);
         } break;
 
-    case 4: VmxWrite(GUEST_CR4, NewValue); break;
+    case 4: VcpuHandleCr4Write(Vcpu, NewValue); break;
     case 8:
         {
             // TODO: Validate CR8 value
@@ -1246,6 +1306,12 @@ Routine Description:
         return VMM_EVENT_CONTINUE;
     }
 
+    if (GuestState->Rbx == 0xF2C889114244161F && Vcpu->TscInfo.VmEntryLatency == 0)
+    {
+        // TODO: Set up MTF queue
+        VcpuSetControl(Vcpu, VMX_CTL_MONITOR_TRAP_FLAG, TRUE);
+    }
+
     PHYPERCALL_INFO Hypercall = (PHYPERCALL_INFO)&GuestState->Rax;
     return VmHandleHypercall(Vcpu, GuestState, Hypercall);
 }
@@ -1332,11 +1398,14 @@ VcpuHandleTimerExpire(
     _Inout_ PGUEST_STATE GuestState
 )
 {
+    ImpDebugPrint("[02%X] VMX preemption timer expired...\n", Vcpu->Id);
+
     // TODO: Disable VMX preemption timer and TSC spoofing
     if (Vcpu->TscInfo.SpoofEnabled)
     {
         Vcpu->TscInfo.PrevEvent.Valid = FALSE;
 
+        VcpuSetControl(Vcpu, VMX_CTL_SAVE_VMX_PREEMPTION_VALUE, FALSE);
         VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, FALSE);
         VcpuSetControl(Vcpu, VMX_CTL_RDTSC_EXITING, FALSE);
 
