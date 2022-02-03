@@ -330,6 +330,8 @@ Routine Description:
     This function checks if Hook->LockedTargetPage is referenced in any of the registered hooks
 --*/
 {
+    SpinLock(&gHookRegistrationLock)
+
     PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
     while (CurrHook != NULL)
     {
@@ -338,6 +340,8 @@ Routine Description:
 
         CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
     }
+
+    SpinUnlock(&gHookRegistrationLock)
 
     return FALSE;
 }
