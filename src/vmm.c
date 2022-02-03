@@ -82,7 +82,7 @@ Routine Description:
         goto panic;
     }
 
-    VCPU_SPAWN_PARAMS Params = {
+    const volatile VCPU_SPAWN_PARAMS Params = {
         .VmmContext = VmmContext,
         .ActiveVcpuCount = 0,
         .FailedCoreMask = 0,
@@ -242,7 +242,7 @@ Routine Description:
 {
     PKIPI_BROADCAST_WORKER Worker = (PKIPI_BROADCAST_WORKER)VcpuShutdownPerCpu;
 
-    VCPU_SHUTDOWN_PARAMS Params = {
+    const volatile VCPU_SHUTDOWN_PARAMS Params = {
         .Status = STATUS_SUCCESS,
         .FailedCoreMask = 0,
         .VmmContext = NULL
