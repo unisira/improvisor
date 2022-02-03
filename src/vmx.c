@@ -11,6 +11,11 @@ __invvpid(
     _In_ PVMX_INVVPID_DESCRIPTOR Desc
 );
 
+UINT64
+VmxGetFixedBits(
+    _In_ UINT64 VmxCapability
+);
+
 typedef union _VMX_CAPABILITY_MSR
 {
     UINT64 Value;
@@ -50,6 +55,24 @@ Routine Description:
 --*/
 {
     return ArchCheckFeatureFlag(X86_FEATURE_VMX); 
+}
+
+BOOLEAN
+VmxCheckPreemptionTimerSupport(VOID)
+/*++
+Routine Description:
+    Checks if the VMX preemption timer is supported by querying pinbased controls capabilties MSR
+--*/
+{
+    const IA32_VMX_BASIC_MSR VmxCap = {
+        .Value = __readmsr(IA32_VMX_BASIC)
+    };
+
+    VMX_CAPABILITY_MSR PinbasedCap = {
+        .Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_PINBASED_CTLS) : __readmsr(IA32_VMX_PINBASED_CTLS)
+    };
+
+    return (~VmxGetFixedBits(PinbasedCap.Value) & VMX_CONTROL_MASK(VMX_CTL_VMX_PREEMPTION_TIMER)) != 0;
 }
 
 BOOLEAN
@@ -253,12 +276,10 @@ Routine Description:
 	Toggles a VMX execution control
 --*/
 {
-	UINT8 ControlField = (UINT8)Control & 0x07;
-
     PUINT64 TargetControls = NULL;
     UINT64 TargetCap = 0;
 	
-    switch (ControlField)
+    switch (VMX_CONTROL_FIELD(Control))
     {
     case VMX_PINBASED_CTLS:
         TargetControls = &Vmx->Controls.PinbasedCtls;
@@ -286,15 +307,13 @@ Routine Description:
         break;
     }
 
-    UINT8 ControlBit = (UINT8)((Control >> 3) & 0x1F);
-
-	if (VmxGetFixedBits(TargetCap) & (1ULL << ControlBit))
+	if (VmxGetFixedBits(TargetCap) & VMX_CONTROL_MASK(Control))
 		return;
 	
     if (State)
-        *TargetControls |= (1ULL << ControlBit);
+        *TargetControls |= VMX_CONTROL_MASK(Control);
     else
-        *TargetControls &= ~(1ULL << ControlBit);
+        *TargetControls &= ~VMX_CONTROL_MASK(Control);
 }
 
 BOOLEAN
@@ -307,11 +326,9 @@ Routine Description:
     Checks VMX control capability MSRs to see if a VMX control is supported
 --*/
 {
-	UINT8 ControlField = (UINT8)Control & 0x07;
-
     UINT64 ControlCap = 0;
 
-    switch (ControlField)
+    switch (VMX_CONTROL_FIELD(Control))
     {
     case VMX_PINBASED_CTLS: ControlCap = Vmx->Cap.PinbasedCtls; break;
     case VMX_PRIM_PROCBASED_CTLS: ControlCap = Vmx->Cap.PrimaryProcbasedCtls; break;
@@ -320,9 +337,7 @@ Routine Description:
     case VMX_ENTRY_CTLS: ControlCap = Vmx->Cap.VmEntryCtls; break;
     }
 
-    UINT8 ControlBit = (UINT8)((Control >> 3) & 0x1F);
-
-    return (VmxGetFixedBits(ControlCap) & (1ULL << ControlBit)) != 0;
+    return (VmxGetFixedBits(ControlCap) & VMX_CONTROL_MASK(Control)) != 0;
 }
 
 VOID

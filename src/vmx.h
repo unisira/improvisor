@@ -7,10 +7,16 @@
 #define VMX_MSR_HI_BITMAP_OFFS 1024
 
 #define ENCODE_VMX_CONTROL(Field, Position) \
-    ( \
+    (								\
       (((Field)     & 0x07) << 0) | \
       (((Position)  & 0x1F) << 3)   \
     ) 
+
+#define VMX_CONTROL_MASK(Control) \
+	(1ULL << ((Control >> 3) & 0x1F))
+
+#define VMX_CONTROL_FIELD(Control) \
+	((Control & 0x07))
 
 typedef struct _VMX_REGION
 {
@@ -384,6 +390,9 @@ VmxAllocateRegion(VOID);
 
 BOOLEAN
 VmxCheckSupport(VOID);
+
+BOOLEAN
+VmxCheckPreemptionTimerSupport(VOID);
 
 BOOLEAN
 VmxEnableVmxon(VOID);
