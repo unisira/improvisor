@@ -18,6 +18,7 @@ wdk_add_driver(improvisor
     src/vmcall.c
     src/vcpu.c
     src/vtsc.c
+    src/mtrr.c
     src/vmm.c
     src/vmx.c
     src/vtsc.asm
