@@ -3,11 +3,6 @@
 
 #include <ntdef.h>
 
-#define IA32_MTRR_CAPABILITIES 0xFE
-#define IA32_MTRR_DEFAULT_TYPE 0x2FF
-#define IA32_MTRR_PHYSBASE_0 0x200
-#define IA32_MTRR_PHYSMASK_0 0x201
-
 typedef union _IA32_MTRR_CAPABILITIES_MSR
 {
     UINT64 Value;
