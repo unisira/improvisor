@@ -69,6 +69,20 @@ Routine Description:
 }
 
 MEMORY_TYPE
+MtrrGetDefaultType(VOID)
+/*++
+Routine Description:
+    Returns the default memory type for any range outside of the VRR's
+--*/
+{
+    IA32_MTRR_DEFAULT_TYPE_MSR DefaultMtrr = { 
+        .Value = __readmsr(IA32_MTRR_DEFAULT_TYPE)
+    };
+
+    return DefaultMtrr.Type;
+}
+
+MEMORY_TYPE
 MtrrGetRegionType(
     _In_ UINT64 PhysAddr
 )
@@ -79,7 +93,7 @@ Routine Description:
 {
     PMTRR_REGION_CACHE_ENTRY Entry = MtrrGetContainingRegion(PhysAddr);
     if (Entry == NULL)
-        return MT_INVALID;
+        return MtrrGetDefaultType();
 
     return Entry->Type;
 }
@@ -110,15 +124,24 @@ MtrrInitialise(VOID)
         .Value = __readmsr(IA32_MTRR_CAPABILITIES)
     };
 
+    IA32_MTRR_DEFAULT_TYPE_MSR DefaultMtrr = {
+        .Value = __readmsr(IA32_MTRR_DEFAULT_TYPE)
+    };
+
     sMtrrRegionCacheRaw = ImpAllocateHostNpPool(sizeof(MTRR_REGION_CACHE_ENTRY) * MtrrCap.VariableRangeRegCount);
     if (sMtrrRegionCacheRaw == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
     gMtrrRegionCacheTail = sMtrrRegionCacheRaw;
 
+    if (MtrrCap.FixedRangeRegSupport && DefaultMtrr.EnableFixedMtrr)
+    {
+        // TODO: Support fixed MTRR ranges
+    }
+
     for (SIZE_T i = 0; i < MtrrCap.VariableRangeRegCount; i++)
     {
-        PMTRR_REGION_CACHE_ENTRY CurrMtrrEntry = &sMtrrRegionCacheRaw[i];
+        PMTRR_REGION_CACHE_ENTRY CurrMtrrEntry = sMtrrRegionCacheRaw + i;
 
         IA32_MTRR_PHYSBASE_N_MSR Base = {
             .Value = __readmsr(IA32_MTRR_PHYSBASE_0 + i * 2)
