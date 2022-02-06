@@ -60,6 +60,9 @@ MmAllocateHostPageTable(
     _Out_ PVOID* Table
 );
 
+PMM_RESERVED_PT
+MmGetLastAllocatedPageTableEntry(VOID);
+
 NTSTATUS
 MmAllocateVpte(
     _Out_ PMM_VPTE* pVpte

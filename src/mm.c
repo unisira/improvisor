@@ -4,7 +4,7 @@
 #include "arch/cr.h"
 #include "mm.h"
 
-#define VPTE_BASE (0xfffffc9ec0000000)
+#define VPTE_BASE ((PVOID)0xfffffc9ec0000000)
 
 #define BASE_POOL_CHUNK_SIZE (512)
 #define CHUNK_ADDR(Hdr) ((PVOID)((ULONG_PTR)Hdr + sizeof(MM_POOL_CHUNK_HDR)))
@@ -204,6 +204,16 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+PMM_RESERVED_PT
+MmGetLastAllocatedPageTableEntry(VOID)
+/*++
+Routine Description:
+    This function returns the last allocated host page table entry
+*/
+{
+    return (PMM_RESERVED_PT)gHostPageTablesHead->Links.Blink;
+}
+
 NTSTATUS
 MmAllocateVpteList(
     _In_ SIZE_T Count
@@ -311,7 +321,7 @@ Routine Description:
     }
 
     X86_LA48 LinearAddr = {
-        .Value = Address
+        .Value = (UINT64)Address
     };
 
     PMM_PTE HostPml4e = &Pml4[LinearAddr.Pml4Index];
@@ -642,7 +652,7 @@ Routine Description:
     SIZE_T SizeWritten = 0;
     while (Size > SizeWritten)
     {
-        MmMapGuestPhys(&Vpte, PhysAddr + SizeWritten);
+        MmMapGuestPhys(Vpte, PhysAddr + SizeWritten);
 
         SIZE_T SizeToWrite = Size - SizeWritten > PAGE_SIZE ? PAGE_SIZE : Size - SizeWritten;
         RtlCopyMemory(Vpte->MappedVirtAddr, (PCHAR)Buffer + SizeWritten, SizeToWrite);
@@ -760,7 +770,7 @@ Routine Description:
     if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
         return STATUS_INSUFFICIENT_RESOURCES;
     
-    if (!NT_SUCCESS(MmMapGuestVirt(&Vpte, GuestCr3, VirtAddr)))
+    if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, VirtAddr)))
         return STATUS_INVALID_PARAMETER;
 
     RtlCopyMemory(Vpte->MappedVirtAddr, Buffer, Size);
