@@ -288,6 +288,9 @@ Routine Description:
     if (!VmxCheckSupport())
         return STATUS_NOT_SUPPORTED;
 
+    if (!EptCheckSupport())
+        return STATUS_NOT_SUPPORTED;
+
     return Status;
 }
 

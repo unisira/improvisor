@@ -18,7 +18,11 @@ Routine Description:
     Checks if the current CPU supports EPT super PDPTEs for mapping 1GB regions at a time
 --*/
 {
-    return TRUE;
+    IA32_VMX_EPT_VPID_CAP_MSR EptVpidCap = {
+        .Value = __readmsr(IA32_VMX_EPT_VPID_CAP)
+    };
+
+    return EptVpidCap.SuperPdpteSupport;
 }
 
 BOOLEAN
@@ -28,7 +32,11 @@ Routine Description:
     Checks if the current CPU supports EPT large PDEs for mapping 2MB regions at a time
 --*/
 {
-    return TRUE;
+    IA32_VMX_EPT_VPID_CAP_MSR EptVpidCap = {
+    .Value = __readmsr(IA32_VMX_EPT_VPID_CAP)
+    };
+
+    return EptVpidCap.LargePdeSupport;
 }
 
 PEPT_PTE 
@@ -457,6 +465,21 @@ Routine Description:
     // TODO: Optimise this more by using largest pages where possible by checking MTRR range size
 
     return Status;
+}
+
+BOOLEAN
+EptCheckSupport(VOID)
+{
+    IA32_VMX_EPT_VPID_CAP_MSR EptVpidCap = {
+        .Value = __readmsr(IA32_VMX_EPT_VPID_CAP)
+    };
+
+    if (!EptVpidCap.PageWalkLength4Support ||
+        !EptVpidCap.WbMemoryTypeSupport ||
+        !EptVpidCap.ExecuteOnlyTranslationSupport)
+        return FALSE;
+
+    return TRUE;
 }
 
 NTSTATUS

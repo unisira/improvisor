@@ -7,6 +7,7 @@
 #include "arch/segment.h"
 #include "vcpu.h"
 #include "vtsc.h"
+#include "ept.h"
 #include "mm.h"
 
 typedef struct _VMM_CONTEXT

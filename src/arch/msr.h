@@ -107,4 +107,39 @@ typedef union _IA32_APIC_BASE_MSR
     };
 } IA32_APIC_BASE_MSR, *PIA32_APIC_BASE_MSR;
 
+typedef union _IA32_VMX_EPT_VPID_CAP_MSR
+{
+    UINT64 Value;
+
+    struct
+    {
+        UINT64 ExecuteOnlyTranslationSupport : 1;
+        UINT64 Reserved1 : 5;
+        UINT64 PageWalkLength4Support : 1;
+        UINT64 Reserved2 : 1;
+        UINT64 UcMemoryTypeSupport : 1;
+        UINT64 Reserved3 : 5;
+        UINT64 WbMemoryTypeSupport : 1;
+        UINT64 Reserved4 : 1;
+        UINT64 LargePdeSupport : 1;
+        UINT64 SuperPdpteSupport : 1;
+        UINT64 Reserved5 : 2;
+        UINT64 InveptSupport : 1;
+        UINT64 AccessedDirtyFlagsSupport : 1;
+        UINT64 AdvancedEptViolationInfo : 1;
+        UINT64 SupervisorShadowStackControlSupport : 1;
+        UINT64 Reserved6 : 1;
+        UINT64 InveptSingleCtxSupport : 1;
+        UINT64 InveptAllCtxSupport : 1;
+        UINT64 Reserved7 : 5;
+        UINT64 InvvpidSupport : 1;
+        UINT64 Reserved8 : 7;
+        UINT64 SingleAddrInvvpidSupport : 1;
+        UINT64 SingleCtxInvvpidSupport : 1;
+        UINT64 AllCtxInvvpidSupport : 1;
+        UINT64 SingleCtxRetainGlobalsInvvpidSupport : 1;
+        UINT64 Reserved9 : 20;
+    };
+} IA32_VMX_EPT_VPID_CAP_MSR, *PIA32_VMX_EPT_VPID_CAP_MSR;
+
 #endif
