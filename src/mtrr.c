@@ -1,5 +1,8 @@
 #include "improvisor.h"
+#include "arch/memory.h"
 #include "arch/mtrr.h"
+#include "arch/msr.h"
+#include "intrin.h"
 #include "mtrr.h"
 
 typedef struct _MTRR_REGION_CACHE_ENTRY
@@ -7,8 +10,9 @@ typedef struct _MTRR_REGION_CACHE_ENTRY
     LIST_ENTRY Links;
     UINT64 Base;
     UINT64 Size;
-    UINT64 Type;
-} MTRR_REGION_CACHE_ENTRY, *PMTRR_REGION_CACHE_ENTRY;
+    MEMORY_TYPE Type;
+} MTRR_REGION_CACHE_ENTRY, * PMTRR_REGION_CACHE_ENTRY;
+
 
 static PMTRR_REGION_CACHE_ENTRY sMtrrRegionCacheRaw = NULL;
 
@@ -64,16 +68,49 @@ Routine Description:
     return Entry->Base;
 }
 
+MEMORY_TYPE
+MtrrGetRegionType(
+    _In_ UINT64 PhysAddr
+)
+/*++
+Routine Description:
+    Returns the MTRR region type of the region containing `PhysAddr`
+--*/
+{
+    PMTRR_REGION_CACHE_ENTRY Entry = MtrrGetContainingRegion(PhysAddr);
+    if (Entry == NULL)
+        return MT_INVALID;
+
+    return Entry->Type;
+}
+
+UINT64
+MtrrGetRegionEnd(
+    _In_ UINT64 PhysAddr
+)
+/*++
+Routine Description:
+    Returns the size of the containing MTRR region
+--*/
+{
+    PMTRR_REGION_CACHE_ENTRY Entry = MtrrGetContainingRegion(PhysAddr);
+    if (Entry == NULL)
+        return 0;
+
+    return Entry->Base + Entry->Size;
+}
+
+
 NTSTATUS
 MtrrInitialise(VOID)
 {
     NTSTATUS Status = STATUS_SUCCESS;
 
     IA32_MTRR_CAPABILITIES_MSR MtrrCap = {
-        .Value = __rdmsr(IA32_MTRR_CAPABILTIIES)
+        .Value = __readmsr(IA32_MTRR_CAPABILITIES)
     };
 
-    sMtrrRegionCacheRaw = ImpAllocateHostNpPool(MTRR_REGION_CACHE_ENTRY * MtrrCap.VariableRangeRegCount);
+    sMtrrRegionCacheRaw = ImpAllocateHostNpPool(sizeof(MTRR_REGION_CACHE_ENTRY) * MtrrCap.VariableRangeRegCount);
     if (sMtrrRegionCacheRaw == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -100,7 +137,7 @@ MtrrInitialise(VOID)
         const ULONG SizeShift = 0;
         _BitScanForward64(&SizeShift, Mask.Mask << 12);
 
-        CurrMtrrEntry->Size = 1 << SizeShift;
+        CurrMtrrEntry->Size = (1ULL << SizeShift);
 
         CurrMtrrEntry->Links.Flink = i < MtrrCap.VariableRangeRegCount  ? &(CurrMtrrEntry + 1)->Links : NULL;
         CurrMtrrEntry->Links.Blink = i > 0                              ? &(CurrMtrrEntry - 1)->Links : NULL;
