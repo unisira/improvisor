@@ -82,7 +82,7 @@ EptMapLargeMemoryRange(
 )
 /*++
 Routine Description:
-    Converts a PDE to a large PDPTE (mapping a 2MB region)
+    Converts `Pde` to a large PDPTE, mapping a 2MB region from `PhysAddr`
 --*/
 {
     // Make sure this memory region meets the requirements for super page mapping
@@ -112,6 +112,10 @@ EptSubvertLargePage(
     _In_ UINT64 PhysAddr,
     _In_ EPT_PAGE_PERMISSIONS Permissions
 )
+/*++
+Routine Description:
+    Takes a Super PDE `Pde` and converts it into a normal PDPTE, mapping all necessary pages.
+--*/
 {
     static const sSize = MB(2);
 
@@ -180,6 +184,7 @@ Routine Description:
     Pdpte->LargePage = TRUE;
 
     Pdpte->PageFrameNumber = PAGE_FRAME_NUMBER(PhysAddr);
+    Pdpte->MemoryType = MtrrGetRegionType(PhysAddr);
 
     EptApplyPermissions(Pdpte, Permissions);
 
