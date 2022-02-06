@@ -16,7 +16,8 @@ typedef struct _VMM_CONTEXT
     PVCPU VcpuTable;
     BOOLEAN UseUnrestrictedGuests;
     BOOLEAN UseTscSpoofing;
-    MM_SUPPORT MmSupport;
+    MM_INFORMATION MmInformation;
+    EPT_INFORMATION EptInformation;
     X86_PSEUDO_DESCRIPTOR HostInterruptDescriptor;
 } VMM_CONTEXT, * PVMM_CONTEXT;
 

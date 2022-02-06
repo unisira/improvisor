@@ -3,10 +3,10 @@
 
 #include <ntdef.h>
 
-typedef struct _MM_SUPPORT
+typedef struct _MM_INFORMATION
 {
 	UINT64 HostDirectoryPhysical;
-} MM_SUPPORT, *PMM_SUPPORT;
+} MM_INFORMATION, *PMM_INFORMATION;
 
 typedef union _MM_PTE
 {
@@ -52,7 +52,7 @@ extern PMM_RESERVED_PT gHostPageTablesTail;
 
 NTSTATUS
 MmInitialise(
-	_Inout_ PMM_SUPPORT MmSupport
+	_Inout_ PMM_INFORMATION MmSupport
 );
 
 NTSTATUS

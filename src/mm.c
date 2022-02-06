@@ -209,7 +209,7 @@ MmGetLastAllocatedPageTableEntry(VOID)
 /*++
 Routine Description:
     This function returns the last allocated host page table entry
-*/
+--*/
 {
     return (PMM_RESERVED_PT)gHostPageTablesHead->Links.Blink;
 }
@@ -508,7 +508,7 @@ Routine Description:
 
 NTSTATUS
 MmSetupHostPageDirectory(
-    _Inout_ PMM_SUPPORT MmSupport
+    _Inout_ PMM_INFORMATION MmSupport
 )
 /*++
 Routine Description:
@@ -561,14 +561,14 @@ Routine Description:
 
 NTSTATUS
 MmInitialise(
-    _Inout_ PMM_SUPPORT MmSupport
+    _Inout_ PMM_INFORMATION MmSupport
 )
 {
     NTSTATUS Status = STATUS_SUCCESS;
 
     // Reserve 1000 page tables for the host to create its own page tables and still
     // have access to them post-VMLAUNCH
-    Status = MmHostReservePageTables(1000);
+    Status = MmHostReservePageTables(2000);
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Failed to reserve page tables for the host...\n");

@@ -188,14 +188,20 @@ Routine Description:
     VmmSetHostInterruptHandler(EXCEPTION_NMI, VmmHandleHostNMI);
     */
 
-    
-    Status = MmInitialise(&VmmContext->MmSupport);
+    Status = MmInitialise(&VmmContext->MmInformation);
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Failed to initialise memory manager... (%X)\n", Status);
         return Status;
     }
-    
+
+    Status = EptInitialise(&VmmContext->EptInformation);
+    if (!NT_SUCCESS(Status))
+    {
+        ImpDebugPrint("Failed to initialise EPT... (%X)\n", Status);
+        return Status;
+    }
+
     VmmContext->UseUnrestrictedGuests = FALSE;
     VmmContext->UseTscSpoofing = VmxCheckPreemptionTimerSupport();
 
