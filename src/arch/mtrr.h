@@ -19,7 +19,7 @@ typedef union _IA32_MTRR_CAPABILITIES_MSR
         UINT64 Reserved1 : 1;
         UINT64 WriteCombineTypeSupport : 1;
         UINT64 SmrrInterfaceSupport : 1;
-        UINT64 Reserved2 : 52:
+        UINT64 Reserved2 : 52;
     };
 } IA32_MTRR_CAPABILITIES_MSR, *PIA32_MTRR_CAPABILITIES_MSR;
 
