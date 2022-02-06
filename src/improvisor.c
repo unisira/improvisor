@@ -103,7 +103,7 @@ Routine Description:
     signals that it should be mapped to an empty page using EPT
 --*/
 {
-    return ImpAllocateContiguousMemory(Size, IMP_SHADOW_ALLOCATION);
+    return ImpAllocateContiguousMemoryEx(Size, IMP_SHADOW_ALLOCATION);
 }
 
 PVOID
