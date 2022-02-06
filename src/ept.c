@@ -33,7 +33,7 @@ Routine Description:
 --*/
 {
     IA32_VMX_EPT_VPID_CAP_MSR EptVpidCap = {
-    .Value = __readmsr(IA32_VMX_EPT_VPID_CAP)
+        .Value = __readmsr(IA32_VMX_EPT_VPID_CAP)
     };
 
     return EptVpidCap.LargePdeSupport;
@@ -99,7 +99,7 @@ Routine Description:
     // 2. The PhysAddr and GuestPhysAddr we are attempting to map must be 2MB aligned
     // 3. The size of the region we are mapping must be greater than 2MB
     // 4. The MTRR region we are trying to map must have more than 2MB remaining
-    if (!EptCheckLargePageSupport() || Size >= MB(2) || (PhysAddr & 0x1FFFFF) != 0 || (GuestPhysAddr & 0x1FFFFF) != 0 || MtrrGetRegionEnd(PhysAddr) - PhysAddr >= MB(2))
+    if (!EptCheckLargePageSupport() || Size < MB(2) || (PhysAddr & 0x1FFFFF) != 0 || (GuestPhysAddr & 0x1FFFFF) != 0 || MtrrGetRegionEnd(PhysAddr) - PhysAddr < MB(2))
         return STATUS_INVALID_PARAMETER;
 
     Pde->Present = TRUE;
@@ -188,7 +188,7 @@ Routine Description:
     // 2. The PhysAddr and GuestPhysAddr we are attempting to map must be 1GB aligned 
     // 3. The size of the region we are mapping must be greater than 1GB
     // 4. The MTRR region we are trying to map must have more than 1GB remaining
-    if (!EptCheckSuperPageSupport() || Size >= GB(1) || (PhysAddr & 0x3FFFFFFF) != 0 || (GuestPhysAddr & 0x3FFFFFFF) != 0 || MtrrGetRegionEnd(PhysAddr) - PhysAddr >= GB(1))
+    if (!EptCheckSuperPageSupport() || Size < GB(1) || (PhysAddr & 0x3FFFFFFF) != 0 || (GuestPhysAddr & 0x3FFFFFFF) != 0 || (MtrrGetRegionEnd(PhysAddr) - PhysAddr) < GB(1))
         return STATUS_INVALID_PARAMETER;
 
     Pdpte->Present = TRUE;
@@ -463,13 +463,21 @@ Routine Description:
 {
     NTSTATUS Status = STATUS_SUCCESS;
 
-    // NOTES:
-    // 1. This function should allocate its host page tables from the memory manager,
-    //    If EPT was to have its own it would be an exact repeat of the previous code so
-    //
-    // 2. This function will take care of hiding data from ANY allocations made by the hypervisor
+    PPHYSICAL_MEMORY_RANGE PhysMemRange = MmGetPhysicalMemoryRanges();
+    if (PhysMemRange == NULL)
+        return STATUS_NOT_SUPPORTED;
 
-    // TODO: Optimise this more by using largest pages where possible by checking MTRR range size
+    while (PhysMemRange->BaseAddress.QuadPart != 0 && PhysMemRange->NumberOfBytes.QuadPart != 0)
+    {
+        // Map all of ram as RWX for now
+        if (!NT_SUCCESS(EptMapMemoryRange(Pml4, PhysMemRange->BaseAddress.QuadPart, PhysMemRange->BaseAddress.QuadPart, PhysMemRange->NumberOfBytes.QuadPart, EPT_PAGE_RWX)))
+        {
+            ImpDebugPrint("Failed to map region '%llx' with size '%llx'...\n", PhysMemRange->BaseAddress.QuadPart, PhysMemRange->NumberOfBytes.QuadPart);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+    
+        PhysMemRange++;
+    }
 
     return Status;
 }
@@ -490,33 +498,19 @@ EptCheckSupport(VOID)
 }
 
 NTSTATUS
-EptInitialise(VOID)
+EptInitialise(
+    _Inout_ PEPT_INFORMATION EptInformation
+)
 /*++
 Routine Description:
     This function initialises the EPT identity map and hooking capabilities. This function should be called
     before other Mm* functions which allocate page tables to improve performance
 --*/
 {
-    // This function should do the following:
-    //
-    // Allocate one PML4 which will map all memory known to man (incredible)
-    //
-    // Check if large PDPTs are supported, and if they are:
-    // Map using large PDPTEs (1GB each) which can be taken from the host page tables
-    //
-    // If not:
-    // Map using large PDEs (2MB each) which can be taken from the host page tables
-    //
-    // On HYPERCALL_EPT_MAP_PAGES:
-    // Remap right the way down to PTE level for the requested GPA and change PageFrameNumber to the PFN of the swap page supplied
-    //
-    // On EPT violation (should only happen for hooked pages):
-    // Try to identity map the region using the largest possible pages
-    // If a hooked page lies within the range, try the next smallest page size and continue
-    //
-
-    // TODO: Free stuff
     NTSTATUS Status = STATUS_SUCCESS;
+
+    if (!NT_SUCCESS(MtrrInitialise()))
+        return STATUS_INSUFFICIENT_RESOURCES;
 
     PEPT_PTE Pml4 = NULL;
     if (!NT_SUCCESS(MmAllocateHostPageTable(&Pml4)))
@@ -526,7 +520,7 @@ Routine Description:
     if (!NT_SUCCESS(Status))
         return Status;
 
-    // TODO: Set up MM information struct containing all sorts
+    // TODO: Set up EPT information struct containing page use count, PML4, last violation and anything else that might be of use
 
     return Status;
 }

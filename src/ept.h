@@ -46,6 +46,11 @@ typedef union _EPT_PTE
     };
 } EPT_PTE, *PEPT_PTE;
 
+typedef struct _EPT_INFORMATION
+{
+    PEPT_PTE SystemPml4;
+} EPT_INFORMATION, *PEPT_INFORMATION;
+
 typedef enum _EPT_PAGE_PERMISSIONS
 {
     EPT_PAGE_INVALID = 0,
@@ -66,6 +71,8 @@ BOOLEAN
 EptCheckSupport(VOID);
 
 NTSTATUS
-EptInitialise(VOID);
+EptInitialise(
+    _Inout_ PEPT_INFORMATION
+);
 
 #endif
