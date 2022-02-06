@@ -430,6 +430,24 @@ Routine Description:
                     PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
             }
         }
+        else
+        {
+            if (Pde->LargePage)
+            {
+                // This might seem a bit janky, but the logic is correct;
+                //
+                // 1. We cannot just pass GuestPhysAddr, as we might be remapping an area that crosses over two super PDPTE's
+                // 2. ANDing with ~0x3FFFFFFF aligns the GPA and PA to the start of the super page, so that this region can be remapped
+                // 3. Remapping the entire page won't interfere with any other special mappings because we don't use super or large pages for those
+                if (!NT_SUCCESS(EptSubvertLargePage(Pde, (GuestPhysAddr + SizeMapped) & ~0x1FFFFF, (PhysAddr + SizeMapped) & ~0x1FFFFF, Permissions)))
+                {
+                    ImpDebugPrint("Failed to subvert PDE containing '%llx'...n");
+                    return STATUS_INSUFFICIENT_RESOURCES;
+                }
+            }
+
+            Pte = EptReadExistingPte(Pde->PageFrameNumber, Gpa.PtIndex);
+        }
 
         if (!Pte->Present)
             Pte->Present = TRUE;
