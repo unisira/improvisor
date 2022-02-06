@@ -257,7 +257,6 @@ Routine Description:
                     Permissions)
                 ))
             {
-                // Move forward however much was mapped
                 SizeSubverted += MB(2);
                 continue;
             }
@@ -272,7 +271,7 @@ Routine Description:
 
                 Pte = &Pt[Gpa.PtIndex];
 
-                EptApplyPermissions(Pde, Permissions);
+                EptApplyPermissions(Pde, EPT_PAGE_RWX);
 
                 Pde->Present = TRUE;
                 Pde->PageFrameNumber =
@@ -381,11 +380,6 @@ Routine Description:
         {
             if (Pdpte->LargePage)
             {
-                // This might seem a bit janky, but the logic is correct;
-                //
-                // 1. We cannot just pass GuestPhysAddr, as we might be remapping an area that crosses over two super PDPTE's
-                // 2. ANDing with ~0x3FFFFFFF aligns the GPA and PA to the start of the super page, so that this region can be remapped
-                // 3. Remapping the entire page won't interfere with any other special mappings because we don't use super or large pages for those
                 if (!NT_SUCCESS(EptSubvertSuperPage(Pdpte, (GuestPhysAddr + SizeMapped) & ~0x3FFFFFFF, (PhysAddr + SizeMapped) & ~0x3FFFFFFF, Permissions)))
                 {
                     ImpDebugPrint("Failed to subvert PDPTE containing '%llx'...n");
@@ -434,11 +428,6 @@ Routine Description:
         {
             if (Pde->LargePage)
             {
-                // This might seem a bit janky, but the logic is correct;
-                //
-                // 1. We cannot just pass GuestPhysAddr, as we might be remapping an area that crosses over two super PDPTE's
-                // 2. ANDing with ~0x3FFFFFFF aligns the GPA and PA to the start of the super page, so that this region can be remapped
-                // 3. Remapping the entire page won't interfere with any other special mappings because we don't use super or large pages for those
                 if (!NT_SUCCESS(EptSubvertLargePage(Pde, (GuestPhysAddr + SizeMapped) & ~0x1FFFFF, (PhysAddr + SizeMapped) & ~0x1FFFFF, Permissions)))
                 {
                     ImpDebugPrint("Failed to subvert PDE containing '%llx'...n");
