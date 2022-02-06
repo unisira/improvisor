@@ -1,6 +1,8 @@
 #include "improvisor.h"
 #include "arch/memory.h"
 #include "arch/mtrr.h"
+#include "arch/msr.h"
+#include "mtrr.h"
 #include "ept.h"
 #include "vmx.h"
 #include "mm.h"
@@ -9,46 +11,24 @@
 #define MB(N) ((UINT64)(N) * 1024 * 1024)
 #define KB(N) ((UINT64)(N) * 1024)
 
-MEMORY_TYPE
-EptGetMtrrMemoryType(
-    _In_ UINT64 PhysAddr
-)
+BOOLEAN
+EptCheckSuperPageSupport(VOID)
 /*++
 Routine Description:
-    This function gets the 
+    Checks if the current CPU supports EPT super PDPTEs for mapping 1GB regions at a time
 --*/
 {
-    IA32_MTRR_CAPABILITIES_MSR MtrrCap = {
-        .Value = __rdmsr(IA32_MTRR_CAPABILTIIES)
-    };
+    return TRUE;
+}
 
-    for (SIZE_T i = 0; i < MtrrCap.VariableRangeRegCount; i++)
-    {
-        IA32_MTRR_PHYSBASE_N_MSR Base = {
-            .Value = __readmsr(IA32_MTRR_PHYSBASE_0 + i * 2)
-        };
-
-        IA32_MTRR_PHYSMASK_N_MSR Mask = {
-            .Value = __readmsr(IA32_MTRR_PHYSMASK_0 + i * 2)
-        };
-
-        if (!Mask.Valid)
-            continue;
-
-        const UINT64 PhysBase = PAGE_ADDRESS(Base.Base);
-
-        const ULONG SizeShift = 0;
-        _BitScanForward64(&SizeShift, Mask.Mask << 12);
-
-        if (PhysAddr >= PhysBase && PhysAddr + PAGE_SIZE < PhysBase + (1 << SizeShift))
-            return Base.Type;
-    }
-
-    IA32_MTRR_DEFAULT_TYPE_MSR DefaultType = {
-        .Value = __readmsr(IA32_MTRR_DEFAULT_TYPE)
-    };
-
-    return DefaultType.Type; 
+BOOLEAN
+EptCheckLargePageSupport(VOID)
+/*++
+Routine Description:
+    Checks if the current CPU supports EPT large PDEs for mapping 2MB regions at a time
+--*/
+{
+    return TRUE;
 }
 
 PEPT_PTE 
@@ -76,14 +56,237 @@ Routine Description:
     return NULL;
 }
 
+VOID
+EptApplyPermissions(
+    _In_ PEPT_PTE Pte,
+    _In_ EPT_PAGE_PERMISSIONS Permissions
+)
+/*++
+Routine Description:
+    This function applies read, write and execute permissions to `Pte` based on the value of the bitmask `Permissions` 
+--*/
+{
+    Pte->ReadAccess = (Permissions & EPT_PAGE_READ) != 0;
+    Pte->WriteAccess = (Permissions & EPT_PAGE_WRITE) != 0;
+    Pte->ExecuteAccess = (Permissions & EPT_PAGE_EXECUTE) != 0;
+    Pte->UserExecuteAccess = (Permissions & EPT_PAGE_UEXECUTE) != 0;
+}
+
 NTSTATUS
-EptLazyMapMemoryRange(
-    _In_ PEPT_PTE Pml4,
-    _In_ UINT64 PhysAddr,
+EptMapLargeMemoryRange(
+    _In_ PEPT_PTE Pde,
     _In_ UINT64 GuestPhysAddr,
+    _In_ UINT64 PhysAddr,
     _In_ UINT64 Size,
-    _In_ UINT16 Permissions,
-    _In_ MEMORY_TYPE Type
+    _In_ EPT_PAGE_PERMISSIONS Permissions
+)
+/*++
+Routine Description:
+    Converts a PDE to a large PDPTE (mapping a 2MB region)
+--*/
+{
+    // Make sure this memory region meets the requirements for super page mapping
+    // 
+    // 1. Super page technology must be supported on the current CPU
+    // 2. The PhysAddr and GuestPhysAddr we are attempting to map must be 2MB aligned
+    // 3. The size of the region we are mapping must be greater than 2MB
+    // 4. The MTRR region we are trying to map must have more than 2MB remaining
+    if (!EptCheckLargePageSupport() || Size >= MB(2) || (PhysAddr & 0x1FFFFF) != 0 || (GuestPhysAddr & 0x1FFFFF) != 0 || MtrrGetRegionEnd(PhysAddr) - PhysAddr >= MB(2))
+        return STATUS_INVALID_PARAMETER;
+
+    Pde->Present = TRUE;
+    Pde->LargePage = TRUE;
+
+    Pde->PageFrameNumber = PAGE_FRAME_NUMBER(PhysAddr);
+    Pde->MemoryType = MtrrGetRegionType(PhysAddr);
+
+    EptApplyPermissions(Pde, Permissions);
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+EptSubvertLargePage(
+    _In_ PEPT_PTE Pde,
+    _In_ UINT64 GuestPhysAddr,
+    _In_ UINT64 PhysAddr,
+    _In_ EPT_PAGE_PERMISSIONS Permissions
+)
+{
+    static const sSize = MB(2);
+
+    if (!Pde->LargePage)
+        return STATUS_INVALID_PARAMETER;
+
+    Pde->LargePage = FALSE;
+
+    PEPT_PTE Pt = NULL;
+    if (!NT_SUCCESS(MmAllocateHostPageTable(&Pt)))
+    {
+        ImpDebugPrint("Couldn't allocate EPT PD for '%llx' subversion...\n", GuestPhysAddr);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Pde->PageFrameNumber =
+        PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
+
+    SIZE_T SizeSubverted = 0;
+    while (SizeSubverted < sSize)
+    {
+        EPT_GPA Gpa = {
+            .Value = GuestPhysAddr + SizeSubverted
+        };
+
+        PEPT_PTE Pte = &Pt[Gpa.PtIndex];
+
+        Pte->Present = TRUE;
+
+        EptApplyPermissions(Pte, Permissions);
+
+        Pte->PageFrameNumber = PAGE_FRAME_NUMBER(Gpa.Value);
+        // Technically, doing PhysAddr + SizeSubverted is just pedantic because mapping a large PDE requires that it was within one MTRR region
+        Pte->MemoryType = MtrrGetRegionType(Gpa.Value);
+
+        SizeSubverted += PAGE_SIZE;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+EptMapSuperMemoryRange(
+    _In_ PEPT_PTE Pdpte,
+    _In_ UINT64 GuestPhysAddr,
+    _In_ UINT64 PhysAddr,
+    _In_ UINT64 Size,
+    _In_ EPT_PAGE_PERMISSIONS Permissions
+)
+/*++
+Routine Description:
+    Converts a PDPTE to a super PDPTE (mapping a 1GB region), returns STATUS_INVALID_PARAMETER if the region described cannot be mapped using
+    super PDPTEs
+--*/
+{
+    // Make sure this memory region meets the requirements for super page mapping
+    // 
+    // 1. Super page technology must be supported on the current CPU 
+    // 2. The PhysAddr and GuestPhysAddr we are attempting to map must be 1GB aligned 
+    // 3. The size of the region we are mapping must be greater than 1GB
+    // 4. The MTRR region we are trying to map must have more than 1GB remaining
+    if (!EptCheckSuperPageSupport() || Size >= GB(1) || (PhysAddr & 0x3FFFFFFF) != 0 || (GuestPhysAddr & 0x3FFFFFFF) != 0 || MtrrGetRegionEnd(PhysAddr) - PhysAddr >= GB(1))
+        return STATUS_INVALID_PARAMETER;
+
+    Pdpte->Present = TRUE;
+    Pdpte->LargePage = TRUE;
+
+    Pdpte->PageFrameNumber = PAGE_FRAME_NUMBER(PhysAddr);
+
+    EptApplyPermissions(Pdpte, Permissions);
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+EptSubvertSuperPage(
+    _In_ PEPT_PTE Pdpte,
+    _In_ UINT64 GuestPhysAddr,
+    _In_ UINT64 PhysAddr,
+    _In_ EPT_PAGE_PERMISSIONS Permissions
+)
+/*++
+Routine Description:
+    Takes a Super PDPTE and converts it into a normal PDPTE, mapping all necessary pages. This function attempts to map 
+    the super page as large pages, and if that fails then it uses regular 4KB pages
+--*/
+{
+    static const sSize = GB(1);
+
+    if (!Pdpte->LargePage)
+        return STATUS_INVALID_PARAMETER;
+
+    Pdpte->LargePage = FALSE;
+    
+    PEPT_PTE Pd = NULL;
+    if (!NT_SUCCESS(MmAllocateHostPageTable(&Pd)))
+    {
+        ImpDebugPrint("Couldn't allocate EPT PD for '%llx' subversion...\n", GuestPhysAddr);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Pdpte->PageFrameNumber =
+        PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
+
+    SIZE_T SizeSubverted = 0;
+    while (SizeSubverted < sSize)
+    {
+        EPT_GPA Gpa = {
+            .Value = GuestPhysAddr + SizeSubverted
+        };
+
+        PEPT_PTE Pde = &Pd[Gpa.PdIndex];
+
+        PEPT_PTE Pte = NULL;
+        if (!Pde->Present)
+        {
+            // Try to map as a large PDE, continue if that succeeds
+            if (NT_SUCCESS(
+                EptMapLargeMemoryRange(
+                    Pde,
+                    GuestPhysAddr + SizeSubverted,
+                    PhysAddr + SizeSubverted,
+                    sSize - SizeSubverted,
+                    Permissions)
+                ))
+            {
+                // Move forward however much was mapped
+                SizeSubverted += MB(2);
+                continue;
+            }
+            else
+            {
+                PEPT_PTE Pt = NULL;
+                if (!NT_SUCCESS(MmAllocateHostPageTable(&Pt)))
+                {
+                    ImpDebugPrint("Couldn't allocate EPT PT for '%llx' subversion...\n", PhysAddr + SizeSubverted);
+                    return STATUS_INSUFFICIENT_RESOURCES;
+                }
+
+                Pte = &Pt[Gpa.PtIndex];
+
+                EptApplyPermissions(Pde, Permissions);
+
+                Pde->Present = TRUE;
+                Pde->PageFrameNumber =
+                    PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
+            }
+        }
+        else
+        {
+            // No need to check for subversion, the entire PD for this 1GB region was created this call
+            Pte = EptReadExistingPte(Pde->PageFrameNumber, Gpa.PtIndex);
+        }
+
+        if (!Pte->Present)
+            Pte->Present = TRUE;
+
+        EptApplyPermissions(Pte, Permissions);
+
+        Pte->PageFrameNumber = PAGE_FRAME_NUMBER(Gpa.Value);
+        Pte->MemoryType = MtrrGetRegionType(Gpa.Value);
+
+        SizeSubverted += PAGE_SIZE;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+EptMapMemoryRange(
+    _In_ PEPT_PTE Pml4,
+    _In_ UINT64 GuestPhysAddr,
+    _In_ UINT64 PhysAddr,
+    _In_ UINT64 Size,
+    _In_ EPT_PAGE_PERMISSIONS Permissions
 )
 /*++
 Routine Description:
@@ -95,7 +298,7 @@ Routine Description:
     while (Size > SizeMapped)
     {
         EPT_GPA Gpa = {
-            .Value = PhysAddr + SizeMapped;
+            .Value = GuestPhysAddr + SizeMapped
         };
 
         PEPT_PTE Pml4e = &Pml4[Gpa.Pml4Index];
@@ -112,94 +315,115 @@ Routine Description:
 
             Pdpte = &Pdpt[Gpa.PdptIndex];
 
+            EptApplyPermissions(Pml4e, Permissions);
+
             Pml4e->Present = TRUE;
-
-            // TODO: Define and apply permissions properly from `Permissions`
-            Pml4e->ReadAccess = TRUE;
-            Pml4e->WriteAccess = TRUE;
-            Pml4e->ExecuteAccess = TRUE;
-
-            // TODO: Define MmGetLastAllocatedPageTableEntry
             Pml4e->PageFrameNumber = 
-                PAGE_FRAME_NUMBER(((PMM_RESERVED_PT)gHostPageTablesHead->Links.Blink)->TablePhysAddr);
+                PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
         }
         else
             Pdpte = EptReadExistingPte(Pml4e->PageFrameNumber, Gpa.PdptIndex);
 
-        if (!Pdpte->Present)
-        {
-            if (EptCheckSuperPageSupport() && Size >= GB(1))
-            {
-                Pdpte->LargePage = TRUE;
-                Pdpte->Present = TRUE;
-
-                // TODO: Define and apply permissions properly from `Permissions`
-                Pdpte->ReadAccess = TRUE;
-                Pdpte->WriteAccess = TRUE;
-                Pdpte->ExecuteAccess = TRUE;
-            }
-        }
-
         PEPT_PTE Pde = NULL;
         if (!Pdpte->Present)
         {
-            PEPT_PTE Pd = NULL;
-            if (!NT_SUCCESS(MmAllocateHostPageTable(&Pd)))
+            // Try to map as a super PDPTE, continue if that succeeds
+            if (NT_SUCCESS(
+                EptMapSuperMemoryRange(
+                    Pdpte,
+                    GuestPhysAddr + SizeMapped,
+                    PhysAddr + SizeMapped,
+                    Size - SizeMapped,
+                    Permissions)
+                ))
             {
-                ImpDebugPrint("Couldn't allocate EPT PD for '%llx'...\n", PhysAddr + SizeMapped);
-                return STATUS_INSUFFICIENT_RESOURCES;
+                SizeMapped += GB(1);
+                continue;
             }
+            else
+            {
+                PEPT_PTE Pd = NULL;
+                if (!NT_SUCCESS(MmAllocateHostPageTable(&Pd)))
+                {
+                    ImpDebugPrint("Couldn't allocate EPT PD for '%llx'...\n", PhysAddr + SizeMapped);
+                    return STATUS_INSUFFICIENT_RESOURCES;
+                }
 
-            Pde = &Pd[Gpa.PdIndex];
+                Pde = &Pd[Gpa.PdIndex];
 
-            Pdpte->Present = TRUE;
+                EptApplyPermissions(Pdpte, Permissions);
 
-            // TODO: Define and apply permissions properly from `Permissions`
-            Pdpte->ReadAccess = TRUE;
-            Pdpte->WriteAccess = TRUE;
-            Pdpte->ExecuteAccess = TRUE;
-
-            Pdpte->PageFrameNumber = 
-                PAGE_FRAME_NUMBER(((PMM_RESERVED_PT)gHostPageTablesHead->Links.Blink)->TablePhysAddr);
+                Pdpte->Present = TRUE;
+                Pdpte->PageFrameNumber =
+                    PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
+            }
         }
         else
+        {
+            if (Pdpte->LargePage)
+            {
+                // This might seem a bit janky, but the logic is correct;
+                //
+                // 1. We cannot just pass GuestPhysAddr, as we might be remapping an area that crosses over two super PDPTE's
+                // 2. ANDing with ~0x3FFFFFFF aligns the GPA and PA to the start of the super page, so that this region can be remapped
+                // 3. Remapping the entire page won't interfere with any other special mappings because we don't use super or large pages for those
+                if (!NT_SUCCESS(EptSubvertSuperPage(Pdpte, (GuestPhysAddr + SizeMapped) & ~0x3FFFFFFF, (PhysAddr + SizeMapped) & ~0x3FFFFFFF, Permissions)))
+                {
+                    ImpDebugPrint("Failed to subvert PDPTE containing '%llx'...n");
+                    return STATUS_INSUFFICIENT_RESOURCES;
+                }
+            }
+            
             Pde = EptReadExistingPte(Pdpte->PageFrameNumber, Gpa.PdIndex);
+        }
 
         PEPT_PTE Pte = NULL;
         if (!Pde->Present)
         {
-            PEPT_PTE Pt = NULL;
-            if (!NT_SUCCESS(MmAllocateHostPageTable(&Pt)))
+            // Try to map as a large PDE, continue if that succeeds
+            if (NT_SUCCESS(
+                EptMapLargeMemoryRange(
+                    Pde,
+                    GuestPhysAddr + SizeMapped,
+                    PhysAddr + SizeMapped,
+                    Size - SizeMapped,
+                    Permissions)
+                ))
             {
-                ImpDebugPrint("Couldn't allocate EPT PT for '%llx'...\n", PhysAddr + SizeMapped);
-                return STATUS_INSUFFICIENT_RESOURCES;
+                SizeMapped += MB(2);
+                continue;
             }
+            else
+            {
+                PEPT_PTE Pt = NULL;
+                if (!NT_SUCCESS(MmAllocateHostPageTable(&Pt)))
+                {
+                    ImpDebugPrint("Couldn't allocate EPT PD for '%llx'...\n", PhysAddr + SizeMapped);
+                    return STATUS_INSUFFICIENT_RESOURCES;
+                }
 
-            Pte = &Pt[Gpa.PtIndex];
+                Pte = &Pt[Gpa.PtIndex];
 
-            Pdpte->Present = TRUE;
+                EptApplyPermissions(Pde, Permissions);
 
-            // TODO: Define and apply permissions properly from `Permissions`
-            Pde->ReadAccess = TRUE;
-            Pde->WriteAccess = TRUE;
-            Pde->ExecuteAccess = TRUE;
-
-            Pde->PageFrameNumber = 
-                PAGE_FRAME_NUMBER(((PMM_RESERVED_PT)gHostPageTablesHead->Links.Blink)->TablePhysAddr);
+                Pde->Present = TRUE;
+                Pde->PageFrameNumber =
+                    PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
+            }
         }
-        else
-            Pte = EptReadExistingPte(Pde->PageFrameNumber, Gpa.PtIndex);
 
-        Pte->MemoryType = Type;
+        if (!Pte->Present)
+            Pte->Present = TRUE;
 
-        Pte->ReadAccess = TRUE;
-        Pte->WriteAccess = TRUE;
-        Pte->ExecuteAccess = TRUE;
+        EptApplyPermissions(Pte, Permissions);
 
-        Pte->PageFrameNumber = PAGE_FRAME_NUMBER(PhysAddr);
+        Pte->PageFrameNumber = PAGE_FRAME_NUMBER(Gpa.Value);
+        Pte->MemoryType = MtrrGetRegionType(Gpa.Value);
 
         SizeMapped += PAGE_SIZE;
     }
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -211,6 +435,8 @@ Routine Description:
     This function iterates over all memory ranges and identity maps them, 
 --*/
 {
+    NTSTATUS Status = STATUS_SUCCESS;
+
     // NOTES:
     // 1. This function should allocate its host page tables from the memory manager,
     //    If EPT was to have its own it would be an exact repeat of the previous code so
@@ -218,35 +444,6 @@ Routine Description:
     // 2. This function will take care of hiding data from ANY allocations made by the hypervisor
 
     // TODO: Optimise this more by using largest pages where possible by checking MTRR range size
-
-    NTSTATUS Status = STATUS_SUCCESS;
-
-    IA32_MTRR_CAPABILITIES_MSR MtrrCap = {
-        .Value = __rdmsr(IA32_MTRR_CAPABILTIIES)
-    };
-
-    for (SIZE_T i = 0; i < MtrrCap.VariableRangeRegCount; i++)
-    {
-        IA32_MTRR_PHYSBASE_N_MSR Base = {
-            .Value = __readmsr(IA32_MTRR_PHYSBASE_0 + i * 2)
-        };
-
-        IA32_MTRR_PHYSMASK_N_MSR Mask = {
-            .Value = __readmsr(IA32_MTRR_PHYSMASK_0 + i * 2)
-        };
-
-        if (!Mask.Valid)
-            continue;
-
-        const UINT64 PhysBase = PAGE_ADDRESS(Base.Base);
-
-        const ULONG SizeShift = 0;
-        _BitScanForward64(&SizeShift, Mask.Mask << 12);
-
-        Status = EptLazyMapMemoryRange(Pml4, PhysBase, PhysBase, 1ULL << SizeShift, 0, Base.Type);
-        if (!NT_SUCCESS(Status))
-            return Status;
-    }
 
     return Status;
 }
