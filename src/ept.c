@@ -134,6 +134,9 @@ Routine Description:
     Pde->PageFrameNumber =
         PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
 
+    // Since we are subverting a large page, the MTRR region is constant throughout the whole memory range
+    MEMORY_TYPE RegionType = MtrrGetRegionType(PhysAddr);
+
     SIZE_T SizeSubverted = 0;
     while (SizeSubverted < sSize)
     {
@@ -149,7 +152,7 @@ Routine Description:
 
         Pte->PageFrameNumber = PAGE_FRAME_NUMBER(Gpa.Value);
         // Technically, doing PhysAddr + SizeSubverted is just pedantic because mapping a large PDE requires that it was within one MTRR region
-        Pte->MemoryType = MtrrGetRegionType(Gpa.Value);
+        Pte->MemoryType = RegionType;
 
         SizeSubverted += PAGE_SIZE;
     }
@@ -221,6 +224,9 @@ Routine Description:
     Pdpte->PageFrameNumber =
         PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
 
+    // Since we are subverting a large page, the MTRR region is constant throughout the whole memory range
+    MEMORY_TYPE RegionType = MtrrGetRegionType(PhysAddr);
+
     SIZE_T SizeSubverted = 0;
     while (SizeSubverted < sSize)
     {
@@ -277,7 +283,7 @@ Routine Description:
         EptApplyPermissions(Pte, Permissions);
 
         Pte->PageFrameNumber = PAGE_FRAME_NUMBER(Gpa.Value);
-        Pte->MemoryType = MtrrGetRegionType(Gpa.Value);
+        Pte->MemoryType = RegionType;
 
         SizeSubverted += PAGE_SIZE;
     }
