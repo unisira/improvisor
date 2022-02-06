@@ -76,4 +76,12 @@ __invd PROC
 	ret
 __invd ENDP
 
+__enable PROC
+	pushfq
+	mov rax, 0200h
+	or [rsp], rax
+	popfq
+	ret
+__enable ENDP
+
 END
