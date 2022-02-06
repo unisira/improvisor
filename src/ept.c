@@ -334,7 +334,7 @@ Routine Description:
 
             Pdpte = &Pdpt[Gpa.PdptIndex];
 
-            EptApplyPermissions(Pml4e, Permissions);
+            EptApplyPermissions(Pml4e, EPT_PAGE_RWX);
 
             Pml4e->Present = TRUE;
             Pml4e->PageFrameNumber = 
@@ -370,7 +370,7 @@ Routine Description:
 
                 Pde = &Pd[Gpa.PdIndex];
 
-                EptApplyPermissions(Pdpte, Permissions);
+                EptApplyPermissions(Pdpte, EPT_PAGE_RWX);
 
                 Pdpte->Present = TRUE;
                 Pdpte->PageFrameNumber =
@@ -423,7 +423,7 @@ Routine Description:
 
                 Pte = &Pt[Gpa.PtIndex];
 
-                EptApplyPermissions(Pde, Permissions);
+                EptApplyPermissions(Pde, EPT_PAGE_RWX);
 
                 Pde->Present = TRUE;
                 Pde->PageFrameNumber =
