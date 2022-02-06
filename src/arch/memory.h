@@ -39,5 +39,4 @@ typedef union _X86_LA57
     };
 } X86_LA57, *PX86_LA57;
 
-
 #endif

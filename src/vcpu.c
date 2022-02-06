@@ -1164,6 +1164,8 @@ VcpuHandleCr4Write(
         (DifferentBits.PCIDEnable && NewCr.PCIDEnable == 0) ||
         (DifferentBits.SmepEnable && NewCr.SmepEnable == 1))
         VmxInvvpid(INV_SINGLE_CONTEXT, 1);
+
+    return Status;
 }
 
 VMM_EVENT_STATUS
