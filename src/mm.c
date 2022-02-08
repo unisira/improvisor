@@ -568,7 +568,7 @@ MmInitialise(
 
     // Reserve 1000 page tables for the host to create its own page tables and still
     // have access to them post-VMLAUNCH
-    Status = MmHostReservePageTables(2000);
+    Status = MmHostReservePageTables(500);
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Failed to reserve page tables for the host...\n");
