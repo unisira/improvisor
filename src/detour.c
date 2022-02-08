@@ -7,6 +7,7 @@
 #include "vmcall.h"
 #include "ldasm.h"
 #include "ept.h"
+#include "vmm.h"
 
 // PLAN:
 //
@@ -430,16 +431,57 @@ EhHandleEptViolation(
     _In_ PVCPU Vcpu
 )
 {
+    EPT_VIOLATION_EXIT_QUALIFICATION ExitQual = {
+        .Value = VmxRead(VM_EXIT_QUALIFICATION)
+    };
+
+    UINT64 AttemptedPhysAddr = VmxRead(GUEST_PHYSICAL_ADDRESS);
+
     PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
     while (CurrHook != NULL)
     {
-        if (CurrHook->State == EH_DETOUR_INSTALLED && Vcpu->Vmx.GuestRip == RVA(CurrHook->ShadowPage, PAGE_OFFSET(CurrHook->TargetFunction)))
-            VmxWrite(GUEST_RIP, (UINT64)CurrHook->CallbackFunction);
+        // Check if the EPT violation was a result of accessing the locked physical address of the detour
+        if (CurrHook->State == EH_DETOUR_INSTALLED && PAGE_FRAME_NUMBER(AttemptedPhysAddr) == PAGE_FRAME_NUMBER(CurrHook->LockedPhysAddr))
+        {
+            if (ExitQual.ExecuteAccessed)
+            {
+                if (!NT_SUCCESS(
+                    EptMapMemoryRange(
+                        Vcpu->Vmm->EptInformation.SystemPml4,
+                        AttemptedPhysAddr,
+                        CurrHook->ShadowPhysAddr,
+                        PAGE_SIZE,
+                        EPT_PAGE_EXECUTE)
+                    ))
+                {
+                    // TODO: Panic here?
+                    return FALSE;
+                }
+
+                return TRUE;
+            }
+            else if (ExitQual.ReadAccessed || ExitQual.WriteAccessed)
+            {
+                if (!NT_SUCCESS(
+                    EptMapMemoryRange(
+                        Vcpu->Vmm->EptInformation.SystemPml4,
+                        AttemptedPhysAddr,
+                        AttemptedPhysAddr,
+                        PAGE_SIZE,
+                        EPT_PAGE_RW)
+                ))
+                {
+                    return FALSE;
+                }
+
+                return TRUE;
+            }
+        }
 
         CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
     }
 
-    return;
+    return FALSE;
 }
 
 VMM_EVENT_STATUS
