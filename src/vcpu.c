@@ -26,11 +26,12 @@ VMEXIT_HANDLER VcpuHandleRdtscp;
 VMEXIT_HANDLER VcpuHandleTimerExpire;
 VMEXIT_HANDLER VcpuHandleMsrRead;
 VMEXIT_HANDLER VcpuHandleMsrWrite;
-VMEXIT_HANDLER VcpuHandleXSETBV;
 VMEXIT_HANDLER VcpuHandlePreemptionTimerExpire;
 VMEXIT_HANDLER VcpuHandleExternalInterruptNmi;
 VMEXIT_HANDLER VcpuHandleNmiWindow;
 VMEXIT_HANDLER VcpuHandleInterruptWindow;
+VMEXIT_HANDLER VcpuHandleEptViolation;
+VMEXIT_HANDLER VcpuHandleEptMisconfig;
 VMEXIT_HANDLER VcpuHandleMTFExit;
 VMEXIT_HANDLER VcpuHandleWbinvd;
 VMEXIT_HANDLER VcpuHandleXsetbv;
@@ -85,8 +86,8 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason, 			// Virtualized EOI
     VcpuUnknownExitReason, 			// Access to GDTR or IDTR
     VcpuUnknownExitReason, 			// Access to LDTR or TR
-    VcpuUnknownExitReason, 			// EPT violation
-    VcpuUnknownExitReason, 			// EPT misconfiguration
+    VcpuHandleEptViolation, 			// EPT violation
+    VcpuHandleEptMisconfig, 			// EPT misconfiguration
     VcpuHandleVmxInstruction, 		// INVEPT
     VcpuHandleRdtscp,     			// RDTSCP
     VcpuHandleTimerExpire,          // VMX-preemption timer expired
@@ -169,6 +170,18 @@ VcpuGetVmExitStoreValue(
     _In_ UINT32 Index
 );
 
+VOID
+VcpuPushMTFEvent(
+    _In_ PVCPU Vcpu,
+    _In_ MTF_EVENT_TYPE Event
+);
+
+BOOLEAN
+VcpuPopMTFEvent(
+    _In_ PVCPU Vcpu,
+    _In_ MTF_EVENT_TYPE* Event
+);
+
 NTSTATUS
 VcpuSetup(
     _Inout_ PVCPU Vcpu,
@@ -219,6 +232,7 @@ Routine Description:
 
     Vcpu->Stack->Cache.Vcpu = Vcpu;
 
+    // TODO: Temp fix until we are using VMM created host CR3
     Vcpu->SystemDirectoryBase = __readcr3();
 
     RtlInitializeBitMap(
@@ -259,7 +273,7 @@ Routine Description:
     VcpuSetControl(Vcpu, VMX_CTL_ENABLE_INVPCID, TRUE);
 
     // Save GUEST_EFER on VM-exit
-    //VcpuSetControl(Vcpu, VMX_CTL_SAVE_EFER_ON_EXIT, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_SAVE_EFER_ON_EXIT, TRUE);
 
     VTscInitialise(&Vcpu->TscInfo);
 
@@ -1008,7 +1022,7 @@ VcpuHandleCr0Write(
             // Remove CR0.PG and CR0.PE from the shadowable bits bitmask, as they can now be modified
             ShadowableBits &= ~CR0_PE_PG_BITMASK;
 
-            Vcpu->UnrestrictedGuest = TRUE;
+            Vcpu->IsUnrestrictedGuest = TRUE;
         }
         else
         {
@@ -1022,11 +1036,11 @@ VcpuHandleCr0Write(
     if (!PagingDisabled && !ProtectedModeDisabled)
     {
         VcpuSetControl(Vcpu, VMX_CTL_UNRESTRICTED_GUEST, FALSE);
-        Vcpu->UnrestrictedGuest = FALSE;
+        Vcpu->IsUnrestrictedGuest = FALSE;
     }
 
     // Handle invalid states of CR0.PE and CR0.PG when unrestricted guest is on
-    if (Vcpu->UnrestrictedGuest)
+    if (Vcpu->IsUnrestrictedGuest)
     {
         if (NewCr.Paging && !NewCr.ProtectedMode)
         {
@@ -1295,6 +1309,8 @@ Routine Description:
     to interact with the driver and control or use the functionality built into it
 --*/
 {
+    VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
+
     // Check if we are measuring VM-exit latency
     if (GuestState->Rbx == 0x1FF2C88911424416 && Vcpu->TscInfo.VmExitLatency == 0)
     {
@@ -1312,10 +1328,16 @@ Routine Description:
     {
         // TODO: Set up MTF queue
         VcpuSetControl(Vcpu, VMX_CTL_MONITOR_TRAP_FLAG, TRUE);
+
+        VcpuPushMTFEvent(Vcpu, MTF_EVENT_MEASURE_VMENTRY);
     }
 
     PHYPERCALL_INFO Hypercall = (PHYPERCALL_INFO)&GuestState->Rax;
-    return VmHandleHypercall(Vcpu, GuestState, Hypercall);
+    Status = VmHandleHypercall(Vcpu, GuestState, Hypercall);
+
+    Vcpu->LastHypercallResult = Hypercall->Result;
+
+    return Status;
 }
 
 VMM_EVENT_STATUS
@@ -1490,6 +1512,129 @@ VcpuHandleXSETBV(
 
 VMM_EVENT_STATUS
 VcpuHandleExternalInterruptNmi(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS 
+VcpuHandleNmiWindow(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS 
+VcpuHandleInterruptWindow(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleEptViolation(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+
+}
+
+VMM_EVENT_STATUS
+VcpuHandleEptMisconfig(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    EPT_VIOLATION_EXIT_QUALIFICATION ExitQual = {
+        .Value = VmxRead(VM_EXIT_QUALIFICATION)
+    };
+
+    //if (EhHandleEptViolation(Vcpu, ))
+
+    return VMM_EVENT_CONTINUE;
+}
+
+VOID
+VcpuPushMTFEvent(
+    _In_ PVCPU Vcpu,
+    _In_ MTF_EVENT_TYPE Event
+)
+{
+    // TODO: Complete
+    return;
+}
+
+BOOLEAN
+VcpuPopMTFEvent(
+    _In_ PVCPU Vcpu,
+    _Out_ MTF_EVENT_TYPE* Event
+)
+/*++
+Routine Description:
+    Pops the top MTF event from the bottom or somethign think abotu this later
+--*/
+{
+    // TODO: Complete
+    return;
+}
+
+VMM_EVENT_STATUS 
+VcpuHandleMTFExit(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    MTF_EVENT_TYPE Event;
+    if (VcpuPopMTFEvent(Vcpu, &Event))
+    {
+        switch (Event)
+        {
+        case MTF_EVENT_MEASURE_VMENTRY:
+        {
+
+        } break;
+        default: 
+        {   
+            ImpDebugPrint("[02%X] Unknown MTF event (%x)...\n", Vcpu->Id, Event);
+        } break;
+        }
+    }
+    else
+    {
+        // Disable MTF exiting
+        VcpuSetControl(Vcpu, VMX_CTL_MONITOR_TRAP_FLAG, FALSE);
+    }
+
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS 
+VcpuHandleWbinvd(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS 
+VcpuHandleXsetbv(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS 
+VcpuHandleInvlpg(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState
 )

@@ -108,16 +108,17 @@ typedef struct _VCPU
     UINT64 VmcsPhysical;
     UINT64 VmxonPhysical;
     UINT64 MsrBitmapPhysical;
+    UINT64 Cr0ShadowableBits;
+    UINT64 Cr4ShadowableBits;
+    UINT64 SystemDirectoryBase;
     BOOLEAN IsLaunched;
     BOOLEAN IsShuttingDown;
+    BOOLEAN IsUnrestrictedGuest;
     CPU_STATE LaunchState;
     VMX_STATE Vmx;
     TSC_STATUS TscInfo;
     PMTF_EVENT_ENTRY MtfEventHead;
-    UINT64 Cr0ShadowableBits;
-    UINT64 Cr4ShadowableBits;
-    UINT64 SystemDirectoryBase;
-    BOOLEAN UnrestrictedGuest;
+    ULONG LastHypercallResult;
     struct _VMM_CONTEXT* Vmm; 
 } VCPU, *PVCPU;
 
