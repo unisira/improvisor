@@ -469,7 +469,7 @@ Routine Description:
 
     while (PhysMemRange->BaseAddress.QuadPart != 0 && PhysMemRange->NumberOfBytes.QuadPart != 0)
     {
-        // Map all of ram as RWX for now
+        // Map all of system memory as RWX for now
         if (!NT_SUCCESS(EptMapMemoryRange(Pml4, PhysMemRange->BaseAddress.QuadPart, PhysMemRange->BaseAddress.QuadPart, PhysMemRange->NumberOfBytes.QuadPart, EPT_PAGE_RWX)))
         {
             ImpDebugPrint("Failed to map region '%llx' with size '%llx'...\n", PhysMemRange->BaseAddress.QuadPart, PhysMemRange->NumberOfBytes.QuadPart);
@@ -520,7 +520,7 @@ Routine Description:
     if (!NT_SUCCESS(Status))
         return Status;
 
-    // TODO: Set up EPT information struct containing page use count, PML4, last violation and anything else that might be of use
+    EptInformation->SystemPml4 = Pml4;
 
     return Status;
 }

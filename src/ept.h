@@ -3,6 +3,27 @@
 
 #include <ntdef.h>
 
+typedef union _EPT_VIOLATION_EXIT_QUALIFICATION
+{
+    UINT64 Value;
+
+    struct
+    {
+        UINT64 ReadAccessed : 1;
+        UINT64 WriteAccessed : 1;
+        UINT64 ExecuteAccessed : 1;
+        UINT64 ReadPermission : 1;
+        UINT64 WritePermission : 1;
+        UINT64 ExecutePermission : 1;
+        UINT64 UsermodeExecute : 1;
+        UINT64 IsGuestLinearAddrValid : 1;
+        UINT64 PageWalkOrTranslationFail : 1;
+        UINT64 Reserved1 : 3;
+        UINT64 NmiUnblocking : 1;
+        UINT64 Reserved2 : 51;
+    };
+} EPT_VIOLATION_EXIT_QUALIFICATION, *PEPT_VIOLATION_EXIT_QUALIFICATION;
+
 // Represents a guest physical address
 typedef union _EPT_GPA
 {
@@ -69,6 +90,15 @@ typedef enum _EPT_PAGE_PERMISSIONS
 
 BOOLEAN
 EptCheckSupport(VOID);
+
+NTSTATUS
+EptMapMemoryRange(
+    _In_ PEPT_PTE Pml4,
+    _In_ UINT64 GuestPhysAddr,
+    _In_ UINT64 PhysAddr,
+    _In_ UINT64 Size,
+    _In_ EPT_PAGE_PERMISSIONS Permissions
+);
 
 NTSTATUS
 EptInitialise(
