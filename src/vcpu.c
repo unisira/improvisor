@@ -5,6 +5,7 @@
 #include "arch/cr.h"
 #include "intrin.h"
 #include "vmcall.h"
+#include "detour.h"
 #include "vcpu.h"
 #include "vmm.h"
 
@@ -508,14 +509,12 @@ Routine Description:
         InterlockedIncrement(&Params->ActiveVcpuCount);
         ImpDebugPrint("VCPU #%d is now running...\n", Vcpu->Id);
 
-        /*
         if (!NT_SUCCESS(VcpuPostSpawnInitialisation(Vcpu)))
         {
             // TODO: Panic shutdown here
             ImpDebugPrint("VCPU #%d failed post spawn initialsation...\n", Vcpu->Id);
             return;
         }
-        */
 
         return;
     }
@@ -1543,7 +1542,29 @@ VcpuHandleEptViolation(
     _Inout_ PGUEST_STATE GuestState
 )
 {
+    EPT_VIOLATION_EXIT_QUALIFICATION ExitQual = {
+        .Value = VmxRead(VM_EXIT_QUALIFICATION)
+    };
 
+    if (EhHandleEptViolation(Vcpu))
+        return VMM_EVENT_CONTINUE;
+
+    UINT64 AttemptedAddress = VmxRead(GUEST_PHYSICAL_ADDRESS);
+
+    if (!NT_SUCCESS(
+        EptMapMemoryRange(
+            Vcpu->Vmm->EptInformation.SystemPml4,
+            AttemptedAddress,
+            AttemptedAddress,
+            PAGE_SIZE,
+            EPT_PAGE_RWX)
+        ))
+    {
+        ImpDebugPrint("[02%X] Failed to map basic %llx->%llx...\n", Vcpu->Id, AttemptedAddress, AttemptedAddress);
+        return VMM_EVENT_ABORT;
+    }
+
+    return VMM_EVENT_CONTINUE;
 }
 
 VMM_EVENT_STATUS
