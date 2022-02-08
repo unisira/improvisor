@@ -63,10 +63,9 @@ EhHandleEptViolation(
     _In_ PVCPU Vcpu
 );
 
-VMM_EVENT_STATUS
+BOOLEAN
 EhHandleBreakpoint(
     _In_ PVCPU Vcpu,
-    _In_ PGUEST_STATE GuestState
 );
 
 #endif

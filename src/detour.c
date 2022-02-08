@@ -469,7 +469,7 @@ EhHandleEptViolation(
                         AttemptedPhysAddr,
                         PAGE_SIZE,
                         EPT_PAGE_RW)
-                ))
+                    ))
                 {
                     return FALSE;
                 }
@@ -484,21 +484,22 @@ EhHandleEptViolation(
     return FALSE;
 }
 
-VMM_EVENT_STATUS
+BOOLEAN
 EhHandleBreakpoint(
-    _In_ PVCPU Vcpu,
-    _In_ PGUEST_STATE GuestState
+    _In_ PVCPU Vcpu
 )
 {
     PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
     while (CurrHook != NULL)
     {
-        if (CurrHook->State == EH_DETOUR_INSTALLED && Vcpu->Vmx.GuestRip == RVA(CurrHook->ShadowPage, PAGE_OFFSET(CurrHook->TargetFunction)))
-            VmxWrite(GUEST_RIP, (UINT64)CurrHook->CallbackFunction); 
+        if (CurrHook->State == EH_DETOUR_INSTALLED && Vcpu->Vmx.GuestRip == (UINT64)CurrHook->TargetFunction)
+        {
+            VmxWrite(GUEST_RIP, (UINT64)CurrHook->CallbackFunction);
+            return TRUE;
+        }
 
         CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
     }
 
-    // Don't advance RIP
-    return VMM_EVENT_INTERRUPT;
+    return FALSE;
 }
