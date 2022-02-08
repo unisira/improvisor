@@ -1,6 +1,7 @@
 #include "arch/interrupt.h"
 #include "vmcall.h"
 #include "vmx.h"
+#include "vmm.h"
 #include "mm.h"
 
 // Information relevant to caching, reading or writing virtual addresses in an address space
@@ -26,6 +27,17 @@ typedef union _HYERPCALL_SIGSCAN_EX
     };
 } HYPERCALL_SIGSCAN_EX, *PHYPERCALL_SIGSCAN_EX;
 
+typedef union _HYPERCALL_REMAP_PAGES_EX
+{
+    UINT64 Value;
+
+    struct
+    {
+        UINT64 Size : 32;
+        UINT64 Permissions : 8;
+    };
+} HYPERCALL_REMAP_PAGES_EX, *PHYPERCALL_REMAP_PAGES_EX;
+
 typedef enum _HYPERCALL_ID
 {
     // Read a guest virtual address, using translations from a specified process's address space
@@ -42,6 +54,8 @@ typedef enum _HYPERCALL_ID
     HYPERCALL_EPT_REMAP_PAGES,
     // Send a PDB to be used by the hypervisor
     HYPERCALL_PDB_BUFFER,
+    // Get the last HYPERCALL_RESULT value
+    HYPERCALL_GET_LAST_RESULT
 } HYPERCALL_ID, PHYPERCALL_ID;
 
 typedef enum _HYPERCALL_CACHED_CR3_TARGET
@@ -68,18 +82,6 @@ __vmcall(
 // RBX              | extended hypercall info structure, hypercall dependant 
 // RCX              | OPT: Buffer address 
 // RDX              | OPT: Target address
-
-NTSTATUS
-VmCreateTranslationCache(
-    _In_ SIZE_T Count
-)
-/*++
-Routine Description:
-    Creates a list of address translation cache entries used to speed up reads/writes to common locations
---*/
-{
-    // TODO Future: Finish this, could improve performance big time
-}
 
 VMM_EVENT_STATUS
 VmAbortHypercall(
@@ -185,6 +187,28 @@ VmHandleHypercall(
         if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(PVCPU), Vcpu)))
             return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
     } break;
+    case HYPERCALL_EPT_REMAP_PAGES:
+    {
+        HYPERCALL_REMAP_PAGES_EX RemapEx = {
+            .Value = GuestState->Rbx
+        };
+
+        // Target (RCX) and Buffer (RDX) are used as GPA and PA respectively
+        if (!NT_SUCCESS(
+            EptMapMemoryRange(
+                Vcpu->Vmm->EptInformation.SystemPml4,
+                GuestState->Rcx,
+                GuestState->Rdx,
+                RemapEx.Size,
+                RemapEx.Permissions)
+            ))
+            return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+    } break;
+    case HYPERCALL_GET_LAST_RESULT:
+    {
+        if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(PVCPU), Vcpu)))
+            return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+    } break;
     default:
         Hypercall->Result = HRESULT_UNKNOWN_HCID;
         VmxInjectEvent(EXCEPTION_UNDEFINED_OPCODE, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
@@ -194,20 +218,84 @@ VmHandleHypercall(
     return VMM_EVENT_CONTINUE;
 }
 
-//
-// VM hypercall wrappers
-//
+HYPERCALL_RESULT
+VmReadSystemMemory(
+    _In_ PVOID Src,
+    _In_ PVOID Dst,
+    _In_ SIZE_T Size
+)
+{
+    return HRESULT_SUCCESS;
+}
+
+HYPERCALL_RESULT
+VmWriteSystemMemory(
+    _In_ PVOID Src,
+    _In_ PVOID Dst,
+    _In_ SIZE_T Size
+)
+{
+    return HRESULT_SUCCESS;
+}
+
+
 HYPERCALL_RESULT
 VmShutdownVcpu(
-    PVCPU* pVcpu
+    _Out_ PVCPU* pVcpu
 )
+/*++
+Routine Description:
+    Shuts down VMX operation and returns 
+--*/
 {
     HYPERCALL_INFO Hypercall = {
         .Id = HYPERCALL_SHUTDOWN_VCPU,
         .Result = HRESULT_SUCCESS
     };
 
-    Hypercall = __vmcall(Hypercall, 0, NULL, NULL);
+    Hypercall = __vmcall(Hypercall, 0, NULL, pVcpu);
+
+    return Hypercall.Result;
+}
+
+HYPERCALL_RESULT
+VmEptRemapPages(
+    _In_ UINT64 GuestPhysAddr,
+    _In_ UINT64 PhysAddr,
+    _In_ SIZE_T Size,
+    _In_ EPT_PAGE_PERMISSIONS Permissions
+)
+{
+    HYPERCALL_INFO Hypercall = {
+        .Id = HYPERCALL_EPT_REMAP_PAGES,
+        .Result = HRESULT_SUCCESS
+    };
+
+    HYPERCALL_REMAP_PAGES_EX RemapEx = {
+        .Permissions = Permissions,
+        .Size = Size
+    };
+
+    Hypercall = __vmcall(Hypercall, RemapEx.Value, (PVOID)GuestPhysAddr, (PVOID)PhysAddr);
+
+    return Hypercall.Result;
+}
+
+HYPERCALL_RESULT
+VmGetLastResult(
+    _Out_ HYPERCALL_RESULT* pResult
+)
+/*++
+Routine Description:
+    Writes the last hypercall result value in `pResult`
+--*/
+{
+    HYPERCALL_INFO Hypercall = {
+        .Id = HYPERCALL_GET_LAST_RESULT,
+        .Result = HRESULT_SUCCESS
+    };
+
+    Hypercall = __vmcall(Hypercall, 0, NULL, pResult);
 
     return Hypercall.Result;
 }

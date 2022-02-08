@@ -2,6 +2,7 @@
 #define IMP_VMCALL_H
 
 #include "vcpu.h"
+#include "ept.h"
 
 #define HRESULT_SUCCESS (0x8100)
 // Unknown hypercall ID
@@ -15,7 +16,7 @@
 // The extended hypercall info (RBX) value was invalid 
 #define HRESULT_INVALID_EXT_INFO (0x8105)
 
-typedef UINT64 HYPERCALL_RESULT; 
+typedef ULONG HYPERCALL_RESULT; 
 
 typedef union _HYPERCALL_INFO
 {
@@ -55,7 +56,20 @@ VmWriteSystemMemory(
 
 HYPERCALL_RESULT
 VmShutdownVcpu(
-    PVCPU* pVcpu
+    _Out_ PVCPU* pVcpu
+);
+
+HYPERCALL_RESULT
+VmEptRemapPages(
+    _In_ UINT64 GuestPhysAddr,
+    _In_ UINT64 PhysAddr,
+    _In_ SIZE_T Size,
+    _In_ EPT_PAGE_PERMISSIONS Permissions
+);
+
+HYPERCALL_RESULT
+VmGetLastResult(
+    _Out_ HYPERCALL_RESULT* pResult
 );
 
 #endif
