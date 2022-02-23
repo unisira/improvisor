@@ -112,8 +112,9 @@ Routine Description:
     return STATUS_SUCCESS;
 
 panic:
-    VmmFreeResources(VmmContext);
-    ExFreePoolWithTag(VmmContext, POOL_TAG); 
+    // Free all allocations
+    ImpFreeAllAllocations();
+
     return Status;
 }
 

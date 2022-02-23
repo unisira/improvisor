@@ -60,11 +60,11 @@ typedef enum _HYPERCALL_ID
 
 typedef enum _HYPERCALL_CACHED_CR3_TARGET
 {
-    INVALID = 0,
+    CR3_CACHE_INVALID = 0,
     // Use the system CR3
-    SYSTEM,
+    CR3_CACHE_SYSTEM,
     // Use the current value of GUEST_CR3 in the VMCS 
-    GUEST
+    CR3_CACHE_GUEST
 } HYPERCALL_CACHED_CR3_TARGET;
 
 EXTERN_C
@@ -225,7 +225,19 @@ VmReadSystemMemory(
     _In_ SIZE_T Size
 )
 {
-    return HRESULT_SUCCESS;
+    HYPERCALL_INFO Hypercall = {
+        .Id = HYPERCALL_READ_VIRT,
+        .Result = HRESULT_SUCCESS
+    };
+
+    HYPERCALL_VIRT_EX VirtEx = {
+        .Cr3 = CR3_CACHE_SYSTEM,
+        .Size = Size
+    };
+
+    Hypercall = __vmcall(Hypercall, VirtEx.Value, Dst, Src);
+
+    return Hypercall.Result;
 }
 
 HYPERCALL_RESULT
@@ -235,6 +247,20 @@ VmWriteSystemMemory(
     _In_ SIZE_T Size
 )
 {
+    HYPERCALL_INFO Hypercall = {
+    .Id = HYPERCALL_WRITE_VIRT,
+    .Result = HRESULT_SUCCESS
+    };
+
+    HYPERCALL_VIRT_EX VirtEx = {
+        .Cr3 = CR3_CACHE_SYSTEM,
+        .Size = Size
+    };
+
+    Hypercall = __vmcall(Hypercall, VirtEx.Value, Dst, Src);
+
+    return Hypercall.Result;
+
     return HRESULT_SUCCESS;
 }
 
