@@ -211,9 +211,8 @@ Routine Description:
     to the second instruction of TargetFunction, which can be called to call the original function of the hook
 --*/
 {
-    const UINT64 MINIMUM_OFFSET = 0x01; // 1 Instruction, 0xCC
+    static const UINT64 MINIMUM_OFFSET = 0x01; // 1 Instruction, 0xCC
 
-    // TODO: Convert from psuedocode to real code
     Hook->Trampoline = ImpAllocateNpPool(PAGE_SIZE);
     if (Hook->Trampoline == NULL)
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -269,7 +268,7 @@ Routine Description:
     }
 
     Hook->LockedTargetPage = Mdl;
-    Hook->LockedPhysAddr = ImpGetPhysicalAddress(PAGE_ALIGN(Hook->TargetFunction));
+    Hook->GuestPhysAddr = ImpGetPhysicalAddress(PAGE_ALIGN(Hook->TargetFunction));
 
     // Allocate and copy over the contents of the page containing Hook->TargetFunction to the shadow page
     Hook->ShadowPage = ImpAllocateContiguousMemory(PAGE_SIZE);
@@ -295,7 +294,7 @@ Routine Description:
             Hook->PrologueSize) != HRESULT_SUCCESS)
         return STATUS_FATAL_APP_EXIT;
 
-    if (VmEptRemapPages(Hook->LockedPhysAddr, Hook->LockedPhysAddr, PAGE_SIZE, EPT_PAGE_RW) != HRESULT_SUCCESS)
+    if (VmEptRemapPages(Hook->GuestPhysAddr, Hook->GuestPhysAddr, PAGE_SIZE, EPT_PAGE_RW) != HRESULT_SUCCESS)
         return STATUS_FATAL_APP_EXIT;
 
     return STATUS_SUCCESS;
@@ -415,13 +414,15 @@ Routine Description:
     page to the copied page which will have the breakpoint instruction written to it, which will allow us to gain control of the function
 --*/
 {
+    // TODO: Data hooks (Redirect R to hidden page, allow WX to 'real' page)
+
     NTSTATUS Status = STATUS_SUCCESS;
 
     Status = EhReserveHookRecords(0x100);
     if (!NT_SUCCESS(Status))
         return Status;
 
-    // TODO: Register NT hooks here
+    // TODO: Register hooks here
 
     return Status;
 }
@@ -437,11 +438,23 @@ EhHandleEptViolation(
 
     UINT64 AttemptedPhysAddr = VmxRead(GUEST_PHYSICAL_ADDRESS);
 
+    // TODO: Handle reads on same page as execution
+    // When ExitQual.ReadAccessed:
+    // Check if current page has execute only permissions, and check if the page containing GUEST_RIP is CurrHook->TargetFunction
+    // If this happened, apply EPT_PAGE_READ and setup MTF event
+    // 
+    // Attmpted read happens on same page
+    // 
+    // When ExitQual.ExecuteAccessed:
+    // Check if the current page has read only permissions, and check if the page being
+    //
+    //
+
     PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
     while (CurrHook != NULL)
     {
         // Check if the EPT violation was a result of accessing the locked physical address of the detour
-        if (CurrHook->State == EH_DETOUR_INSTALLED && PAGE_FRAME_NUMBER(AttemptedPhysAddr) == PAGE_FRAME_NUMBER(CurrHook->LockedPhysAddr))
+        if (CurrHook->State == EH_DETOUR_INSTALLED && PAGE_FRAME_NUMBER(AttemptedPhysAddr) == PAGE_FRAME_NUMBER(CurrHook->GuestPhysAddr))
         {
             if (ExitQual.ExecuteAccessed)
             {
@@ -472,6 +485,19 @@ EhHandleEptViolation(
                     ))
                 {
                     return FALSE;
+                }
+
+                // EPT Violation occured for reading or writing while executing on the same page, inject MTF event to swap back to EPT_PAGE_EXECUTE 
+                if (PAGE_FRAME_NUMBER(CurrHook->TargetFunction) == PAGE_FRAME_NUMBER(Vcpu->Vmx.GuestRip))
+                {
+                    MTF_EVENT ResetEptEvent = {
+                        .Type = MTF_EVENT_MEASURE_VMENTRY,
+                        .GuestPhysAddr = AttemptedPhysAddr,
+                        .PhysAddr = CurrHook->ShadowPhysAddr,
+                        .Permissions = EPT_PAGE_EXECUTE
+                    };
+
+                    VcpuPushMTFEventEx(Vcpu, ResetEptEvent);
                 }
 
                 return TRUE;

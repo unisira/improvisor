@@ -26,7 +26,7 @@ typedef struct _EH_HOOK_REGISTRATION
     PVOID CallbackFunction;
     SIZE_T PrologueSize;
     UINT64 ShadowPhysAddr;
-    UINT64 LockedPhysAddr;
+    UINT64 GuestPhysAddr;
     PMDL LockedTargetPage;
 } EH_HOOK_REGISTRATION, *PEH_HOOK_REGISTRATION;
 
@@ -65,7 +65,7 @@ EhHandleEptViolation(
 
 BOOLEAN
 EhHandleBreakpoint(
-    _In_ PVCPU Vcpu,
+    _In_ PVCPU Vcpu
 );
 
 #endif
