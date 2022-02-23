@@ -85,13 +85,30 @@ typedef union _VCPU_STACK
 
 typedef enum _MTF_EVENT_TYPE
 {
-    MTF_EVENT_MEASURE_VMENTRY
+    MTF_EVENT_MEASURE_VMENTRY,
+    MTF_EVENT_RESET_EPT_PERMISSIONS
 } MTF_EVENT_TYPE, *PMTF_EVENT_TYPE;
+
+typedef struct _MTF_EVENT
+{
+    MTF_EVENT_TYPE Type;
+
+    union
+    {
+        // RESET_EPT_PERMISSIONS
+        struct
+        {
+            UINT64 GuestPhysAddr;
+            UINT64 PhysAddr;
+            EPT_PAGE_PERMISSIONS Permissions;
+        };
+    };
+} MTF_EVENT, *PMTF_EVENT;
 
 typedef struct _MTF_EVENT_ENTRY
 {
     LIST_ENTRY Links;
-    MTF_EVENT_TYPE Type;
+    MTF_EVENT Event;
 } MTF_EVENT_ENTRY, *PMTF_EVENT_ENTRY;
 
 typedef struct _VCPU
@@ -117,7 +134,7 @@ typedef struct _VCPU
     CPU_STATE LaunchState;
     VMX_STATE Vmx;
     TSC_STATUS TscInfo;
-    PMTF_EVENT_ENTRY MtfEventHead;
+    PMTF_EVENT_ENTRY MtfStackHead;
     ULONG LastHypercallResult;
     struct _VMM_CONTEXT* Vmm; 
 } VCPU, *PVCPU;
@@ -152,6 +169,24 @@ VOID
 VcpuShutdownVmx(
     _Inout_ PVCPU Vcpu,
     _Inout_ PCPU_STATE GuestState
+);
+
+VOID
+VcpuPushMTFEventEx(
+    _In_ PVCPU Vcpu,
+    _In_ MTF_EVENT Event
+);
+
+VOID
+VcpuPushMTFEvent(
+    _In_ PVCPU Vcpu,
+    _In_ MTF_EVENT_TYPE Event
+);
+
+BOOLEAN
+VcpuPopMTFEvent(
+    _In_ PVCPU Vcpu,
+    _Out_ PMTF_EVENT Event
 );
 
 #endif

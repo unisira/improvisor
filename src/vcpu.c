@@ -11,6 +11,8 @@
 
 // The value of the VMX preemption timer used as a watchdog for TSC virtualisation
 #define VTSC_WATCHDOG_QUANTUM 4000
+// Amount of entries in the MTF event stack
+#define MTF_EVENT_MAX_COUNT 16
 
 EXTERN_C
 VOID
@@ -171,16 +173,14 @@ VcpuGetVmExitStoreValue(
     _In_ UINT32 Index
 );
 
-VOID
-VcpuPushMTFEvent(
-    _In_ PVCPU Vcpu,
-    _In_ MTF_EVENT_TYPE Event
+BOOLEAN
+VcpuIs64Bit(
+    _In_ PVCPU Vcpu
 );
 
-BOOLEAN
-VcpuPopMTFEvent(
-    _In_ PVCPU Vcpu,
-    _In_ MTF_EVENT_TYPE* Event
+NTSTATUS
+VcpuLoadPDPTRs(
+    _In_ PVCPU Vcpu
 );
 
 NTSTATUS
@@ -229,6 +229,21 @@ Routine Description:
     {
         ImpDebugPrint("Failed to allocate a host stack for VCPU #%d...\n", Id);
         return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Vcpu->MtfStackHead = (PMTF_EVENT_ENTRY)ImpAllocateHostNpPool(sizeof(MTF_EVENT_ENTRY) * MTF_EVENT_MAX_COUNT);
+    if (Vcpu->MtfStackHead == NULL)
+    {
+        ImpDebugPrint("Failed to allocate a MTF stack for VCPU #%d...\n", Id);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    for (SIZE_T i = 0; i < MTF_EVENT_MAX_COUNT; i++)
+    {
+        PMTF_EVENT_ENTRY CurrEvent = Vcpu->MtfStackHead + i;
+
+        CurrEvent->Links.Flink = i < MTF_EVENT_MAX_COUNT    ? &(CurrEvent + 1)->Links : NULL;
+        CurrEvent->Links.Blink = i > 0                      ? &(CurrEvent - 1)->Links : NULL;
     }
 
     Vcpu->Stack->Cache.Vcpu = Vcpu;
@@ -287,9 +302,10 @@ VcpuDestroy(
 )
 /*++
 Routine Description:
-    Frees all resources allocated for a VCPU
+    Frees all resources allocated for a VCPU, for this to be called VCPU and VMX initialisation had to have succeeded, therefore nothing is NULL
 --*/
 {
+
     // TODO: Finish this 
 }
 
@@ -344,8 +360,11 @@ Routine Description:
         return STATUS_INVALID_PARAMETER;
     }
 
-    // TODO: Define exception bitmap later in vmx.h
-    VmxWrite(CONTROL_EXCEPTION_BITMAP, 0);
+    EXCEPTION_BITMAP ExceptionBitmap = {
+        .Value = 0
+    };
+
+    VmxWrite(CONTROL_EXCEPTION_BITMAP, ExceptionBitmap.Value);
 
     // All page faults should cause VM-exits
     VmxWrite(CONTROL_PAGE_FAULT_ERROR_CODE_MASK, 0);
@@ -552,7 +571,8 @@ Routine Description:
         return;
     }
 
-    // Free all VCPU related resources
+    // Free all VCPU related resources 
+    // TODO: Only do this if the hypervisor wasn't shut down in a controlled manner
     VcpuDestroy(Vcpu);
     
     // The VMM context and the VCPU table are allocated as host memory, but after VmShutdownVcpu, all EPT will be disabled
@@ -586,6 +606,8 @@ Routine Description:
 {
     VTscEstimateVmExitLatency(&Vcpu->TscInfo);
     //VTscEstimateVmEntryLatency(&Vcpu->TscInfo);
+
+    // TODO: Run VTSC tests and hook tests here
 
     return STATUS_SUCCESS;
 }
@@ -683,6 +705,18 @@ Routine Description:
     }
     
     RtlSetBit(MsrBitmap, Msr);
+}
+
+BOOLEAN
+VcpuIs64Bit(
+    _In_ PVCPU Vcpu
+)
+{
+    IA32_EFER_MSR Efer = {
+        .Value = VmxRead(GUEST_EFER)
+    };
+
+    return Efer.LongModeEnable && Efer.LongModeActive;
 }
 
 DECLSPEC_NORETURN
@@ -917,6 +951,47 @@ Routine Description:
     return (PUINT64)((UINT64)GuestState + sRegIdToGuestStateOffs[RegisterId]);
 }
 
+NTSTATUS
+VcpuLoadPDPTRs(
+    _In_ PVCPU Vcpu
+)
+/*++
+Routine Description:
+    Loads PDPTR's from CR3 into the VMCS region
+--*/
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    X86_CR3 Cr3 = {
+        .Value = VmxRead(GUEST_CR3)
+    };
+
+    MM_PTE Pdptr[4];
+    Status = MmReadGuestPhys(PAGE_ADDRESS(Cr3.PageDirectoryBase), sizeof(Pdptr), Pdptr);
+    if (!NT_SUCCESS(Status))
+    {
+        ImpDebugPrint("[02%X] Failed to map CR3 PDPTR '%llX'... (%x)\n", Cr3.PageDirectoryBase, Status);
+        return Status;
+    }
+
+    // Validate PDPTEs
+    for (SIZE_T i = 0; i < sizeof(Pdptr) / sizeof(*Pdptr); i++)
+    {
+        MM_PTE Pdpte = Pdptr[i];
+
+        // TODO: Check reserved bits
+        if (!Pdpte.Present)
+            return STATUS_INVALID_PARAMETER;
+    }
+
+    VmxWrite(GUEST_PDPTE_0, Pdptr[0].Value);
+    VmxWrite(GUEST_PDPTE_1, Pdptr[1].Value);
+    VmxWrite(GUEST_PDPTE_2, Pdptr[2].Value);
+    VmxWrite(GUEST_PDPTE_3, Pdptr[3].Value);
+
+    return STATUS_SUCCESS;
+}
+
 VMM_EVENT_STATUS
 VcpuHandleCrRead(
     _In_ PVCPU Vcpu,
@@ -1009,6 +1084,12 @@ VcpuHandleCr0Write(
     BOOLEAN PagingDisabled = (DifferentBits.Paging && NewCr.Paging == 0);
     BOOLEAN ProtectedModeDisabled = (DifferentBits.ProtectedMode && NewCr.ProtectedMode == 0);
 
+    if (!NewCr.CacheDisable && NewCr.NotWriteThrough)
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
     // VM-entry requires CR0.PG and CR0.PE to be enabled without unrestricted guest
     if (PagingDisabled || ProtectedModeDisabled)
     {
@@ -1026,7 +1107,6 @@ VcpuHandleCr0Write(
         else
         {
             // TODO: Shutdown the VMM and report to the client what happened.
-            // Do we really need to abort here?
             return VMM_EVENT_ABORT;
         }
     }
@@ -1051,7 +1131,7 @@ VcpuHandleCr0Write(
             .Value = VmxRead(GUEST_CR4)
         };
 
-        if (DifferentBits.Paging && !NewCr.Paging && Cr4.PCIDEnable)
+        if (PagingDisabled && Cr4.PCIDEnable)
         {
             VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
             return VMM_EVENT_INTERRUPT;
@@ -1063,7 +1143,7 @@ VcpuHandleCr0Write(
     }
 
     // If CR0.PG has been changed, update IA32_EFER.LMA
-    if (DifferentBits.Paging)
+    if (Vcpu->IsUnrestrictedGuest && DifferentBits.Paging)
     {
         IA32_EFER_MSR Efer = {
             .Value = VmxRead(GUEST_EFER)
@@ -1077,17 +1157,21 @@ VcpuHandleCr0Write(
             .Value = VmxRead(GUEST_CR4)
         };
 
+        X86_SEGMENT_ACCESS_RIGHTS CsAr = {
+            .Value = VmxRead(GUEST_CS_ACCESS_RIGHTS)
+        };
+
+        if (NewCr.Paging && Efer.LongModeEnable && 
+            (!Cr4.PhysicalAddressExtension || CsAr.Long))
+        {
+            VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+            return VMM_EVENT_INTERRUPT;
+        }
+
         // If CR0.PG has been enabled, we must check if we are in PAE paging
         if (NewCr.Paging && !Efer.LongModeEnable && Cr4.PhysicalAddressExtension)
-        {
-            // TODO: Setup PDPTR in VMCS
-        }
-    }
-
-    if (!NewCr.CacheDisable && NewCr.NotWriteThrough)
-    {
-        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
-        return VMM_EVENT_INTERRUPT;
+            if (!NT_SUCCESS(VcpuLoadPDPTR(Vcpu)))
+                return VMM_EVENT_ABORT;
     }
 
     return VcpuUpdateGuestCr(
@@ -1140,9 +1224,6 @@ VcpuHandleCr4Write(
     const X86_CR4 NewCr = {
         .Value = NewValue
     };
-
-    // TODO: Check CR4.VMXE being set, make sure its 0 in the read shadow and inject #UD upon trying
-    // to change it
 
     const IA32_EFER_MSR Efer = {
         .Value = VmxRead(GUEST_EFER)
@@ -1325,8 +1406,10 @@ Routine Description:
 
     if (GuestState->Rbx == 0xF2C889114244161F && Vcpu->TscInfo.VmEntryLatency == 0)
     {
-        // TODO: Set up MTF queue
-        VcpuSetControl(Vcpu, VMX_CTL_MONITOR_TRAP_FLAG, TRUE);
+        VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, VTSC_WATCHDOG_QUANTUM);
+        VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
+
+        VmxInjectEvent(INTERRUPT_TYPE_OTHER_EVENT, INTERRUPT_PENDING_MTF, 0);
 
         VcpuPushMTFEvent(Vcpu, MTF_EVENT_MEASURE_VMENTRY);
     }
@@ -1573,13 +1656,32 @@ VcpuHandleEptMisconfig(
     _Inout_ PGUEST_STATE GuestState
 )
 {
-    EPT_VIOLATION_EXIT_QUALIFICATION ExitQual = {
-        .Value = VmxRead(VM_EXIT_QUALIFICATION)
-    };
-
-    //if (EhHandleEptViolation(Vcpu, ))
+    // TODO: Panic
 
     return VMM_EVENT_CONTINUE;
+}
+
+VOID
+VcpuPushMTFEventEx(
+    _In_ PVCPU Vcpu,
+    _In_ MTF_EVENT Event
+)
+/*++
+Routine Description:
+    Registers `Event` in the MTF event stack
+--*/
+{
+    PMTF_EVENT_ENTRY MtfEntry = Vcpu->MtfStackHead;
+
+    // TODO: Panic
+    if (Vcpu->MtfStackHead->Links.Flink == NULL)
+        return;
+
+    MtfEntry->Event = Event;
+
+    Vcpu->MtfStackHead = (PMM_VPTE)MtfEntry->Links.Flink;
+
+    return;
 }
 
 VOID
@@ -1587,15 +1689,22 @@ VcpuPushMTFEvent(
     _In_ PVCPU Vcpu,
     _In_ MTF_EVENT_TYPE Event
 )
+/*++
+Routine Description:
+    Registers `Event` in the MTF event stack with no futher information/parameters
+--*/
 {
-    // TODO: Complete
-    return;
+    MTF_EVENT EventEx = {
+        .Type = Event
+    };
+
+    VcpuPushMTFEventEx(Vcpu, EventEx);
 }
 
 BOOLEAN
 VcpuPopMTFEvent(
     _In_ PVCPU Vcpu,
-    _Out_ MTF_EVENT_TYPE* Event
+    _Out_ PMTF_EVENT Event
 )
 /*++
 Routine Description:
@@ -1612,15 +1721,36 @@ VcpuHandleMTFExit(
     _Inout_ PGUEST_STATE GuestState
 )
 {
-    MTF_EVENT_TYPE Event;
+    MTF_EVENT Event;
     if (VcpuPopMTFEvent(Vcpu, &Event))
     {
-        switch (Event)
+        switch (Event.Type)
         {
         case MTF_EVENT_MEASURE_VMENTRY:
         {
-
+            // TODO: Check VMX preemption timer value and sub vm-exit time :)!
         } break;
+        case MTF_EVENT_RESET_EPT_PERMISSIONS:
+        {
+            if (Event.Permissions & EPT_PAGE_RWX != 0)
+            {
+                ImpDebugPrint("[02%X] Invalid MTF_EVENT_RESET_EPT_PERMISSIONS permissions (%x)...\n", Event.Permissions);
+                return VMM_EVENT_CONTINUE;
+            }
+
+            if (!NT_SUCCESS(
+                EptMapMemoryRange(
+                    Vcpu->Vmm->EptInformation.SystemPml4,
+                    Event.GuestPhysAddr,
+                    Event.PhysAddr,
+                    PAGE_SIZE,
+                    Event.Permissions)
+                ))
+            {
+                ImpDebugPrint("[02%X] Failed to remap page permissions for %llx->%llx...\n", Event.GuestPhysAddr, Event.PhysAddr);
+                return VMM_EVENT_ABORT;
+            }
+        }
         default: 
         {   
             ImpDebugPrint("[02%X] Unknown MTF event (%x)...\n", Vcpu->Id, Event);
@@ -1651,6 +1781,16 @@ VcpuHandleXsetbv(
     _Inout_ PGUEST_STATE GuestState
 )
 {
+    X86_CR4 Cr4 = {
+        .Value = VmxRead(CONTROL_CR4_READ_SHADOW)
+    };
+
+    if (Cr4.XSaveEnable)
+    {
+        VmxInjectEvent(EXCEPTION_UNDEFINED_OPCODE, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
     return VMM_EVENT_CONTINUE;
 }
 
