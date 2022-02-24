@@ -1062,6 +1062,11 @@ Routine Description:
     return VMM_EVENT_CONTINUE;
 }
 
+// CR0 bits that require PDPTRs to be loaded again if changed
+// See Intel SDM Vol. 3 Ch 4.4.1 PDPTE Registers
+#define CR0_PDPTR_CHANGE_BITS \
+    ((UINT64)((1ULL << 29) | (1ULL << 30) | (1ULL << 31)))
+
 VMM_EVENT_STATUS
 VcpuHandleCr0Write(
     _Inout_ PVCPU Vcpu,
@@ -1169,9 +1174,14 @@ VcpuHandleCr0Write(
         }
 
         // If CR0.PG has been enabled, we must check if we are in PAE paging
-        if (NewCr.Paging && !Efer.LongModeEnable && Cr4.PhysicalAddressExtension)
-            if (!NT_SUCCESS(VcpuLoadPDPTR(Vcpu)))
-                return VMM_EVENT_ABORT;
+        if (NewCr.Paging && !Efer.LongModeEnable && Cr4.PhysicalAddressExtension && DifferentBits.Value & CR0_PDPTR_CHANGE_BITS)
+        {
+            if (!NT_SUCCESS(VcpuLoadPDPTRs(Vcpu)))
+            {
+                VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+                return VMM_EVENT_INTERRUPT;
+            }
+        }
     }
 
     return VcpuUpdateGuestCr(
@@ -1205,6 +1215,11 @@ VcpuHandleCr0Write(
     }
     */
 }
+
+// CR4 bits that require PDPTRs to be loaded again if changed
+// See Intel SDM Vol. 3 Ch 4.4.1 PDPTE Registers
+#define CR4_PDPTR_CHANGE_BITS \
+    ((UINT64)((1ULL << 4) | (1ULL << 5) | (1ULL << 7) | (1ULL << 20)))
 
 VMM_EVENT_STATUS
 VcpuHandleCr4Write(
@@ -1241,6 +1256,19 @@ VcpuHandleCr4Write(
     {
         VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
         return VMM_EVENT_INTERRUPT;
+    }
+
+    X86_CR0 Cr0 = {
+        .Value = VmxRead(GUEST_CR0)
+    };
+
+    if (Cr0.Paging && Efer.LongModeActive && NewCr.PhysicalAddressExtension && DifferentBits.Value & CR4_PDPTR_CHANGE_BITS)
+    {
+        if (!NT_SUCCESS(VcpuLoadPDPTRs(Vcpu)))
+        {
+            VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+            return VMM_EVENT_INTERRUPT;
+        }
     }
 
     Status = VcpuUpdateGuestCr(
