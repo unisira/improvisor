@@ -9,4 +9,6 @@
 #define RVA(Addr, Offs) \
 	((UINT64)RVA_PTR(Addr, Offs))
 
+#define XBITRANGE(L, H) ((UINT64)(((2ULL << ((H) - (L))) - 1) << (L)))
+
 #endif

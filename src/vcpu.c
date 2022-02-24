@@ -3,6 +3,7 @@
 #include "arch/cpuid.h"
 #include "arch/msr.h"
 #include "arch/cr.h"
+#include "util/macro.h"
 #include "intrin.h"
 #include "vmcall.h"
 #include "detour.h"
@@ -951,6 +952,9 @@ Routine Description:
     return (PUINT64)((UINT64)GuestState + sRegIdToGuestStateOffs[RegisterId]);
 }
 
+#define PDPTE_RESERVED_BITS \
+    (XBITRANGE(1, 2) | XBITRANGE(5, 8) | XBITRANGE(52, 63))
+
 NTSTATUS
 VcpuLoadPDPTRs(
     _In_ PVCPU Vcpu
@@ -979,8 +983,7 @@ Routine Description:
     {
         MM_PTE Pdpte = Pdptr[i];
 
-        // TODO: Check reserved bits
-        if (!Pdpte.Present)
+        if (Pdpte.Present && Pdpte.Value & PDPTE_RESERVED_BITS)
             return STATUS_INVALID_PARAMETER;
     }
 
