@@ -5,6 +5,7 @@
 
 #define CR4_RESERVED_BITMASK (0xFFFFFFFFFE088000)
 #define CR0_RESERVED_BITMASK (0xFFFFFFFF1FFAFFC0)
+#define XCR_RESERVED_BITMASK (0xFFFFFFFFFFFFFD00)
 #define CR0_PE_PG_BITMASK (0x80000001)
 #define CR0_CD_NW_BITMASK (0x60000000)
 
@@ -75,5 +76,24 @@ typedef union _X86_CR4
 		UINT64 SupervisorProtectionKeys : 1;
 	};
 } X86_CR4, *PX86_CR4;
+
+typedef union _X86_XCR0
+{
+	UINT64 Value;
+
+	struct
+	{
+		unsigned int X87FpuState : 1;
+		unsigned int SseState : 1;
+		unsigned int AvxState : 1;
+		unsigned int BndRegState : 1;
+		unsigned int BndCsrState : 1;
+		unsigned int OpMaskState : 1;
+		unsigned int ZmmHi256State : 1;
+		unsigned int Hi16ZmmState : 1;
+		unsigned int Reserved1 : 1;
+		unsigned int PkruState : 1;
+	};
+} X86_XCR0, *PX86_XCR0;
 
 #endif
