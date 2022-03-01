@@ -11,8 +11,10 @@
 #define VMM_EVENT_CONTINUE (0x00000000)
 // An interrupt/exception was injected into the guest
 #define VMM_EVENT_INTERRUPT (0x00000001)
+// Retry execution of the current instruction
+#define VMM_EVENT_RETRY (0x00000002)
 // The hypervisor encountered an error and should shut down immediately
-#define VMM_EVENT_ABORT (0x00000002)
+#define VMM_EVENT_ABORT (0x00000003)
 
 #pragma pack(push, 1)
 typedef struct _GUEST_STATE
@@ -100,7 +102,7 @@ typedef struct _MTF_EVENT
         {
             UINT64 GuestPhysAddr;
             UINT64 PhysAddr;
-            EPT_PAGE_PERMISSIONS Permissions;
+            UINT64 Permissions;
         };
     };
 } MTF_EVENT, *PMTF_EVENT;

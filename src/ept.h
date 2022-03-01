@@ -3,6 +3,38 @@
 
 #include <ntdef.h>
 
+typedef enum _EPT_MEMORY_TYPE
+{
+    EPT_MEMORY_UNCACHEABLE = 0,
+    EPT_MEMORY_WRITECOMBINING = 1,
+    EPT_MEMORY_WRITETHROUGH = 4,
+    EPT_MEMORY_WRITEPROTECTED = 5,
+    EPT_MEMORY_WRITEBACK = 6,
+} EPT_MEMORY_TYPE, *PEPT_MEMORY_TYPE;
+
+
+typedef union _EPT_POINTER
+{
+    UINT64 Value;
+
+    struct
+    {
+        UINT64 MemoryType : 3;
+        UINT64 PageWalkLength : 3;
+        UINT64 AccessDirtyFlags : 1;
+        UINT64 SupervisorShadowStackAccess : 1;
+        UINT64 Reserved1 : 4;
+        UINT64 PML4PageFrameNumber : 36;
+        UINT64 Reserved2 : 16;
+    };
+} EPT_POINTER, *PEPT_POINTER;
+
+typedef struct _EPT_INVEPT_DESCRIPTOR
+{
+    EPT_POINTER EptPointer;
+    UINT64 Reserved;
+} EPT_INVEPT_DESCRIPTOR, *PEPT_INVEPT_DESCRIPTOR;
+
 typedef union _EPT_VIOLATION_EXIT_QUALIFICATION
 {
     UINT64 Value;
@@ -87,6 +119,9 @@ typedef enum _EPT_PAGE_PERMISSIONS
     EPT_PAGE_RWX = EPT_PAGE_READ | EPT_PAGE_WRITE | EPT_PAGE_EXECUTE,
     EPT_PAGE_RWUX = EPT_PAGE_READ | EPT_PAGE_WRITE | EPT_PAGE_UEXECUTE
 } EPT_PAGE_PERMISSIONS, *PEPT_PAGE_PERMISSIONS;
+
+VOID
+EptInvalidateCache(VOID);
 
 BOOLEAN
 EptCheckSupport(VOID);

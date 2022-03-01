@@ -1,7 +1,9 @@
 #include "improvisor.h"
+#include "util/macro.h"
 #include "arch/memory.h"
 #include "arch/mtrr.h"
 #include "arch/msr.h"
+#include "intrin.h"
 #include "mtrr.h"
 #include "ept.h"
 #include "vmx.h"
@@ -10,6 +12,10 @@
 #define GB(N) ((UINT64)(N) * 1024 * 1024 * 1024)
 #define MB(N) ((UINT64)(N) * 1024 * 1024)
 #define KB(N) ((UINT64)(N) * 1024)
+
+// Mask for when bits 12-29 need to be masked off for final translations
+#define EPT_PTE_PHYSADDR_MASK XBITRANGE(12, 29)
+
 
 BOOLEAN
 EptCheckSuperPageSupport(VOID)
@@ -480,6 +486,14 @@ Routine Description:
     }
 
     return Status;
+}
+
+VOID
+EptInvalidateCache(VOID)
+{
+    EPT_INVEPT_DESCRIPTOR InveptDescriptor = {0};
+
+    __invept(INV_ALL_CONTEXT, &InveptDescriptor);
 }
 
 BOOLEAN

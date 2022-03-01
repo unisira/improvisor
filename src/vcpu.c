@@ -1,5 +1,6 @@
 #include "arch/interrupt.h"
 #include "arch/segment.h"
+#include "arch/memory.h"
 #include "arch/cpuid.h"
 #include "arch/msr.h"
 #include "arch/cr.h"
@@ -31,7 +32,8 @@ VMEXIT_HANDLER VcpuHandleTimerExpire;
 VMEXIT_HANDLER VcpuHandleMsrRead;
 VMEXIT_HANDLER VcpuHandleMsrWrite;
 VMEXIT_HANDLER VcpuHandlePreemptionTimerExpire;
-VMEXIT_HANDLER VcpuHandleExternalInterruptNmi;
+VMEXIT_HANDLER VcpuHandleExceptionNmi;
+VMEXIT_HANDLER VcpuHandleExternalInterrupt;
 VMEXIT_HANDLER VcpuHandleNmiWindow;
 VMEXIT_HANDLER VcpuHandleInterruptWindow;
 VMEXIT_HANDLER VcpuHandleEptViolation;
@@ -42,8 +44,8 @@ VMEXIT_HANDLER VcpuHandleXsetbv;
 VMEXIT_HANDLER VcpuHandleInvlpg;
 
 static VMEXIT_HANDLER* sExitHandlers[] = {
-    VcpuHandleExternalInterruptNmi, // Exception or non-maskable interrupt (NMI)
-    VcpuUnknownExitReason, 			// External interrupt
+    VcpuHandleExceptionNmi,         // Exception or non-maskable interrupt (NMI)
+    VcpuHandleExternalInterrupt, 	// External interrupt
     VcpuUnknownExitReason, 			// Triple fault
     VcpuUnknownExitReason, 			// INIT signal
     VcpuUnknownExitReason, 			// Start-up IPI (SIPI)
@@ -90,14 +92,14 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuUnknownExitReason, 			// Virtualized EOI
     VcpuUnknownExitReason, 			// Access to GDTR or IDTR
     VcpuUnknownExitReason, 			// Access to LDTR or TR
-    VcpuHandleEptViolation, 			// EPT violation
-    VcpuHandleEptMisconfig, 			// EPT misconfiguration
+    VcpuHandleEptViolation, 		// EPT violation
+    VcpuHandleEptMisconfig, 		// EPT misconfiguration
     VcpuHandleVmxInstruction, 		// INVEPT
     VcpuHandleRdtscp,     			// RDTSCP
     VcpuHandleTimerExpire,          // VMX-preemption timer expired
     VcpuHandleVmxInstruction, 		// INVVPID
     VcpuUnknownExitReason, 			// WBINVD or WBNOINVD
-    VcpuUnknownExitReason, 			// XSETBV
+    VcpuHandleXsetbv, 			    // XSETBV
     VcpuUnknownExitReason, 			// APIC write
     VcpuUnknownExitReason, 			// RDRAND
     VcpuUnknownExitReason, 			// INVPCID
@@ -288,6 +290,8 @@ Routine Description:
     VcpuSetControl(Vcpu, VMX_CTL_ENABLE_RDTSCP, TRUE);
     VcpuSetControl(Vcpu, VMX_CTL_ENABLE_XSAVES_XRSTORS, TRUE);
     VcpuSetControl(Vcpu, VMX_CTL_ENABLE_INVPCID, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_ENABLE_EPT, TRUE);
+    VcpuSetControl(Vcpu, VMX_CTL_ENABLE_VPID, TRUE);
 
     // Save GUEST_EFER on VM-exit
     VcpuSetControl(Vcpu, VMX_CTL_SAVE_EFER_ON_EXIT, TRUE);
@@ -360,6 +364,17 @@ Routine Description:
         ImpDebugPrint("Failed to set active VMCS on VCPU #%d...\n", Vcpu->Id);
         return STATUS_INVALID_PARAMETER;
     }
+
+    EPT_POINTER EptPointer = {
+        .MemoryType = EPT_MEMORY_WRITEBACK,
+        .PageWalkLength = 3,
+        .PML4PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(Vcpu->Vmm->EptInformation.SystemPml4))
+    };
+
+    VmxWrite(CONTROL_EPT_POINTER, EptPointer.Value);
+
+    // Set the VPID identifier to the current processor number.
+    VmxWrite(CONTROL_VIRTUAL_PROCESSOR_ID, 1);
 
     EXCEPTION_BITMAP ExceptionBitmap = {
         .Value = 0
@@ -750,6 +765,8 @@ Routine Description:
     by immediately shutting down this VCPU and signaling to the other VCPU's that they should shutdown too
 --*/
 {	
+    // TODO: Acknowledge interrupt on exit and check interrupt info in EPT violation handler?
+
     Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
     Vcpu->Vmx.ExitReason.Value = (UINT32)VmxRead(VM_EXIT_REASON);
 
@@ -844,7 +861,7 @@ VcpuUpdateLastTscEventEntry(
         PrevEvent->Timestamp = Timestamp;
         PrevEvent->Latency = VcpuGetTscEventLatency(Vcpu, Type);
 
-        ImpDebugPrint("[02%X] PrevEvent->Valid: TSC = %u + %u + %u\n", Vcpu->Id, PrevEvent->Timestamp, PrevEvent->Latency, ElapsedTime);
+        ImpDebugPrint("[%02X] PrevEvent->Valid: TSC = %u + %u + %u\n", Vcpu->Id, PrevEvent->Timestamp, PrevEvent->Latency, ElapsedTime);
     } 
     else
     {
@@ -857,7 +874,7 @@ VcpuUpdateLastTscEventEntry(
         PrevEvent->Timestamp = Timestamp;
         PrevEvent->Latency = VcpuGetTscEventLatency(Vcpu, Type);
 
-        ImpDebugPrint("[02%X] !PrevEvent->Valid: TSC = %u + %u\n", Vcpu->Id, Timestamp, PrevEvent->Latency);
+        ImpDebugPrint("[%02X] !PrevEvent->Valid: TSC = %u + %u\n", Vcpu->Id, Timestamp, PrevEvent->Latency);
     }
 }
 
@@ -970,11 +987,11 @@ Routine Description:
         .Value = VmxRead(GUEST_CR3)
     };
 
-    MM_PTE Pdptr[4];
+    MM_PTE Pdptr[4] = {0, 0, 0, 0};
     Status = MmReadGuestPhys(PAGE_ADDRESS(Cr3.PageDirectoryBase), sizeof(Pdptr), Pdptr);
     if (!NT_SUCCESS(Status))
     {
-        ImpDebugPrint("[02%X] Failed to map CR3 PDPTR '%llX'... (%x)\n", Cr3.PageDirectoryBase, Status);
+        ImpDebugPrint("[%02X] Failed to map CR3 PDPTR '%llX'... (%x)\n", Cr3.PageDirectoryBase, Status);
         return Status;
     }
 
@@ -1535,7 +1552,7 @@ VcpuHandleTimerExpire(
     _Inout_ PGUEST_STATE GuestState
 )
 {
-    ImpDebugPrint("[02%X] VMX preemption timer expired...\n", Vcpu->Id);
+    ImpDebugPrint("[%02X] VMX preemption timer expired...\n", Vcpu->Id);
 
     // TODO: Disable VMX preemption timer and TSC spoofing
     if (Vcpu->TscInfo.SpoofEnabled)
@@ -1615,15 +1632,6 @@ VcpuHandleMsrRead(
 }
 
 VMM_EVENT_STATUS
-VcpuHandleXSETBV(
-    _Inout_ PVCPU Vcpu,
-    _Inout_ PGUEST_STATE GuestState
-)
-{
-    return VMM_EVENT_CONTINUE;
-}
-
-VMM_EVENT_STATUS
 VcpuHandleExternalInterruptNmi(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState
@@ -1674,11 +1682,14 @@ VcpuHandleEptViolation(
             EPT_PAGE_RWX)
         ))
     {
-        ImpDebugPrint("[02%X] Failed to map basic %llx->%llx...\n", Vcpu->Id, AttemptedAddress, AttemptedAddress);
+        ImpDebugPrint("[%02X] Failed to map basic %llX -> %llX...\n", Vcpu->Id, AttemptedAddress, AttemptedAddress);
         return VMM_EVENT_ABORT;
     }
 
-    return VMM_EVENT_CONTINUE;
+    // TODO: Don't think this is necessary
+    EptInvalidateCache();
+
+    return VMM_EVENT_RETRY;
 }
 
 VMM_EVENT_STATUS
@@ -1688,8 +1699,10 @@ VcpuHandleEptMisconfig(
 )
 {
     // TODO: Panic
+    __debugbreak();
+    ImpDebugPrint("[%02X] EPT MISCONFIG...\n", Vcpu->Id);
 
-    return VMM_EVENT_CONTINUE;
+    return VMM_EVENT_ABORT;
 }
 
 VOID
@@ -1710,7 +1723,7 @@ Routine Description:
 
     MtfEntry->Event = Event;
 
-    Vcpu->MtfStackHead = (PMM_VPTE)MtfEntry->Links.Flink;
+    Vcpu->MtfStackHead = (PMTF_EVENT_ENTRY)MtfEntry->Links.Flink;
 
     return;
 }
@@ -1743,7 +1756,7 @@ Routine Description:
 --*/
 {
     // TODO: Complete
-    return;
+    return FALSE;
 }
 
 VMM_EVENT_STATUS 
@@ -1763,9 +1776,9 @@ VcpuHandleMTFExit(
         } break;
         case MTF_EVENT_RESET_EPT_PERMISSIONS:
         {
-            if (Event.Permissions & EPT_PAGE_RWX != 0)
+            if ((Event.Permissions & EPT_PAGE_RWX) != 0)
             {
-                ImpDebugPrint("[02%X] Invalid MTF_EVENT_RESET_EPT_PERMISSIONS permissions (%x)...\n", Event.Permissions);
+                ImpDebugPrint("[%02X] Invalid MTF_EVENT_RESET_EPT_PERMISSIONS permissions (%x)...\n", Event.Permissions);
                 return VMM_EVENT_CONTINUE;
             }
 
@@ -1778,13 +1791,13 @@ VcpuHandleMTFExit(
                     Event.Permissions)
                 ))
             {
-                ImpDebugPrint("[02%X] Failed to remap page permissions for %llx->%llx...\n", Event.GuestPhysAddr, Event.PhysAddr);
+                ImpDebugPrint("[%02X] Failed to remap page permissions for %llx->%llx...\n", Event.GuestPhysAddr, Event.PhysAddr);
                 return VMM_EVENT_ABORT;
             }
         }
         default: 
         {   
-            ImpDebugPrint("[02%X] Unknown MTF event (%x)...\n", Vcpu->Id, Event);
+            ImpDebugPrint("[%02X] Unknown MTF event (%x)...\n", Vcpu->Id, Event);
         } break;
         }
     }
@@ -1803,7 +1816,16 @@ VcpuHandleWbinvd(
     _Inout_ PGUEST_STATE GuestState
 )
 {
+    // TODO: Look into proper way to emulate this
+    __wbinvd();
+
     return VMM_EVENT_CONTINUE;
+}
+
+UINT64
+GetXCR0SupportedMask(VOID)
+{
+    // TODO: Complete
 }
 
 VMM_EVENT_STATUS 
@@ -1819,6 +1841,40 @@ VcpuHandleXsetbv(
     if (Cr4.XSaveEnable)
     {
         VmxInjectEvent(EXCEPTION_UNDEFINED_OPCODE, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
+    const UINT64 XcrIdentifier = GuestState->Rcx;
+
+    // Only XCR0 is supported at the minute, any other value of ECX is reserved. 
+    if (XcrIdentifier != 0)
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
+    X86_XCR0 Xcr0 = {
+        .Value = GuestState->Rdx << 32 | GuestState->Rax
+    };
+
+    // Check if SSE state is being cleared while trying to enable AVX state, AVX state relies upon both. 
+    if (!Xcr0.SseState && Xcr0.AvxState)
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
+    // Check if trying to clear AVX state, and trying to set OPMASK or ZMM states
+    if (!Xcr0.AvxState && (Xcr0.OpMaskState || Xcr0.ZmmHi256State || Xcr0.Hi16ZmmState))
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
+        return VMM_EVENT_INTERRUPT;
+    }
+
+    // Check reserved bits.
+    if (Xcr0.Value & XCR_RESERVED_BITMASK || Xcr0.Value & ~GetXCR0SupportedMask())
+    {
+        VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
         return VMM_EVENT_INTERRUPT;
     }
 
