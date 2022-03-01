@@ -9,10 +9,6 @@
 #include "vmx.h"
 #include "mm.h"
 
-#define GB(N) ((UINT64)(N) * 1024 * 1024 * 1024)
-#define MB(N) ((UINT64)(N) * 1024 * 1024)
-#define KB(N) ((UINT64)(N) * 1024)
-
 // Mask for when bits 12-29 need to be masked off for final translations
 #define EPT_PTE_PHYSADDR_MASK XBITRANGE(12, 29)
 
@@ -483,6 +479,19 @@ Routine Description:
         }
     
         PhysMemRange++;
+    }
+
+    IA32_APIC_BASE_MSR ApicBase = {
+        .Value = __readmsr(IA32_APIC_BASE)
+    };
+
+    if (ApicBase.APICEnable)
+    {
+        if (!NT_SUCCESS(EptMapMemoryRange(Pml4, PAGE_ADDRESS(ApicBase.APICBase), PAGE_ADDRESS(ApicBase.APICBase), PAGE_SIZE, EPT_PAGE_RWX)))
+        {
+            ImpDebugPrint("Failed to map APIC...\n");
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
     }
 
     return Status;
