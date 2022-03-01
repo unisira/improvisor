@@ -1,6 +1,53 @@
 #ifndef IMP_ARCH_INTERRUPT_H
 #define IMP_ARCH_INTERRUPT_H
 
+#define INTERRUPT_PENDING_MTF 7
+
+#include <ntdef.h>
+
+typedef union _EXCEPTION_BITMAP
+{
+	UINT32 Value;
+
+	struct
+	{
+		UINT32 DividerException : 1;
+		UINT32 DebugException : 1;
+		UINT32 Ignored1 : 1;
+		UINT32 BreakpointException : 1;
+		UINT32 Ignored2 : 1;
+		UINT32 BoundRangeExceeded : 1;
+		UINT32 InvalidOpcode : 1;
+		UINT32 Ignored3 : 6;
+		UINT32 GeneralProtection : 1;
+		UINT32 PageFault : 1;
+		UINT32 Ignored4 : 1;
+		UINT32 FpuFpException : 1;
+		UINT32 AlignmentCheck : 1;
+		UINT32 Ignored5 : 1;
+		UINT32 SIMDFpException : 1;
+		UINT32 Ignored6 : 1;
+		UINT32 ControlProtection : 1;
+	};
+} EXCEPTION_BITMAP, *PEXCEPTION_BITMAP;
+
+typedef union _PENDING_DEBUG_EXCEPTIONS
+{
+	UINT64 Value;
+
+	struct
+	{
+		UINT64 BreakpointConditionsMet : 4;
+		UINT64 reserved_1 : 8;
+		UINT64 BreakpointEnable : 1;
+		UINT64 reserved_2 : 1;
+		UINT64 SingleStep : 1;
+		UINT64 reserved_3 : 1;
+		UINT64 RTMEnabled : 1;
+		UINT64 reserved_4 : 47;
+	} flags;
+} X86_PENDING_DEBUG_EXCEPTIONS, *PX86_PENDING_DEBUG_EXCEPTIONS;
+
 typedef enum _X86_EXCEPTION
 {
     EXCEPTION_DIVIDE_ERROR,
