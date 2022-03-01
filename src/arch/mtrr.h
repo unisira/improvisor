@@ -58,6 +58,16 @@ typedef union _IA32_MTRR_PHYSMASK_N_MSR
     };
 } IA32_MTRR_PHYSMASK_N_MSR, *PIA32_MTRR_PHYSMASK_N_MSR;
 
+typedef union _IA32_MTRR_FIXED_RANGE_MSR
+{
+    UINT64 Value;
+
+    struct
+    {
+        UINT8 Types[8];
+    };
+} IA32_MTRR_FIXED_RANGE_MSR, *PIA32_MTRR_FIXED_RANGE_MSR;
+
 typedef enum _MEMORY_TYPE
 {
     MT_UNCACHABLE = 0,

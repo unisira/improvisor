@@ -1632,12 +1632,21 @@ VcpuHandleMsrRead(
 }
 
 VMM_EVENT_STATUS
-VcpuHandleExternalInterruptNmi(
+VcpuHandleExceptionNmi(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState
 )
 {
-    return VMM_EVENT_CONTINUE;
+    return VMM_EVENT_ABORT;
+}
+
+VMM_EVENT_STATUS
+VcpuHandleExternalInterrupt(
+    _Inout_ PVCPU Vcpu,
+    _Inout_ PGUEST_STATE GuestState
+)
+{
+    return VMM_EVENT_ABORT;
 }
 
 VMM_EVENT_STATUS 
@@ -1646,7 +1655,7 @@ VcpuHandleNmiWindow(
     _Inout_ PGUEST_STATE GuestState
 )
 {
-    return VMM_EVENT_CONTINUE;
+    return VMM_EVENT_ABORT;
 }
 
 VMM_EVENT_STATUS 

@@ -8,6 +8,10 @@
 #define PAGE_ALIGN(Addr) ((UINT64)(Addr) & ~0xFFFULL)
 #define PAGE_OFFSET(Addr) ((UINT64)(Addr) & 0xFFFULL)
 
+#define GB(N) ((UINT64)(N) * 1024 * 1024 * 1024)
+#define MB(N) ((UINT64)(N) * 1024 * 1024)
+#define KB(N) ((UINT64)(N) * 1024)
+
 typedef union _X86_LA48
 {
     UINT64 Value;

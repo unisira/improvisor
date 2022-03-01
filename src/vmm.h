@@ -19,7 +19,7 @@ typedef struct _VMM_CONTEXT
     MM_INFORMATION MmInformation;
     EPT_INFORMATION EptInformation;
     X86_PSEUDO_DESCRIPTOR HostInterruptDescriptor;
-} VMM_CONTEXT, * PVMM_CONTEXT;
+} VMM_CONTEXT, *PVMM_CONTEXT;
 
 NTSTATUS 
 VmmStartHypervisor(
