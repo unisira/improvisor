@@ -12,7 +12,6 @@
 // Mask for when bits 12-29 need to be masked off for final translations
 #define EPT_PTE_PHYSADDR_MASK XBITRANGE(12, 29)
 
-
 BOOLEAN
 EptCheckSuperPageSupport(VOID)
 /*++
@@ -24,7 +23,7 @@ Routine Description:
         .Value = __readmsr(IA32_VMX_EPT_VPID_CAP)
     };
 
-    return EptVpidCap.SuperPdpteSupport;
+    return EptVpidCap.SuperPdpteSupport != 0;
 }
 
 BOOLEAN
@@ -38,7 +37,7 @@ Routine Description:
         .Value = __readmsr(IA32_VMX_EPT_VPID_CAP)
     };
 
-    return EptVpidCap.LargePdeSupport;
+    return EptVpidCap.LargePdeSupport != 0;
 }
 
 PEPT_PTE 
@@ -487,6 +486,8 @@ Routine Description:
 
     if (ApicBase.APICEnable)
     {
+        ImpDebugPrint("Mapping APIC %llX...\n", PAGE_ADDRESS(ApicBase.APICBase));
+
         if (!NT_SUCCESS(EptMapMemoryRange(Pml4, PAGE_ADDRESS(ApicBase.APICBase), PAGE_ADDRESS(ApicBase.APICBase), PAGE_SIZE, EPT_PAGE_RWX)))
         {
             ImpDebugPrint("Failed to map APIC...\n");
