@@ -51,7 +51,7 @@ MtrrGetContainingRegion(
             return CurrEntry;
 
         CurrEntry = (PMTRR_REGION_CACHE_ENTRY)CurrEntry->Links.Blink;
-    } 
+    }
 
     return NULL;
 }
@@ -147,10 +147,10 @@ MtrrSaveVariableRange(
     CurrMtrrEntry->Type = Base.Type;
     CurrMtrrEntry->Base = PAGE_ADDRESS(Base.Base);
 
-    const ULONG SizeShift = 0;
-    _BitScanForward64(&SizeShift, Mask.Mask << 12);
+    ULONG SizeShift = 0;
+    _BitScanForward64(&SizeShift, PAGE_ADDRESS(Mask.Mask));
 
-    CurrMtrrEntry->Size = (1ULL << SizeShift);
+    CurrMtrrEntry->Size = 1ULL << SizeShift;
 
     gMtrrRegionCacheHead = CurrMtrrEntry->Links.Flink;
 }
@@ -230,7 +230,7 @@ MtrrInitialise(VOID)
 
         if (!NT_SUCCESS(MtrrSaveVariableRange(Base, Mask)))
         {
-            ImpDebugPrint("Failed to save variable MTRR region (IA32_MTRR_PHYSBASE_N: )...\n", IA32_MTRR_PHYSBASE_0 + i * 2);
+            ImpDebugPrint("Failed to save variable MTRR region (IA32_MTRR_PHYSBASE_N: %i)...\n", IA32_MTRR_PHYSBASE_0 + i * 2);
             return STATUS_INSUFFICIENT_RESOURCES;
         }
     }
