@@ -45,4 +45,20 @@ EXTERN_C
 VOID
 __enable(VOID);
 
+EXTERN_C
+VOID
+__writecr2(UINT64);
+
+EXTERN_C
+VOID
+__invept(UINT64, PVOID);
+
+EXTERN_C
+VOID
+__invvpid(UINT64, PVOID);
+
+EXTERN_C
+VOID
+__invd(void);
+
 #endif
