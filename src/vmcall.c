@@ -203,6 +203,8 @@ VmHandleHypercall(
                 RemapEx.Permissions)
             ))
             return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+
+        EptInvalidateCache();
     } break;
     case HYPERCALL_GET_LAST_RESULT:
     {
