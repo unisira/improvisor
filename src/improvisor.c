@@ -1,4 +1,5 @@
 #include "improvisor.h"
+#include "util/spinlock.h"
 #include "util/fmt.h"
 
 // TODO: Add a logger, and add routine descriptions for everything
@@ -204,6 +205,24 @@ Routine Description:
 
 }
 
+VOID
+ImpFreeAllAllocations(VOID)
+/*++
+Routine Description:
+    Frees all allocations made by Imp* functions and the buffers used to record them
+--*/
+{
+    PIMP_ALLOC_RECORD CurrRecord = gHostAllocationsHead;
+    while (CurrRecord != NULL)
+    {
+        ExFreePoolWithTag(CurrRecord->Address, POOL_TAG);
+
+        CurrRecord = (PIMP_ALLOC_RECORD)CurrRecord->Records.Blink;
+    }
+
+    ExFreePoolWithTag(sImpAllocRecordsRaw, POOL_TAG);
+}
+
 UINT64
 ImpGetPhysicalAddress(
     _In_ PVOID Address
@@ -216,6 +235,8 @@ Routine Description:
     return MmGetPhysicalAddress(Address).QuadPart;
 }
 
+static SPINLOCK sDebugPrintLock;
+
 VOID 
 ImpDebugPrint(
     _In_ PCSTR Str, ...
@@ -225,6 +246,8 @@ Routine Description:
     Just a wrapper around DbgPrint, making sure to print to the correct output depending on the build
 --*/
 {
+    SpinLock(&sDebugPrintLock);
+
 #ifdef _DEBUG
     va_list Args;
 	va_start(Args, Str);
@@ -235,4 +258,6 @@ Routine Description:
 #else
     DbgPrint(Str, ...);
 #endif
+
+    SpinUnlock(&sDebugPrintLock);
 }

@@ -71,6 +71,9 @@ ImpAllocateNpPoolEx(
     _In_ UINT64 Flags
 );
 
+VOID
+ImpFreeAllAllocations(VOID);
+
 UINT64
 ImpGetPhysicalAddress(
     _In_ PVOID Address
