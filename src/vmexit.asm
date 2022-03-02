@@ -21,6 +21,7 @@ _R13 QWORD ?
 _R14 QWORD ?
 _R15 QWORD ?
 _Rip QWORD ?
+_Cr8 QWORD ?
 _MxCsr DWORD ?
 _Xmm0 XMMWORD ?
 _Xmm1 XMMWORD ?
@@ -112,6 +113,10 @@ __vmexit_entry PROC
 	movups [rsp].GUEST_STATE._Xmm13, xmm13
 	movups [rsp].GUEST_STATE._Xmm14, xmm14
 	movups [rsp].GUEST_STATE._Xmm15, xmm15
+	mov rbx, cr8
+	mov rax, 0Fh
+	mov cr8, rax
+	mov [rsp].GUEST_STATE._Cr8, rbx
 	stmxcsr [rsp].GUEST_STATE._MxCsr
 
 	mov rcx, [rsp+SIZEOF GUEST_STATE-5FF0h]	; Load the address of the stack cache (PVCPU) into RCX
@@ -136,6 +141,8 @@ no_abort:
 	ldmxcsr [rsp].GUEST_STATE._MxCsr		; Restore register state
 	mov rax, [rsp].GUEST_STATE._Rip	
 	mov [rsp+SIZEOF GUEST_STATE], rax
+	mov rax, [rsp].GUEST_STATE._Cr8
+	mov cr8, rax
 	mov rax, [rsp].GUEST_STATE._Rax			
 	mov rbx, [rsp].GUEST_STATE._Rbx
 	mov rcx, [rsp].GUEST_STATE._Rcx

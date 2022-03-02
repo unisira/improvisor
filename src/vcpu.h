@@ -34,6 +34,7 @@ typedef struct _GUEST_STATE
     UINT64 R14;
     UINT64 R15;
     UINT64 Rip;
+    UINT64 Cr8;
     UINT32 MxCsr;
     M128 Xmm0;
     M128 Xmm1;
