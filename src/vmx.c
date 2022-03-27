@@ -276,7 +276,7 @@ Routine Description:
 	Toggles a VMX execution control
 --*/
 {
-    PUINT64 TargetControls = NULL;
+    PUINT32 TargetControls = NULL;
     UINT64 TargetCap = 0;
 	
     switch (VMX_CONTROL_FIELD(Control))

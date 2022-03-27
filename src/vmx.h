@@ -7,9 +7,9 @@
 #define VMX_MSR_HI_BITMAP_OFFS 1024
 
 #define ENCODE_VMX_CONTROL(Field, Position) \
-    (								\
-      (((Field)     & 0x07) << 0) | \
-      (((Position)  & 0x1F) << 3)   \
+    (										\
+      (((UINT16)(Field)     & 0x07) << 0) | \
+      (((UINT16)(Position)  & 0x1F) << 3)   \
     ) 
 
 #define VMX_CONTROL_MASK(Control) \
@@ -86,18 +86,27 @@ typedef struct _VMX_MSR_ENTRY
     UINT64 Value;
 } VMX_MSR_ENTRY, *PVMX_MSR_ENTRY;
 
+typedef struct _VMX_EXIT_LOG_ENTRY 
+{
+	VMX_EXIT_REASON Reason;
+	UINT64 Rip;
+	UINT64 ExitQualification;
+} VMX_EXIT_LOG_ENTRY, *PVMX_EXIT_LOG_ENTRY;
+
 typedef struct _VMX_STATE
 {
+	VMX_EXIT_LOG_ENTRY ExitLog[256];
+	UINT64 ExitCount;
     UINT64 GuestRip;
     VMX_EXIT_REASON ExitReason;
 
 	struct
 	{
-		UINT64 PinbasedCtls;
-		UINT64 PrimaryProcbasedCtls;
-		UINT64 SecondaryProcbasedCtls;
-		UINT64 VmExitCtls;
-		UINT64 VmEntryCtls;
+		UINT32 PinbasedCtls;
+		UINT32 PrimaryProcbasedCtls;
+		UINT32 SecondaryProcbasedCtls;
+		UINT32 VmExitCtls;
+		UINT32 VmEntryCtls;
 	} Controls;
 
 	struct
@@ -143,7 +152,7 @@ typedef enum _VMX_INVEPT_MODE
 
 typedef enum _VMX_CONTROL
 {
-    VMX_CTL_EXT_INTERRUPT_EXITING       = ENCODE_VMX_CONTROL(VMX_PINBASED_CTLS, 0),
+	VMX_CTL_EXT_INTERRUPT_EXITING       = ENCODE_VMX_CONTROL(VMX_PINBASED_CTLS, 0),
     VMX_CTL_NMI_EXITING                 = ENCODE_VMX_CONTROL(VMX_PINBASED_CTLS, 3),
     VMX_CTL_VIRTUAL_NMIS                = ENCODE_VMX_CONTROL(VMX_PINBASED_CTLS, 5),
     VMX_CTL_VMX_PREEMPTION_TIMER        = ENCODE_VMX_CONTROL(VMX_PINBASED_CTLS, 6),
