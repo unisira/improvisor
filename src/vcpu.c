@@ -277,8 +277,14 @@ Routine Description:
     VmxSetupVmxState(&Vcpu->Vmx);
 
     // VM-entry cannot change CR0.CD or CR0.NW
+#ifndef _DEBUG
+    // Currently can't properly emulate CR writes without running under the custom page tables
+    Vcpu->Cr0ShadowableBits = __readcr0();
+    Vcpu->Cr4ShadowableBits = __readcr4();
+#else
     Vcpu->Cr0ShadowableBits = ~(__readmsr(IA32_VMX_CR0_FIXED0) ^ __readmsr(IA32_VMX_CR0_FIXED1));
     Vcpu->Cr4ShadowableBits = ~(__readmsr(IA32_VMX_CR4_FIXED0) ^ __readmsr(IA32_VMX_CR4_FIXED1));
+#endif
 
     // Make sure the VM enters in IA32e
     VcpuSetControl(Vcpu, VMX_CTL_HOST_ADDRESS_SPACE_SIZE, TRUE);
@@ -296,6 +302,10 @@ Routine Description:
     // Save GUEST_EFER on VM-exit
     VcpuSetControl(Vcpu, VMX_CTL_SAVE_EFER_ON_EXIT, TRUE);
 
+    // Temporarily disable CR3 exiting
+    VcpuSetControl(Vcpu, VMX_CTL_CR3_LOAD_EXITING, FALSE);
+    VcpuSetControl(Vcpu, VMX_CTL_CR3_STORE_EXITING, FALSE);
+
     VTscInitialise(&Vcpu->TscInfo);
 
     return STATUS_SUCCESS;
@@ -310,7 +320,6 @@ Routine Description:
     Frees all resources allocated for a VCPU, for this to be called VCPU and VMX initialisation had to have succeeded, therefore nothing is NULL
 --*/
 {
-
     // TODO: Finish this 
 }
 
@@ -620,7 +629,7 @@ Routine Description:
     This function performs all post-VMLAUNCH initialisation that might be required, such as measuing VM-exit and VM-entry latencies
 --*/
 {
-    VTscEstimateVmExitLatency(&Vcpu->TscInfo);
+    //VTscEstimateVmExitLatency(&Vcpu->TscInfo);
     //VTscEstimateVmEntryLatency(&Vcpu->TscInfo);
 
     // TODO: Run VTSC tests and hook tests here
@@ -770,6 +779,13 @@ Routine Description:
     Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
     Vcpu->Vmx.ExitReason.Value = (UINT32)VmxRead(VM_EXIT_REASON);
 
+#ifdef _DEBUG
+    PVMX_EXIT_LOG_ENTRY ExitLog = &Vcpu->Vmx.ExitLog[Vcpu->Vmx.ExitCount++];
+    ExitLog->Reason = Vcpu->Vmx.ExitReason;
+    ExitLog->Rip = Vcpu->Vmx.GuestRip;
+    ExitLog->ExitQualification = VmxRead(VM_EXIT_QUALIFICATION);
+#endif
+
     VMM_EVENT_STATUS Status = sExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState);
 
     if (Vcpu->IsShuttingDown)
@@ -800,6 +816,7 @@ Routine Description:
 {
     UNREFERENCED_PARAMETER(GuestState);
 
+    __debugbreak();
     ImpDebugPrint("Unknown VM-exit reason (%d) on VCPU #%d...\n", Vcpu->Vmx.ExitReason.BasicExitReason, Vcpu->Id);
     
     return VMM_EVENT_ABORT;
@@ -899,10 +916,15 @@ Routine Description:
 
     switch (GuestState->Rax)
     {
-    case 0x00000001:
+    case FEATURE_LEAF(X86_FEATURE_HYPERVISOR):
         CpuidArgs.Data[FEATURE_REG(X86_FEATURE_HYPERVISOR)] &= ~FEATURE_MASK(X86_FEATURE_HYPERVISOR);
         break;
     }
+
+#if 0
+    ImpDebugPrint("[0x%02X] CPUID %XH.%X request\n\t[%08X, %08X, %08X, %08X]\n", Vcpu->Id, GuestState->Rax, GuestState->Rcx,
+        CpuidArgs.Eax, CpuidArgs.Ebx, CpuidArgs.Ecx, CpuidArgs.Edx);
+#endif
 
     GuestState->Rax = CpuidArgs.Eax;
     GuestState->Rbx = CpuidArgs.Ebx;
@@ -1023,7 +1045,7 @@ VcpuHandleCrRead(
     switch (ExitQual.ControlRegisterId)
     {
     case 3: ControlRegister = VmxRead(GUEST_CR3); break; 
-    case 8: ControlRegister = __readcr8(); break; 
+    case 8: ControlRegister = GuestState->Cr8; break; 
     }
 
     // Write to GUEST_RSP if the target register was RSP instead of the RSP inside of GUEST_STATE
@@ -1124,9 +1146,6 @@ VcpuHandleCr0Write(
             // TODO: Create identity map CR3
             VcpuSetControl(Vcpu, VMX_CTL_UNRESTRICTED_GUEST, TRUE);
 
-            // Remove CR0.PG and CR0.PE from the shadowable bits bitmask, as they can now be modified
-            ShadowableBits &= ~CR0_PE_PG_BITMASK;
-
             Vcpu->IsUnrestrictedGuest = TRUE;
         }
         else
@@ -1146,6 +1165,9 @@ VcpuHandleCr0Write(
     // Handle invalid states of CR0.PE and CR0.PG when unrestricted guest is on
     if (Vcpu->IsUnrestrictedGuest)
     {
+        // Remove CR0.PG and CR0.PE from the shadowable bits bitmask, as they can now be modified
+        ShadowableBits &= ~CR0_PE_PG_BITMASK;
+
         if (NewCr.Paging && !NewCr.ProtectedMode)
         {
             VmxInjectEvent(EXCEPTION_GENERAL_PROTECTION_FAULT, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
@@ -1244,7 +1266,7 @@ VcpuHandleCr0Write(
 VMM_EVENT_STATUS
 VcpuHandleCr4Write(
     _Inout_ PVCPU Vcpu,
-    _Inout_ UINT64 NewValue
+    _In_ UINT64 NewValue
 )
 {
     VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
@@ -1311,6 +1333,20 @@ VcpuHandleCr4Write(
 }
 
 VMM_EVENT_STATUS
+VcpuHandleCr3Write(
+    _Inout_ PVCPU Vcpu,
+    _In_ UINT64 NewValue
+)
+{
+    // TODO: Properly implement this
+    VmxWrite(GUEST_CR3, NewValue);
+
+    VmxInvvpid(INV_SINGLE_CONTEXT_RETAIN_GLOBALS, VmxRead(CONTROL_VIRTUAL_PROCESSOR_ID));
+
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
 VcpuHandleCrWrite(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState,
@@ -1322,8 +1358,6 @@ Routine Description:
     required by VMX operation
 --*/
 {
-    VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
-
     const PUINT64 TargetReg = LookupTargetReg(GuestState, ExitQual.RegisterId);
 
     UINT64 NewValue = 0;
@@ -1334,14 +1368,9 @@ Routine Description:
 
     switch (ExitQual.ControlRegisterId)
     {
-    case 0: VcpuHandleCr0Write(Vcpu, NewValue); break;
-    case 3:
-        {
-            // TODO: Validate CR3 value
-            VmxWrite(GUEST_CR3, NewValue);
-        } break;
-
-    case 4: VcpuHandleCr4Write(Vcpu, NewValue); break;
+    case 0: return VcpuHandleCr0Write(Vcpu, NewValue); break;
+    case 3: return VcpuHandleCr3Write(Vcpu, NewValue); break;
+    case 4: return VcpuHandleCr4Write(Vcpu, NewValue); break;
     case 8:
         {
             // TODO: Validate CR8 value
@@ -1349,7 +1378,7 @@ Routine Description:
         } break;
     }
 
-    return Status;
+    return VMM_EVENT_CONTINUE;
 }
 
 VMM_EVENT_STATUS
@@ -1677,8 +1706,8 @@ VcpuHandleEptViolation(
         .Value = VmxRead(VM_EXIT_QUALIFICATION)
     };
 
-    if (EhHandleEptViolation(Vcpu))
-        return VMM_EVENT_CONTINUE;
+    //if (EhHandleEptViolation(Vcpu))
+    //    return VMM_EVENT_CONTINUE;
 
     UINT64 AttemptedAddress = VmxRead(GUEST_PHYSICAL_ADDRESS);
 
@@ -1695,7 +1724,26 @@ VcpuHandleEptViolation(
         return VMM_EVENT_ABORT;
     }
 
+#if 0
+    ImpDebugPrint("[%02X-#%03d] %llX: Mapped %llX -> %llX...\n", Vcpu->Id, Vcpu->Vmx.ExitCount, Vcpu->Vmx.GuestRip, AttemptedAddress, AttemptedAddress);
+
+    // Dump recent VM-exit logs
+    SIZE_T ExitLogCount = Vcpu->Vmx.ExitCount % 256;
+    for (SIZE_T i = 0; i < ExitLogCount; i++)
+    {
+        PVMX_EXIT_LOG_ENTRY ExitLog = &Vcpu->Vmx.ExitLog[i];
+
+        ImpDebugPrint("[%02X-#%03d]: VM-exit ID: %i - RIP: %llX - EXIT QUAL: %llX\n", 
+            Vcpu->Id, 
+            Vcpu->Vmx.ExitCount - ExitLogCount + i, 
+            ExitLog->Reason.BasicExitReason, 
+            ExitLog->Rip,
+            ExitLog->ExitQualification);
+    }
+#endif
+
     // TODO: Don't think this is necessary
+    //       EPT violations for address X automatically invalidate all EPT cache entries for address X
     EptInvalidateCache();
 
     return VMM_EVENT_RETRY;
@@ -1724,13 +1772,20 @@ Routine Description:
     Registers `Event` in the MTF event stack
 --*/
 {
+    // TODO: Propagate changes using Valid to check if its right
     PMTF_EVENT_ENTRY MtfEntry = Vcpu->MtfStackHead;
 
-    // TODO: Panic
-    if (Vcpu->MtfStackHead->Links.Flink == NULL)
-        return;
+    // Make sure MtfEntry isn't valid, this can occur after VcpuPopMTFEvent
+    while (MtfEntry->Valid)
+    {
+        if (MtfEntry->Links.Flink == NULL)
+            return;
+
+        MtfEntry = (PMTF_EVENT_ENTRY)MtfEntry->Links.Flink;
+    }
 
     MtfEntry->Event = Event;
+    MtfEntry->Valid = TRUE;
 
     Vcpu->MtfStackHead = (PMTF_EVENT_ENTRY)MtfEntry->Links.Flink;
 
@@ -1764,8 +1819,19 @@ Routine Description:
     Pops the top MTF event from the bottom or somethign think abotu this later
 --*/
 {
-    // TODO: Complete
-    return FALSE;
+    PMTF_EVENT_ENTRY MtfEntry = Vcpu->MtfStackHead;
+
+    if (MtfEntry->Valid)
+        MtfEntry->Valid = FALSE;
+    else        
+        return FALSE;
+
+    *Event = MtfEntry->Event;
+
+    if (MtfEntry->Links.Blink != NULL)
+        Vcpu->MtfStackHead = (PMTF_EVENT_ENTRY)MtfEntry->Links.Blink;
+
+    return TRUE;
 }
 
 VMM_EVENT_STATUS 
@@ -1803,6 +1869,8 @@ VcpuHandleMTFExit(
                 ImpDebugPrint("[%02X] Failed to remap page permissions for %llx->%llx...\n", Event.GuestPhysAddr, Event.PhysAddr);
                 return VMM_EVENT_ABORT;
             }
+
+            EptInvalidateCache();
         }
         default: 
         {   

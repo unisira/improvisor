@@ -112,6 +112,7 @@ typedef struct _MTF_EVENT_ENTRY
 {
     LIST_ENTRY Links;
     MTF_EVENT Event;
+    BOOLEAN Valid;
 } MTF_EVENT_ENTRY, *PMTF_EVENT_ENTRY;
 
 typedef struct _VCPU
