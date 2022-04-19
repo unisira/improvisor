@@ -311,6 +311,12 @@ Routine Description:
 {
     if (Hook->State != EH_DETOUR_INSTALLED)
         return;
+
+    Hook->State = EH_DETOUR_DISABLED;
+
+    // Remap the GPA to RWX and make it point to the original function to avoid EPT violations for this hook
+    if (VmEptRemapPages(Hook->GuestPhysAddr, Hook->GuestPhysAddr, PAGE_SIZE, EPT_PAGE_RWX) != HRESULT_SUCCESS)
+        return STATUS_FATAL_APP_EXIT;
 }
 
 VOID
@@ -324,6 +330,12 @@ Routine Description:
 {
     if (Hook->State != EH_DETOUR_DISABLED)
         return;
+
+    Hook->State = EH_DETOUR_INSTALLED;
+
+    // Remap the GPA to RW so X EPT violations occur
+    if (VmEptRemapPages(Hook->GuestPhysAddr, Hook->GuestPhysAddr, PAGE_SIZE, EPT_PAGE_RW) != HRESULT_SUCCESS)
+        return STATUS_FATAL_APP_EXIT;
 }
 
 BOOLEAN
