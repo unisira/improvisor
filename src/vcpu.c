@@ -5,6 +5,7 @@
 #include "arch/msr.h"
 #include "arch/cr.h"
 #include "util/macro.h"
+#include "section.h"
 #include "intrin.h"
 #include "vmcall.h"
 #include "detour.h"
@@ -130,6 +131,7 @@ static DECLSPEC_ALIGN(16) VMX_MSR_ENTRY sVmEntryMsrLoad[] = {
 
 #undef CREATE_MSR_ENTRY
 
+VMM_API
 VOID
 VcpuSetControl(
     _Inout_ PVCPU Vcpu,
@@ -137,17 +139,20 @@ VcpuSetControl(
     _In_ BOOLEAN State
 );
 
+VMM_API
 BOOLEAN
 VcpuIsControlSupported(
     _Inout_ PVCPU Vcpu,
     _In_ VMX_CONTROL Control
 );
 
+VMM_API
 VOID
 VcpuCommitVmxState(
     _Inout_ PVCPU Vcpu
 );
 
+VMM_API
 VOID
 VcpuToggleExitOnMsr(
     _Inout_ PVCPU Vcpu,
@@ -155,6 +160,7 @@ VcpuToggleExitOnMsr(
     _In_ MSR_ACCESS Access
 );
 
+VMM_API
 BOOLEAN
 VcpuHandleExit(
     _Inout_ PVCPU Vcpu,
@@ -166,21 +172,25 @@ VcpuDestroy(
     _Inout_ PVCPU Vcpu
 );
 
+VMM_API
 NTSTATUS
 VcpuPostSpawnInitialisation(
     _Inout_ PVCPU Vcpu
 );
 
+VMM_API
 UINT64
 VcpuGetVmExitStoreValue(
     _In_ UINT32 Index
 );
 
+VMM_API
 BOOLEAN
 VcpuIs64Bit(
     _In_ PVCPU Vcpu
 );
 
+VMM_API
 NTSTATUS
 VcpuLoadPDPTRs(
     _In_ PVCPU Vcpu
@@ -556,7 +566,7 @@ Routine Description:
         if (!NT_SUCCESS(VcpuPostSpawnInitialisation(Vcpu)))
         {
             // TODO: Panic shutdown here
-            ImpDebugPrint("VCPU #%d failed post spawn initialsation...\n", Vcpu->Id);
+            ImpDebugPrint("VCPU #%d failed post spawn initialisation...\n", Vcpu->Id);
             return;
         }
 
@@ -606,6 +616,7 @@ Routine Description:
 }
 
 DECLSPEC_NORETURN
+VMM_API
 VOID
 VcpuShutdownVmx(
     _Inout_ PVCPU Vcpu,
@@ -620,6 +631,7 @@ Routine Description:
     __cpu_restore_state(CpuState);
 }
 
+VMM_API
 NTSTATUS
 VcpuPostSpawnInitialisation(
     _Inout_ PVCPU Vcpu
@@ -634,9 +646,13 @@ Routine Description:
 
     // TODO: Run VTSC tests and hook tests here
 
+    // TODO: After post-spawn initialisation, Vcpu should be hidden from guest memory
+    //       Call HYPERCALL_HIDE_HOST_RESOURCES
+
     return STATUS_SUCCESS;
 }
 
+VMM_API
 UINT64
 VcpuGetVmExitStoreValue(
     _In_ UINT32 Index
@@ -653,6 +669,7 @@ Routine Description:
     return -1;
 }
 
+VMM_API
 VOID
 VcpuSetControl(
     _Inout_ PVCPU Vcpu,
@@ -667,6 +684,7 @@ Routine Description:
     VmxSetControl(&Vcpu->Vmx, Control, State);
 }
 
+VMM_API
 BOOLEAN
 VcpuIsControlSupported(
     _Inout_ PVCPU Vcpu,
@@ -680,6 +698,7 @@ Routine Description:
     return VmxIsControlSupported(&Vcpu->Vmx, Control);
 }
 
+VMM_API
 VOID
 VcpuCommitVmxState(
     _Inout_ PVCPU Vcpu
@@ -697,6 +716,7 @@ Routine Description:
     VmxWrite(CONTROL_TERTIARY_PROCBASED_CONTROLS, 0);
 }
 
+VMM_API
 VOID
 VcpuToggleExitOnMsr(
     _Inout_ PVCPU Vcpu,
@@ -732,6 +752,7 @@ Routine Description:
     RtlSetBit(MsrBitmap, Msr);
 }
 
+VMM_API
 BOOLEAN
 VcpuIs64Bit(
     _In_ PVCPU Vcpu
@@ -744,6 +765,7 @@ VcpuIs64Bit(
     return Efer.LongModeEnable && Efer.LongModeActive;
 }
 
+VMM_API
 DECLSPEC_NORETURN
 VOID
 VcpuResume(VOID)
@@ -763,6 +785,7 @@ Routine Description:
     __debugbreak();
 }
 
+VMM_API
 BOOLEAN
 VcpuHandleExit(
     _Inout_ PVCPU Vcpu,
@@ -804,6 +827,7 @@ Routine Description:
     return TRUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuUnknownExitReason(
     _Inout_ PVCPU Vcpu,
@@ -822,6 +846,7 @@ Routine Description:
     return VMM_EVENT_ABORT;
 }
 
+VMM_API
 VOID
 VcpuEnableTscSpoofing(
     _Inout_ PVCPU Vcpu
@@ -841,6 +866,7 @@ Routine Description:
     VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, VTSC_WATCHDOG_QUANTUM + Vcpu->TscInfo.VmEntryLatency);
 }
 
+VMM_API
 UINT64
 VcpuGetTscEventLatency(
     _In_ PVCPU Vcpu,
@@ -856,6 +882,7 @@ VcpuGetTscEventLatency(
     }
 }
 
+VMM_API
 VOID
 VcpuUpdateLastTscEventEntry(
     _Inout_ PVCPU Vcpu,
@@ -895,6 +922,7 @@ VcpuUpdateLastTscEventEntry(
     }
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleCpuid(
     _Inout_ PVCPU Vcpu,
@@ -942,6 +970,7 @@ Routine Description:
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleInvalidGuestState(
     _Inout_ PVCPU Vcpu,
@@ -959,6 +988,7 @@ Routine Description:
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 PUINT64
 LookupTargetReg(
     _In_ PGUEST_STATE GuestState,
@@ -994,6 +1024,7 @@ Routine Description:
 #define PDPTE_RESERVED_BITS \
     (XBITRANGE(1, 2) | XBITRANGE(5, 8) | XBITRANGE(52, 63))
 
+VMM_API
 NTSTATUS
 VcpuLoadPDPTRs(
     _In_ PVCPU Vcpu
@@ -1034,6 +1065,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleCrRead(
     _In_ PVCPU Vcpu,
@@ -1059,6 +1091,7 @@ VcpuHandleCrRead(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuUpdateGuestCr(
     _In_ UINT64 ControlReg,
@@ -1109,6 +1142,7 @@ Routine Description:
 #define CR0_PDPTR_CHANGE_BITS \
     ((UINT64)((1ULL << 29) | (1ULL << 30) | (1ULL << 31)))
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleCr0Write(
     _Inout_ PVCPU Vcpu,
@@ -1263,6 +1297,7 @@ VcpuHandleCr0Write(
 #define CR4_PDPTR_CHANGE_BITS \
     ((UINT64)((1ULL << 4) | (1ULL << 5) | (1ULL << 7) | (1ULL << 20)))
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleCr4Write(
     _Inout_ PVCPU Vcpu,
@@ -1332,6 +1367,7 @@ VcpuHandleCr4Write(
     return Status;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleCr3Write(
     _Inout_ PVCPU Vcpu,
@@ -1346,6 +1382,7 @@ VcpuHandleCr3Write(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleCrWrite(
     _Inout_ PVCPU Vcpu,
@@ -1381,6 +1418,7 @@ Routine Description:
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuEmulateCLTS(
     _Inout_ PVCPU Vcpu,
@@ -1398,6 +1436,7 @@ VcpuEmulateCLTS(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuEmulateLMSW(
     _Inout_ PVCPU Vcpu,
@@ -1408,6 +1447,7 @@ VcpuEmulateLMSW(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleCrAccess(
     _Inout_ PVCPU Vcpu,
@@ -1441,6 +1481,7 @@ VcpuHandleCrAccess(
     return Status;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleVmxInstruction(
     _Inout_ PVCPU Vcpu,
@@ -1455,6 +1496,7 @@ Routine Description:
     return VMM_EVENT_INTERRUPT;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleHypercall(
     _Inout_ PVCPU Vcpu,
@@ -1499,6 +1541,7 @@ Routine Description:
     return Status;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleRdtsc(
     _Inout_ PVCPU Vcpu,
@@ -1537,6 +1580,7 @@ VcpuHandleRdtsc(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleRdtscp(
     _Inout_ PVCPU Vcpu,
@@ -1575,6 +1619,7 @@ VcpuHandleRdtscp(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleTimerExpire(
     _Inout_ PVCPU Vcpu,
@@ -1600,6 +1645,7 @@ VcpuHandleTimerExpire(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 BOOLEAN
 VcpuValidateMsr(
     _In_ UINT64 Msr
@@ -1613,6 +1659,7 @@ Routine Description:
     return FALSE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleMsrWrite(
     _Inout_ PVCPU Vcpu,
@@ -1636,6 +1683,7 @@ VcpuHandleMsrWrite(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleMsrRead(
     _Inout_ PVCPU Vcpu,
@@ -1660,6 +1708,7 @@ VcpuHandleMsrRead(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleExceptionNmi(
     _Inout_ PVCPU Vcpu,
@@ -1669,6 +1718,7 @@ VcpuHandleExceptionNmi(
     return VMM_EVENT_ABORT;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleExternalInterrupt(
     _Inout_ PVCPU Vcpu,
@@ -1678,6 +1728,7 @@ VcpuHandleExternalInterrupt(
     return VMM_EVENT_ABORT;
 }
 
+VMM_API
 VMM_EVENT_STATUS 
 VcpuHandleNmiWindow(
     _Inout_ PVCPU Vcpu,
@@ -1687,6 +1738,7 @@ VcpuHandleNmiWindow(
     return VMM_EVENT_ABORT;
 }
 
+VMM_API
 VMM_EVENT_STATUS 
 VcpuHandleInterruptWindow(
     _Inout_ PVCPU Vcpu,
@@ -1696,6 +1748,7 @@ VcpuHandleInterruptWindow(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleEptViolation(
     _Inout_ PVCPU Vcpu,
@@ -1749,6 +1802,7 @@ VcpuHandleEptViolation(
     return VMM_EVENT_RETRY;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VcpuHandleEptMisconfig(
     _Inout_ PVCPU Vcpu,
@@ -1762,6 +1816,7 @@ VcpuHandleEptMisconfig(
     return VMM_EVENT_ABORT;
 }
 
+VMM_API
 VOID
 VcpuPushMTFEventEx(
     _In_ PVCPU Vcpu,
@@ -1792,6 +1847,7 @@ Routine Description:
     return;
 }
 
+VMM_API
 VOID
 VcpuPushMTFEvent(
     _In_ PVCPU Vcpu,
@@ -1809,6 +1865,7 @@ Routine Description:
     VcpuPushMTFEventEx(Vcpu, EventEx);
 }
 
+VMM_API
 BOOLEAN
 VcpuPopMTFEvent(
     _In_ PVCPU Vcpu,
@@ -1834,6 +1891,7 @@ Routine Description:
     return TRUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS 
 VcpuHandleMTFExit(
     _Inout_ PVCPU Vcpu,
@@ -1887,6 +1945,7 @@ VcpuHandleMTFExit(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS 
 VcpuHandleWbinvd(
     _Inout_ PVCPU Vcpu,
@@ -1899,12 +1958,14 @@ VcpuHandleWbinvd(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 UINT64
 GetXCR0SupportedMask(VOID)
 {
     // TODO: Complete
 }
 
+VMM_API
 VMM_EVENT_STATUS 
 VcpuHandleXsetbv(
     _Inout_ PVCPU Vcpu,
@@ -1958,6 +2019,7 @@ VcpuHandleXsetbv(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS 
 VcpuHandleInvlpg(
     _Inout_ PVCPU Vcpu,

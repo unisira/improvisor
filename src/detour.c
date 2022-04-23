@@ -3,6 +3,7 @@
 #include "util/spinlock.h"
 #include "util/macro.h"
 #include "util/hash.h"
+#include "section.h"
 #include "detour.h"
 #include "vmcall.h"
 #include "ldasm.h"
@@ -237,8 +238,6 @@ Routine Description:
         SizeCopied += Step;
     }
 
-    // Write JMP thunk to TargetFunction + SizeCopied
-
     return STATUS_SUCCESS;
 }
 
@@ -439,6 +438,7 @@ Routine Description:
     return Status;
 }
 
+VMM_API
 BOOLEAN
 EhHandleEptViolation(
     _In_ PVCPU Vcpu
@@ -503,7 +503,7 @@ EhHandleEptViolation(
                 if (PAGE_FRAME_NUMBER(CurrHook->TargetFunction) == PAGE_FRAME_NUMBER(Vcpu->Vmx.GuestRip))
                 {
                     MTF_EVENT ResetEptEvent = {
-                        .Type = MTF_EVENT_MEASURE_VMENTRY,
+                        .Type = MTF_EVENT_RESET_EPT_PERMISSIONS,
                         .GuestPhysAddr = AttemptedPhysAddr,
                         .PhysAddr = CurrHook->ShadowPhysAddr,
                         .Permissions = EPT_PAGE_EXECUTE
@@ -522,6 +522,7 @@ EhHandleEptViolation(
     return FALSE;
 }
 
+VMM_API
 BOOLEAN
 EhHandleBreakpoint(
     _In_ PVCPU Vcpu

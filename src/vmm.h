@@ -5,6 +5,7 @@
 #include <intrin.h>
 
 #include "arch/segment.h"
+#include "section.h"
 #include "vcpu.h"
 #include "vtsc.h"
 #include "ept.h"

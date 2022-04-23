@@ -1,6 +1,7 @@
 #include "improvisor.h"
 #include "util/spinlock.h"
 #include "util/fmt.h"
+#include "section.h"
 
 // TODO: Add a logger, and add routine descriptions for everything
 
@@ -28,6 +29,7 @@ Routine Description:
     // TODO: Create log record and enter it in list, update log index
 }
 
+VSC_API
 NTSTATUS
 ImpInsertAllocRecord(
     _In_ PVOID Address,
@@ -51,12 +53,14 @@ Routine Description:
     AllocRecord->Address = Address;
     AllocRecord->Size = Size;
     AllocRecord->Flags = Flags;
+    AllocRecord->PhysAddr = ImpGetPhysicalAddress(Address);
 
     gHostAllocationsHead = (PIMP_ALLOC_RECORD)AllocRecord->Records.Flink; 
 
     return STATUS_SUCCESS;
 }
 
+VSC_API
 NTSTATUS
 ImpReserveAllocationRecords(
     _In_ SIZE_T Count
@@ -94,6 +98,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VSC_API
 PVOID
 ImpAllocateHostContiguousMemory(
     _In_ SIZE_T Size
@@ -107,6 +112,7 @@ Routine Description:
     return ImpAllocateContiguousMemoryEx(Size, IMP_SHADOW_ALLOCATION);
 }
 
+VSC_API
 PVOID
 ImpAllocateContiguousMemory(
     _In_ SIZE_T Size
@@ -120,6 +126,7 @@ Routine Description:
     return ImpAllocateContiguousMemoryEx(Size, 0);
 }
 
+VSC_API
 PVOID
 ImpAllocateContiguousMemoryEx(
     _In_ SIZE_T Size,
@@ -151,6 +158,7 @@ Routine Description:
     return Address;
 }
 
+VSC_API
 PVOID
 ImpAllocateHostNpPool(
     _In_ SIZE_T Size
@@ -164,6 +172,7 @@ Routine Description:
     return ImpAllocateNpPoolEx(Size, IMP_SHADOW_ALLOCATION);
 }
 
+VSC_API
 PVOID
 ImpAllocateNpPool(
     _In_ SIZE_T Size
@@ -176,6 +185,7 @@ Routine Description:
     return ImpAllocateNpPoolEx(Size, 0);
 }    
 
+VSC_API
 PVOID
 ImpAllocateNpPoolEx(
     _In_ SIZE_T Size,

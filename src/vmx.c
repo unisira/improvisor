@@ -3,6 +3,7 @@
 #include "arch/cpuid.h"
 #include "arch/msr.h"
 #include "arch/cr.h"
+#include "section.h"
 #include "vmx.h"
 
 VOID
@@ -142,6 +143,7 @@ Routine Description:
     __writecr4(VmxApplyCr4Restrictions(__readcr4()));
 }
 
+VMM_API
 BOOLEAN
 VmxShouldPushErrorCode(
     _In_ VMX_ENTRY_INTERRUPT_INFO Interrupt
@@ -181,6 +183,7 @@ Routine Description:
     return TRUE;
 }
 
+VMM_API
 VOID
 VmxInjectEvent(
     _In_ UINT8 Vector,
@@ -208,6 +211,7 @@ Routine Description:
         VmxWrite(CONTROL_VMENTRY_INSTRUCTION_LEN, VmxRead(VM_EXIT_INSTRUCTION_LEN));
 }
 
+VMM_API
 UINT64
 VmxRead(
     _In_ VMCS Component
@@ -223,6 +227,7 @@ Routine Description:
     return Value;
 }
 
+VMM_API
 VOID
 VmxWrite(
     _In_ VMCS Component,
@@ -236,6 +241,7 @@ Routine Description:
     __vmx_vmwrite(Component, Value);
 }
 
+VMM_API
 VOID
 VmxInvvpid(
     _In_ VMX_INVEPT_MODE InvMode,
@@ -388,6 +394,7 @@ Routine Description:
     };
 }
 
+VMM_API
 VOID
 VmxAdvanceGuestRip(VOID)
 /*++

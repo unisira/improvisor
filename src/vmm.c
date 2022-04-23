@@ -31,6 +31,7 @@ VmmFreeResources(
     _In_ PVMM_CONTEXT VmmContext
 );
 
+VSC_API
 NTSTATUS 
 VmmStartHypervisor(VOID)
 /*++
@@ -41,7 +42,7 @@ Routine Description:
 {
     NTSTATUS Status = STATUS_SUCCESS;
 
-    Status = ImpReserveAllocationRecords(0x2000);
+    Status = ImpReserveAllocationRecords(0x200);
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Couldn't reserve host allocation records...\n");
@@ -118,6 +119,7 @@ panic:
     return Status;
 }
 
+VSC_API
 NTSTATUS 
 VmmPrepareCpuResources(
     _Inout_ PVMM_CONTEXT VmmContext
@@ -154,6 +156,7 @@ Routine Description:
     return Status;
 }
 
+VSC_API
 NTSTATUS
 VmmPrepareSystemResources(
     _Inout_ PVMM_CONTEXT VmmContext
@@ -209,6 +212,7 @@ Routine Description:
     return Status;
 }
 
+VSC_API
 NTSTATUS
 VmmSpawnVcpuDelegates(
     _In_ PVOID Func, 
@@ -227,6 +231,7 @@ Routine Description:
     return ((PVCPU_DELEGATE_PARAMS)Param)->Status;
 }
 
+VSC_API
 NTSTATUS
 VmmPostLaunchInitialisation(
     _In_ PVMM_CONTEXT VmmContext
@@ -280,6 +285,7 @@ Routine Description:
     return;
 }
 
+VSC_API
 NTSTATUS
 VmmEnsureFeatureSupport(
     _Inout_ PVMM_CONTEXT VmmContext

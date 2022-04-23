@@ -24,6 +24,7 @@ typedef struct _IMP_ALLOC_RECORD
     PVOID Address;
     SIZE_T Size;
     UINT64 Flags;
+    UINT64 PhysAddr;
 } IMP_ALLOC_RECORD, *PIMP_ALLOC_RECORD;
 
 typedef enum _IMP_ALLOC_FLAGS

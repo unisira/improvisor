@@ -2,6 +2,7 @@
 #include "arch/memory.h"
 #include "arch/mtrr.h"
 #include "arch/msr.h"
+#include "section.h"
 #include "intrin.h"
 #include "mtrr.h"
 
@@ -39,6 +40,7 @@ static PMTRR_REGION_CACHE_ENTRY sMtrrRegionCacheRaw = NULL;
 // The head of the MTRR variable range cache list
 PMTRR_REGION_CACHE_ENTRY gMtrrRegionCacheHead = NULL;
 
+VMM_API
 PMTRR_REGION_CACHE_ENTRY
 MtrrGetContainingRegion(
     _In_ UINT64 PhysAddr
@@ -56,6 +58,7 @@ MtrrGetContainingRegion(
     return NULL;
 }
 
+VMM_API
 UINT64 
 MtrrGetRegionSize(
     _In_ UINT64 PhysAddr
@@ -72,6 +75,7 @@ Routine Description:
     return Entry->Size;
 }
 
+VMM_API
 UINT64
 MtrrGetRegionBase(
     _In_ UINT64 PhysAddr
@@ -88,6 +92,7 @@ Routine Description:
     return Entry->Base;
 }
 
+VMM_API
 MEMORY_TYPE
 MtrrGetDefaultType(VOID)
 /*++
@@ -102,6 +107,7 @@ Routine Description:
     return DefaultMtrr.Type;
 }
 
+VMM_API
 MEMORY_TYPE
 MtrrGetRegionType(
     _In_ UINT64 PhysAddr
@@ -118,6 +124,7 @@ Routine Description:
     return Entry->Type;
 }
 
+VMM_API
 UINT64
 MtrrGetRegionEnd(
     _In_ UINT64 PhysAddr

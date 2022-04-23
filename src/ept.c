@@ -3,6 +3,7 @@
 #include "arch/memory.h"
 #include "arch/mtrr.h"
 #include "arch/msr.h"
+#include "section.h"
 #include "intrin.h"
 #include "mtrr.h"
 #include "ept.h"
@@ -12,6 +13,7 @@
 // Mask for when bits 12-29 need to be masked off for final translations
 #define EPT_PTE_PHYSADDR_MASK XBITRANGE(12, 29)
 
+VMM_API
 BOOLEAN
 EptCheckSuperPageSupport(VOID)
 /*++
@@ -26,6 +28,7 @@ Routine Description:
     return EptVpidCap.SuperPdpteSupport != 0;
 }
 
+VMM_API
 BOOLEAN
 EptCheckLargePageSupport(VOID)
 /*++
@@ -40,6 +43,7 @@ Routine Description:
     return EptVpidCap.LargePdeSupport != 0;
 }
 
+VMM_API
 PEPT_PTE 
 EptReadExistingPte(
     _In_ UINT64 TablePfn,
@@ -65,6 +69,7 @@ Routine Description:
     return NULL;
 }
 
+VMM_API
 VOID
 EptApplyPermissions(
     _In_ PEPT_PTE Pte,
@@ -81,6 +86,7 @@ Routine Description:
     Pte->UserExecuteAccess = (Permissions & EPT_PAGE_UEXECUTE) != 0;
 }
 
+VMM_API
 NTSTATUS
 EptMapLargeMemoryRange(
     _In_ PEPT_PTE Pde,
@@ -114,6 +120,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 NTSTATUS
 EptSubvertLargePage(
     _In_ PEPT_PTE Pde,
@@ -169,6 +176,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 NTSTATUS
 EptMapSuperMemoryRange(
     _In_ PEPT_PTE Pdpte,
@@ -203,6 +211,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 NTSTATUS
 EptSubvertSuperPage(
     _In_ PEPT_PTE Pdpte,
@@ -299,6 +308,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 NTSTATUS
 EptMapMemoryRange(
     _In_ PEPT_PTE Pml4,
@@ -545,6 +555,14 @@ Routine Description:
         return Status;
 
     EptInformation->SystemPml4 = Pml4;
+
+    if (!NT_SUCCESS(MmAllocateHostPageTable(&EptInformation->DummyPage)))
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    EptInformation->DummyPagePhysAddr = MmGetLastAllocatedPageTableEntry()->TablePhysAddr;
+
+    // Watermark the dummy page to avoid page folding
+    *(PULONG)EptInformation->DummyPage = 'IMPV' ^ (ULONG)__rdtsc();
 
     return Status;
 }

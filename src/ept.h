@@ -102,6 +102,8 @@ typedef union _EPT_PTE
 typedef struct _EPT_INFORMATION
 {
     PEPT_PTE SystemPml4;
+    PVOID DummyPage;
+    UINT64 DummyPagePhysAddr;
 } EPT_INFORMATION, *PEPT_INFORMATION;
 
 typedef enum _EPT_PAGE_PERMISSIONS
