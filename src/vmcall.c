@@ -1,4 +1,5 @@
 #include "arch/interrupt.h"
+#include "section.h"
 #include "vmcall.h"
 #include "vmx.h"
 #include "vmm.h"
@@ -54,6 +55,8 @@ typedef enum _HYPERCALL_ID
     HYPERCALL_EPT_REMAP_PAGES,
     // Send a PDB to be used by the hypervisor
     HYPERCALL_PDB_BUFFER,
+    // Hide all host resource allocations from guest physical memory
+    HYPERCALL_HIDE_HOST_RESOURCES,
     // Get the last HYPERCALL_RESULT value
     HYPERCALL_GET_LAST_RESULT
 } HYPERCALL_ID, PHYPERCALL_ID;
@@ -93,6 +96,7 @@ VmAbortHypercall(
     return VMM_EVENT_CONTINUE;
 }
 
+VMM_API
 VMM_EVENT_STATUS
 VmHandleHypercall(
     _In_ PVCPU Vcpu,
@@ -203,6 +207,31 @@ VmHandleHypercall(
                 RemapEx.Permissions)
             ))
             return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+
+        EptInvalidateCache();
+    } break;
+    case HYPERCALL_HIDE_HOST_RESOURCES:
+    {
+        UINT64 DummyPhysAddr = Vcpu->Vmm->EptInformation.DummyPagePhysAddr;
+
+        // Loop condition is not wrong, head is always the last one used, one is ignored at the end
+        PIMP_ALLOC_RECORD CurrRecord = gHostAllocationsHead;
+        while (CurrRecord != NULL)
+        {
+            if (!NT_SUCCESS(
+                EptMapMemoryRange(
+                    Vcpu->Vmm->EptInformation.SystemPml4,
+                    CurrRecord->PhysAddr,
+                    DummyPhysAddr,
+                    CurrRecord->Size,
+                    EPT_PAGE_RW)
+                ))
+                return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+
+            CurrRecord = (PIMP_ALLOC_RECORD)CurrRecord->Records.Blink;
+        }
+
+        
 
         EptInvalidateCache();
     } break;
