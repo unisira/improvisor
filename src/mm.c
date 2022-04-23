@@ -2,7 +2,13 @@
 #include "util/spinlock.h"
 #include "arch/memory.h"
 #include "arch/cr.h"
+#include "section.h"
 #include "mm.h"
+#include "pe.h"
+
+#ifdef _DEBUG
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+#endif
 
 #define VPTE_BASE ((PVOID)0xfffffc9ec0000000)
 
@@ -27,6 +33,7 @@ static SPINLOCK sVirtualPTEListLock;
 
 // TODO: Move away from use of NTSTATUS for non-setup / windows related functions
 
+VSC_API
 PVOID
 MmWinPhysicalToVirtual(
     _In_ UINT64 PhysAddr
@@ -43,6 +50,7 @@ Routine Description:
     return MmGetVirtualForPhysical(Addr);
 }
 
+VSC_API
 PMM_PTE 
 MmWinReadPageTableEntry(
     _In_ UINT64 TablePfn,
@@ -59,6 +67,7 @@ Routine Description:
     return &Table[Index];
 }
 
+VSC_API
 NTSTATUS
 MmWinTranslateAddrVerbose(
     _In_ PVOID Address,
@@ -130,6 +139,7 @@ Routine Description:
     return Status;
 }
 
+VSC_API
 NTSTATUS
 MmHostReservePageTables(
     _In_ SIZE_T Count
@@ -183,6 +193,7 @@ panic:
     return Status;
 }
 
+VMM_API
 NTSTATUS
 MmAllocateHostPageTable(
     _Out_ PVOID* pTable
@@ -204,6 +215,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 PMM_RESERVED_PT
 MmGetLastAllocatedPageTableEntry(VOID)
 /*++
@@ -241,6 +253,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 NTSTATUS
 MmAllocateVpte(
     _Out_ PMM_VPTE* pVpte
@@ -265,6 +278,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 VOID
 MmFreeVpte(
     _Inout_ PMM_VPTE Vpte
@@ -302,6 +316,7 @@ Routine Description:
     SpinUnlock(&sVirtualPTEListLock);
 }
 
+VSC_API
 NTSTATUS
 MmCopyAddressTranslation(
     _Inout_ PMM_PTE Pml4,
@@ -402,6 +417,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VSC_API
 NTSTATUS
 MmCreateGuestMappingRange(
     _Inout_ PMM_PTE Pml4,
@@ -506,6 +522,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VSC_API
 NTSTATUS
 MmSetupHostPageDirectory(
     _Inout_ PMM_INFORMATION MmSupport
@@ -548,6 +565,37 @@ Routine Description:
         CurrRecord = (PIMP_ALLOC_RECORD)CurrRecord->Records.Blink;
     }
  
+    // Copy translations for all PE sections that need to be mapped in host memory
+#ifdef _DEBUG
+    SIZE_T SectionCount;
+    PIMAGE_SECTION_HEADER Sections = PeGetSectionHeaders(&__ImageBase, &SectionCount);
+
+    if (SectionCount == -1)
+    {
+        ImpDebugPrint("Invalid PE image from __ImageBase...\n");
+        return STATUS_INVALID_ADDRESS;
+    }
+
+    for (SIZE_T i = 0; i < SectionCount; i++)
+    {
+        PIMAGE_SECTION_HEADER Section = &Sections[i];
+
+        // Match any .VMM* section name
+        if (memcmp(Section->Name, ".VMM", 4))
+        {
+            Status = MmCopyAddressTranslation(HostPml4, Section->VirtualAddress, Section->SizeOfRawData);
+            if (!NT_SUCCESS(Status))
+            {
+                ImpDebugPrint("Failed to copy IMPV section translation for '%s' (%llx, %llx)...\n", Section->Name, Section->VirtualAddress, Section->SizeOfRawData);
+                return Status;
+            }
+        }
+    }
+#else
+    // TODO: Implement mapping from shared memory block given on startup from client
+    ImpDebugPrint("NOT IMPLEMENTED ...\n");
+#endif
+
     // Allocate 512 pages to be used for arbitrary mapping
     Status = MmCreateGuestMappingRange(HostPml4, VPTE_BASE, PAGE_SIZE * 512);
     if (!NT_SUCCESS(Status))
@@ -559,6 +607,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VSC_API
 NTSTATUS
 MmInitialise(
     _Inout_ PMM_INFORMATION MmSupport
@@ -587,6 +636,7 @@ MmInitialise(
     return Status;
 }
 
+VMM_API
 VOID
 MmMapGuestPhys(
     _Inout_ PMM_VPTE Vpte,
@@ -602,6 +652,7 @@ Routine Description:
     Vpte->Pte->PageFrameNumber = PAGE_FRAME_NUMBER(PhysAddr);
 }
 
+VMM_API
 NTSTATUS
 MmReadGuestPhys(
     _In_ UINT64 PhysAddr,
@@ -634,6 +685,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 NTSTATUS
 MmWriteGuestPhys(
     _In_ UINT64 PhysAddr,
@@ -665,6 +717,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 NTSTATUS
 MmMapGuestVirt(
     _Inout_ PMM_VPTE Vpte,
@@ -722,6 +775,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 NTSTATUS
 MmReadGuestVirt(
     _In_ UINT64 GuestCr3,
@@ -751,6 +805,7 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VMM_API
 NTSTATUS
 MmWriteGuestVirt(
     _In_ UINT64 GuestCr3,
