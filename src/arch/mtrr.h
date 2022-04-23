@@ -80,17 +80,4 @@ typedef enum _MEMORY_TYPE
 	MT_INVALID = 0xFF
 } MEMORY_TYPE;
 
-// Iterator function type for iterating MTRR ranges
-typedef VOID(*MTRR_RANGE_ITERATOR)(IA32_MTRR_PHYSBASE_N, IA32_MTRR_PHYSMASK_N);
-
-MEMORY_TYPE
-MtrrGetTypeFromPhysAddr(
-    _In_ UINT64 PhysAddr
-);
-
-VOID
-MtrrIterateVariableRanges(
-    _In_ MTRR_RANGE_ITERATOR Iter
-);
-
 #endif
