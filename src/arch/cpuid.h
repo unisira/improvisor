@@ -50,7 +50,7 @@
      FEATURE(Index, Leaf, ((Leaf) >> 30), SubLeaf, 1, Reg, Bit)
 
 #define FEATURE_MASK(Feature) \
-    (1 << (((Feature) >> 20) & 0x1F))
+    (1UL << (((Feature) >> 20) & 0x1F))
 
 #define FEATURE_HAS_SUBLEAF(Feature) \
     (((Feature) >> 17) & 0x01)

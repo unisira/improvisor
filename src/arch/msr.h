@@ -75,7 +75,7 @@ typedef union _IA32_VMX_BASIC_MSR
 
     struct
     {
-        UINT32 VmcsRevisionId;
+        UINT64 VmcsRevisionId : 32;
         UINT64 VmxRegionSize : 13;
         UINT64 Reserved1 : 3;
         UINT64 VmxonPhysicalAddressWidth : 1;
