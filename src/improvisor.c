@@ -5,11 +5,64 @@
 
 // TODO: Add a logger, and add routine descriptions for everything
 
-PIMP_ALLOC_RECORD gHostAllocationsHead = NULL;
+VMM_DATA PIMP_ALLOC_RECORD gHostAllocationsHead = NULL;
+
+VMM_DATA PIMP_LOG_RECORD gLogRecordsHead = NULL;
+VMM_DATA PIMP_LOG_RECORD gLogRecordsTail = NULL;
 
 // The raw buffer containing the host allocation records
-static PIMP_ALLOC_RECORD sImpAllocRecordsRaw = NULL;
+static VMM_DATA PIMP_ALLOC_RECORD sImpAllocRecordsRaw = NULL;
+// Raw buffer containing all log records
+static VMM_DATA PIMP_LOG_RECORD sImpLogRecordsRaw = NULL;
 
+static VMM_DATA SPINLOCK sLogWriterLock;
+
+VSC_API
+NTSTATUS
+ImpReserveLogRecords(
+    _In_ SIZE_T Count
+)
+{
+    sImpLogRecordsRaw = ImpAllocateHostNpPool(sizeof(IMP_LOG_RECORD) * Count);
+    if (sImpLogRecordsRaw == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    // Set the head and tail to be the first entry
+    gLogRecordsHead = gLogRecordsTail = sImpLogRecordsRaw;
+
+    for (SIZE_T i = 0; i < Count + 1; i++)
+    {
+        PIMP_LOG_RECORD CurrLogRecord = sImpLogRecordsRaw + i;
+
+        // Set up Flink and Blink
+        CurrLogRecord->Links.Flink = i < Count + 1 ? &(CurrLogRecord + 1)->Links : NULL;
+        CurrLogRecord->Links.Blink = i > 0         ? &(CurrLogRecord - 1)->Links : NULL;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+VMM_API
+NTSTATUS
+ImpAllocateLogRecord(
+    _Out_ PIMP_LOG_RECORD* LogRecord
+)
+{
+    SpinLock(&sLogWriterLock);
+
+    if (gLogRecordsHead->Links.Flink == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+     *LogRecord = gLogRecordsHead;
+
+    gLogRecordsHead = (PIMP_LOG_RECORD)gLogRecordsHead->Links.Flink;
+
+    SpinUnlock(&sLogWriterLock);
+
+    return STATUS_SUCCESS;
+}
+
+VMM_API
 VOID
 ImpLog(
     _In_ LPCSTR Fmt, ...
@@ -19,14 +72,57 @@ Routine Description:
     Creates a log entry with the contents of `Fmt` formatted with variadic args
 --*/
 {
-    CHAR Buffer[512];
+    SpinLock(&sLogWriterLock);
+
+    // TODO: Panic on this failing?
+    PIMP_LOG_RECORD Record = NULL;
+    if (!NT_SUCCESS(ImpAllocateLogRecord(&Record)))
+        return;
 
     va_list Arg;
     va_start(Arg, Fmt);
-    vsprintf_s(Buffer, 512, Fmt, Arg);
+    vsprintf_s(Record->Buffer, 512, Fmt, Arg);
     va_end(Arg);
 
-    // TODO: Create log record and enter it in list, update log index
+    SpinUnlock(&sLogWriterLock);
+}
+
+VMM_API
+NTSTATUS
+ImpRetrieveLogRecord(
+    _Out_ PIMP_LOG_RECORD* Record
+)
+{
+    SpinLock(&sLogWriterLock);
+
+    PIMP_LOG_RECORD Head = gLogRecordsHead;
+    PIMP_LOG_RECORD Tail = gLogRecordsTail;
+
+    *Record = Tail;
+
+    PIMP_LOG_RECORD Next = (PIMP_LOG_RECORD)Tail->Links.Flink;
+
+    // The tail never has a previous link
+    if (Next != NULL)
+        Next->Links.Blink = NULL;
+    else
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    // The new tail is the next entry
+    gLogRecordsTail = Next;
+
+    // The head is now the old tail, as this entry is now unlinked
+    gLogRecordsHead = Tail;
+    // Update the new head entry with the old head entry's forward link
+    Tail->Links.Flink = Head->Links.Flink;
+    // Update the old head entry's forward link to the new head entry
+    Head->Links.Flink = &Tail->Links;
+    // Set the new head entry's backwards link to the old head entry
+    Tail->Links.Blink = &Head->Links;
+
+    SpinUnlock(&sLogWriterLock);
+
+    return STATUS_SUCCESS;
 }
 
 VSC_API
@@ -71,7 +167,6 @@ Routine Description:
     are making 1 more allocation for the actual block of memory containing these records
 --*/
 {
-    // TODO: Add allocation flags (HIDE FROM EPT etc...)
     sImpAllocRecordsRaw = (PIMP_ALLOC_RECORD)ExAllocatePoolWithTag(NonPagedPool, sizeof(IMP_ALLOC_RECORD) * (Count + 1), POOL_TAG);
 
     if (sImpAllocRecordsRaw == NULL)
@@ -233,6 +328,7 @@ Routine Description:
     ExFreePoolWithTag(sImpAllocRecordsRaw, POOL_TAG);
 }
 
+VSC_API
 UINT64
 ImpGetPhysicalAddress(
     _In_ PVOID Address
@@ -247,6 +343,7 @@ Routine Description:
 
 static SPINLOCK sDebugPrintLock;
 
+VSC_API
 VOID 
 ImpDebugPrint(
     _In_ PCSTR Str, ...

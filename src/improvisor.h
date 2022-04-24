@@ -12,11 +12,11 @@
 #define BUGCHECK_FAILED_SHUTDOWN 0x00001000
 #define BUGCHECK_UNKNOWN_VMEXIT_REASON 0x00002000
 
-// TODO Functions:
-// To keep track of pool allocations so they can be hid from physical memory
-// ImpAllocateNonPagedPool(
-//     _In_ SIZE_T Size
-// );
+typedef struct _IMP_LOG_RECORD
+{
+    LIST_ENTRY Links;
+    CHAR Buffer[512];
+} IMP_LOG_RECORD, * PIMP_LOG_RECORD;
 
 typedef struct _IMP_ALLOC_RECORD
 {
@@ -34,6 +34,18 @@ typedef enum _IMP_ALLOC_FLAGS
 } IMP_ALLOC_FLAGS, *PIMP_ALLOC_FLAGS;
 
 extern PIMP_ALLOC_RECORD gHostAllocationsHead;
+extern PIMP_LOG_RECORD gLogRecordsHead;
+extern PIMP_LOG_RECORD gLogRecordsTail;
+
+VOID
+ImpLog(
+    _In_ LPCSTR Fmt, ...
+);
+
+NTSTATUS
+ImpRetrieveLogRecord(
+    _Out_ PIMP_LOG_RECORD* Record
+);
 
 NTSTATUS
 ImpReserveAllocationRecords(
