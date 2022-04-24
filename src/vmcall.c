@@ -39,6 +39,16 @@ typedef union _HYPERCALL_REMAP_PAGES_EX
     };
 } HYPERCALL_REMAP_PAGES_EX, *PHYPERCALL_REMAP_PAGES_EX;
 
+typedef union _HYPERCALL_GET_LOGS_EX
+{
+    UINT64 Value;
+
+    struct
+    {
+        UINT64 Count : 32;
+    };
+} HYPERCALL_GET_LOGS_EX, *PHYPERCALL_GET_LOGS_EX;
+
 typedef enum _HYPERCALL_ID
 {
     // Read a guest virtual address, using translations from a specified process's address space
@@ -53,22 +63,24 @@ typedef enum _HYPERCALL_ID
     HYPERCALL_GET_SYSTEM_CR3,
     // Remap a GPA to a virtual address passed
     HYPERCALL_EPT_REMAP_PAGES,
-    // Send a PDB to be used by the hypervisor
-    HYPERCALL_PDB_BUFFER,
+    // Send a PDB to be cached and used by the hypervisor
+    HYPERCALL_CACHE_PDB_BUFFER,
     // Hide all host resource allocations from guest physical memory
     HYPERCALL_HIDE_HOST_RESOURCES,
+    // Retrieve log records from VMM
+    HYPERCALL_GET_LOG_RECORDS,
     // Get the last HYPERCALL_RESULT value
     HYPERCALL_GET_LAST_RESULT
 } HYPERCALL_ID, PHYPERCALL_ID;
 
-typedef enum _HYPERCALL_CACHED_CR3_TARGET
+typedef enum _HYPERCALL_CR3_TARGET
 {
-    CR3_CACHE_INVALID = 0,
+    CR3_INVALID = 0,
     // Use the system CR3
     CR3_CACHE_SYSTEM,
     // Use the current value of GUEST_CR3 in the VMCS 
     CR3_CACHE_GUEST
-} HYPERCALL_CACHED_CR3_TARGET;
+} HYPERCALL_CR3_TARGET;
 
 EXTERN_C
 HYPERCALL_INFO
@@ -93,6 +105,31 @@ VmAbortHypercall(
 )
 {
     Hypercall->Result = Status;
+    return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VmGetCachedCr3(
+    _In_ PVCPU Vcpu,
+    _In_ HYPERCALL_VIRT_EX VirtEx,
+    _Out_ PUINT64 Target
+)
+{
+    // Invalid target addr...
+    if (Target == NULL)
+        return VMM_EVENT_ABORT;
+
+    switch (VirtEx.Cr3)
+    {
+    case CR3_CACHE_GUEST: *Target = VmxRead(GUEST_CR3); break;
+    case CR3_CACHE_SYSTEM: *Target = Vcpu->SystemDirectoryBase; break;
+    case CR3_INVALID:
+    {
+        ImpLog("Invalid CR3 target...\n");
+        return VMM_EVENT_ABORT;
+    } break;
+    }
+
     return VMM_EVENT_CONTINUE;
 }
 
@@ -122,7 +159,7 @@ VmHandleHypercall(
             .Value = GuestState->Rbx
         };
 
-        if (VirtEx.Cr3 == 0 || VirtEx.Size == 0)
+        if (VirtEx.Cr3 == CR3_INVALID || VirtEx.Size == 0)
             return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
 
         PMM_VPTE Vpte = NULL; 
@@ -132,7 +169,7 @@ VmHandleHypercall(
         SIZE_T SizeRead = 0;
         while (VirtEx.Size > SizeRead)
         {
-            if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx)))
+            if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx + SizeRead)))
                 return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
 
             SIZE_T SizeToRead = VirtEx.Size - SizeRead > PAGE_SIZE ? PAGE_SIZE : VirtEx.Size - SizeRead;
@@ -166,7 +203,7 @@ VmHandleHypercall(
         SIZE_T SizeWritten = 0;
         while (VirtEx.Size > SizeWritten)
         {
-            if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx)))
+            if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx + SizeWritten)))
                 return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
         
             SIZE_T SizeToWrite = VirtEx.Size - SizeWritten > PAGE_SIZE ? PAGE_SIZE : VirtEx.Size - SizeWritten;
@@ -191,6 +228,10 @@ VmHandleHypercall(
         if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(PVCPU), Vcpu)))
             return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
     } break;
+    case HYPERCALL_GET_SYSTEM_CR3:
+    {
+        // TODO: Finish this, add signature parsing function & scanner 
+    } break;
     case HYPERCALL_EPT_REMAP_PAGES:
     {
         HYPERCALL_REMAP_PAGES_EX RemapEx = {
@@ -209,6 +250,10 @@ VmHandleHypercall(
             return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
 
         EptInvalidateCache();
+    } break;
+    case HYPERCALL_CACHE_PDB_BUFFER:
+    {
+        // TODO: Finish this, add signature parsing function & scanner 
     } break;
     case HYPERCALL_HIDE_HOST_RESOURCES:
     {
@@ -231,9 +276,31 @@ VmHandleHypercall(
             CurrRecord = (PIMP_ALLOC_RECORD)CurrRecord->Records.Blink;
         }
 
-        
+        // TODO: Hide VMM code/data and VSC code
 
         EptInvalidateCache();
+    } break;
+    case HYPERCALL_GET_LOG_RECORDS:
+    {
+        if (GuestState->Rdx == 0)
+            return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+
+        HYPERCALL_GET_LOGS_EX LogEx = {
+            .Value = GuestState->Rbx
+        };
+
+        SIZE_T Count = 0;
+        while (LogEx.Count > Count)
+        {
+            PIMP_LOG_RECORD CurrLog = NULL;
+            if (!NT_SUCCESS(ImpRetrieveLogRecord(&CurrLog)))
+                return VmAbortHypercall(Hypercall, HRESULT_LOG_RECORD_OVERFLOW);
+
+            if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx + 512 * Count, 512, CurrLog->Buffer)))
+                return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+
+            Count++;
+        }
     } break;
     case HYPERCALL_GET_LAST_RESULT:
     {
@@ -294,7 +361,6 @@ VmWriteSystemMemory(
 
     return HRESULT_SUCCESS;
 }
-
 
 HYPERCALL_RESULT
 VmShutdownVcpu(

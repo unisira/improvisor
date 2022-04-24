@@ -15,6 +15,8 @@
 #define HRESULT_INSUFFICIENT_RESOURCES (0x8104)
 // The extended hypercall info (RBX) value was invalid 
 #define HRESULT_INVALID_EXT_INFO (0x8105)
+// The amount of log records requested was more than we currently had.
+#define HRESULT_LOG_RECORD_OVERFLOW (0x8106)
 
 typedef ULONG HYPERCALL_RESULT; 
 
