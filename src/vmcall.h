@@ -69,9 +69,4 @@ VmEptRemapPages(
     _In_ EPT_PAGE_PERMISSIONS Permissions
 );
 
-HYPERCALL_RESULT
-VmGetLastResult(
-    _Out_ HYPERCALL_RESULT* pResult
-);
-
 #endif

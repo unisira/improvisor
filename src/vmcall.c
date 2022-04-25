@@ -68,9 +68,7 @@ typedef enum _HYPERCALL_ID
     // Hide all host resource allocations from guest physical memory
     HYPERCALL_HIDE_HOST_RESOURCES,
     // Retrieve log records from VMM
-    HYPERCALL_GET_LOG_RECORDS,
-    // Get the last HYPERCALL_RESULT value
-    HYPERCALL_GET_LAST_RESULT
+    HYPERCALL_GET_LOG_RECORDS
 } HYPERCALL_ID, PHYPERCALL_ID;
 
 typedef enum _HYPERCALL_CR3_TARGET
@@ -302,11 +300,6 @@ VmHandleHypercall(
             Count++;
         }
     } break;
-    case HYPERCALL_GET_LAST_RESULT:
-    {
-        if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(PVCPU), Vcpu)))
-            return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
-    } break;
     default:
         Hypercall->Result = HRESULT_UNKNOWN_HCID;
         VmxInjectEvent(EXCEPTION_UNDEFINED_OPCODE, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
@@ -346,8 +339,8 @@ VmWriteSystemMemory(
 )
 {
     HYPERCALL_INFO Hypercall = {
-    .Id = HYPERCALL_WRITE_VIRT,
-    .Result = HRESULT_SUCCESS
+        .Id = HYPERCALL_WRITE_VIRT,
+        .Result = HRESULT_SUCCESS
     };
 
     HYPERCALL_VIRT_EX VirtEx = {
@@ -400,25 +393,6 @@ VmEptRemapPages(
     };
 
     Hypercall = __vmcall(Hypercall, RemapEx.Value, (PVOID)GuestPhysAddr, (PVOID)PhysAddr);
-
-    return Hypercall.Result;
-}
-
-HYPERCALL_RESULT
-VmGetLastResult(
-    _Out_ HYPERCALL_RESULT* pResult
-)
-/*++
-Routine Description:
-    Writes the last hypercall result value in `pResult`
---*/
-{
-    HYPERCALL_INFO Hypercall = {
-        .Id = HYPERCALL_GET_LAST_RESULT,
-        .Result = HRESULT_SUCCESS
-    };
-
-    Hypercall = __vmcall(Hypercall, 0, NULL, pResult);
 
     return Hypercall.Result;
 }
