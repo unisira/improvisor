@@ -21,7 +21,7 @@ typedef struct _MTRR_REGION_CACHE_ENTRY
     MEMORY_TYPE Type;
 } MTRR_REGION_CACHE_ENTRY, *PMTRR_REGION_CACHE_ENTRY;
 
-static MTRR_STATIC_REGION sFixedMtrrRanges[] = {
+static const MTRR_STATIC_REGION sFixedMtrrRanges[] = {
     {IA32_MTRR_FIX64K_00000, 0x00000ul, KB(64)},
     {IA32_MTRR_FIX16K_80000, 0x80000ul, KB(16)},
     {IA32_MTRR_FIX16K_A0000, 0xA0000ul, KB(16)},
@@ -160,6 +160,8 @@ MtrrSaveVariableRange(
     CurrMtrrEntry->Size = 1ULL << SizeShift;
 
     gMtrrRegionCacheHead = CurrMtrrEntry->Links.Flink;
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -183,6 +185,8 @@ MtrrSaveStaticRange(
 
         gMtrrRegionCacheHead = CurrMtrrEntry->Links.Flink;
     }
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
