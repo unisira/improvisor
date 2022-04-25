@@ -17,19 +17,19 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define CHUNK_HDR(Chunk) ((PMM_POOL_CHUNK_HDR)((ULONG_PTR)Chunk - sizeof(MM_POOL_CHUNK_HDR)))
 
 // TODO: For host page tables, include MM_RESERVED_PT header in the raw PT list allocation
-PMM_RESERVED_PT gHostPageTablesHead = NULL;
-PMM_RESERVED_PT gHostPageTablesTail = NULL;
+VMM_DATA PMM_RESERVED_PT gHostPageTablesHead = NULL;
+VMM_DATA PMM_RESERVED_PT gHostPageTablesTail = NULL;
 
-PMM_VPTE gVirtualPTEHead = NULL;
+VMM_DATA PMM_VPTE gVirtualPTEHead = NULL;
 
 // The raw array of page tables, each comprising of 512 possible entries
-static PVOID sPageTableListRaw = NULL;
+static VMM_DATA PVOID sPageTableListRaw = NULL;
 // The raw list of page table entries for the linked list
-static PMM_RESERVED_PT sPageTableListEntries = NULL;
+static VMM_DATA PMM_RESERVED_PT sPageTableListEntries = NULL;
 
 // The raw list of virtual PTE list entries
-static PMM_VPTE sVirtualPTEListRaw = NULL;
-static SPINLOCK sVirtualPTEListLock;
+static VMM_DATA PMM_VPTE sVirtualPTEListRaw = NULL;
+static VMM_DATA SPINLOCK sVirtualPTEListLock;
 
 // TODO: Move away from use of NTSTATUS for non-setup / windows related functions
 

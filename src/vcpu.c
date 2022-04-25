@@ -44,7 +44,7 @@ VMEXIT_HANDLER VcpuHandleWbinvd;
 VMEXIT_HANDLER VcpuHandleXsetbv;
 VMEXIT_HANDLER VcpuHandleInvlpg;
 
-static VMEXIT_HANDLER* sExitHandlers[] = {
+static VMM_RDATA const VMEXIT_HANDLER* sExitHandlers[] = {
     VcpuHandleExceptionNmi,         // Exception or non-maskable interrupt (NMI)
     VcpuHandleExternalInterrupt, 	// External interrupt
     VcpuUnknownExitReason, 			// Triple fault
@@ -120,7 +120,9 @@ static VMEXIT_HANDLER* sExitHandlers[] = {
 #define CREATE_MSR_ENTRY(Msr) \
     {Msr, 0UL, 0ULL}
 
-static DECLSPEC_ALIGN(16) VMX_MSR_ENTRY sVmExitMsrStore[] = {
+VMM_RDATA 
+DECLSPEC_ALIGN(16)
+static const VMX_MSR_ENTRY sVmExitMsrStore[] = {
     CREATE_MSR_ENTRY(IA32_TIME_STAMP_COUNTER)
 };
 
@@ -196,6 +198,7 @@ VcpuLoadPDPTRs(
     _In_ PVCPU Vcpu
 );
 
+VSC_API
 NTSTATUS
 VcpuSetup(
     _Inout_ PVCPU Vcpu,
@@ -333,6 +336,7 @@ Routine Description:
     // TODO: Finish this 
 }
 
+VSC_API
 DECLSPEC_NORETURN
 VOID
 VcpuLaunch(VOID)
@@ -345,6 +349,7 @@ Routine Description:
     __cpu_restore_state(&Stack->Cache.Vcpu->LaunchState);
 }
 
+VSC_API
 NTSTATUS
 VcpuSpawn(
     _In_ PVCPU Vcpu
@@ -536,6 +541,7 @@ Routine Description:
     return STATUS_APP_INIT_FAILURE;
 }
 
+VSC_API
 VOID
 VcpuSpawnPerCpu(
     _Inout_ PVCPU_SPAWN_PARAMS Params

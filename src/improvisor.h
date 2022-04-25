@@ -52,6 +52,11 @@ ImpReserveAllocationRecords(
     _In_ SIZE_T Count
 );
 
+NTSTATUS
+ImpReserveLogRecords(
+    _In_ SIZE_T Count
+);
+
 PVOID
 ImpAllocateHostContiguousMemory(
     _In_ SIZE_T Size

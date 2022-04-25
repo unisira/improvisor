@@ -11,11 +11,11 @@ VMM_DATA PIMP_LOG_RECORD gLogRecordsHead = NULL;
 VMM_DATA PIMP_LOG_RECORD gLogRecordsTail = NULL;
 
 // The raw buffer containing the host allocation records
-static VMM_DATA PIMP_ALLOC_RECORD sImpAllocRecordsRaw = NULL;
+VMM_DATA static PIMP_ALLOC_RECORD sImpAllocRecordsRaw = NULL;
 // Raw buffer containing all log records
-static VMM_DATA PIMP_LOG_RECORD sImpLogRecordsRaw = NULL;
+VMM_DATA static PIMP_LOG_RECORD sImpLogRecordsRaw = NULL;
 
-static VMM_DATA SPINLOCK sLogWriterLock;
+VMM_DATA static SPINLOCK sLogWriterLock;
 
 VSC_API
 NTSTATUS
@@ -341,7 +341,7 @@ Routine Description:
     return MmGetPhysicalAddress(Address).QuadPart;
 }
 
-static SPINLOCK sDebugPrintLock;
+VMM_DATA static SPINLOCK sDebugPrintLock;
 
 VSC_API
 VOID 
@@ -355,16 +355,12 @@ Routine Description:
 {
     SpinLock(&sDebugPrintLock);
 
-#ifdef _DEBUG
     va_list Args;
 	va_start(Args, Str);
 
 	vDbgPrintExWithPrefix("[Improvisor DEBUG]: ", DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, Str, Args);
 
 	va_end(Args);
-#else
-    DbgPrint(Str, ...);
-#endif
 
     SpinUnlock(&sDebugPrintLock);
 }

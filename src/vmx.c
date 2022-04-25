@@ -28,6 +28,7 @@ typedef union _VMX_CAPABILITY_MSR
 	};
 } VMX_CAPABILITY_MSR, *PVMX_CAPABILITY_MSR;
 
+VSC_API
 PVMX_REGION
 VmxAllocateRegion(VOID)
 /*++
@@ -48,6 +49,7 @@ Routine Description:
     return VmxRegion;
 }
 
+VSC_API
 BOOLEAN
 VmxCheckSupport(VOID)
 /*++
@@ -58,6 +60,7 @@ Routine Description:
     return ArchCheckFeatureFlag(X86_FEATURE_VMX); 
 }
 
+VSC_API
 BOOLEAN
 VmxCheckPreemptionTimerSupport(VOID)
 /*++
@@ -76,6 +79,7 @@ Routine Description:
     return (~VmxGetFixedBits(PinbasedCap.Value) & VMX_CONTROL_MASK(VMX_CTL_VMX_PREEMPTION_TIMER)) != 0;
 }
 
+VSC_API
 BOOLEAN
 VmxEnableVmxon(VOID)
 /*++
@@ -109,6 +113,7 @@ Routine Description:
     return FeatureControl.VmxonOutsideSmx == 1;
 }
 
+VSC_API
 UINT64
 VmxApplyCr0Restrictions(
     _In_ UINT64 Cr0
@@ -120,6 +125,7 @@ VmxApplyCr0Restrictions(
     return Cr0;
 }
 
+VSC_API
 UINT64
 VmxApplyCr4Restrictions(
     _In_ UINT64 Cr4
@@ -131,6 +137,7 @@ VmxApplyCr4Restrictions(
     return Cr4;
 }
 
+VSC_API
 VOID
 VmxRestrictControlRegisters(VOID)
 /*++
@@ -322,6 +329,7 @@ Routine Description:
         *TargetControls &= ~VMX_CONTROL_MASK(Control);
 }
 
+VMM_API
 BOOLEAN
 VmxIsControlSupported(
     _Inout_ PVMX_STATE Vmx,
@@ -346,6 +354,7 @@ Routine Description:
     return (VmxGetFixedBits(ControlCap) & VMX_CONTROL_MASK(Control)) != 0;
 }
 
+VSC_API
 VOID
 VmxSetupVmxState(
     _Inout_ PVMX_STATE Vmx
