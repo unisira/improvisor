@@ -401,14 +401,25 @@ Routine Description:
     This function installs any registered detour that hasn't already been installed
 */
 {
+    NTSTATUS Status = STATUS_SUCCESS;
+
     PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
     while (CurrHook != NULL)
     {
         if (CurrHook->State != EH_DETOUR_INSTALLED)
-            EhInstallDetour(CurrHook);
+        {
+            Status = EhInstallDetour(CurrHook);
+            if (!NT_SUCCESS(Status))
+            {
+                ImpLog("Failed to install hook #%llX...\n", CurrHook->Hash);
+                return Status;
+            }
+        }
 
         CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
     }
+
+    return Status;
 }
 
 NTSTATUS
@@ -432,8 +443,6 @@ Routine Description:
     Status = EhReserveHookRecords(0x100);
     if (!NT_SUCCESS(Status))
         return Status;
-
-    // TODO: Register hooks here
 
     return Status;
 }
