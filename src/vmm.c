@@ -2,7 +2,7 @@
 
 NTSTATUS
 VmmEnsureFeatureSupport(
-    _Inout_ PVMM_CONTEXT VmmContext
+    VOID
 );
 
 NTSTATUS
@@ -23,7 +23,7 @@ VmmSpawnVcpuDelegates(
 
 NTSTATUS
 VmmPostLaunchInitialisation(
-    _In_ PVMM_CONTEXT VmmContext
+    VOID
 );
 
 VOID
@@ -49,14 +49,20 @@ Routine Description:
         return Status;
     }
 
-    /* TODO: Debug why VMX isn't showing up as supported
+    Status = ImpReserveLogRecords(0x1000);
+    if (!NT_SUCCESS(Status))
+    {
+        ImpDebugPrint("Couldn't reserve log records...\n");
+        return Status;
+    }
+
+    // TODO: Debug why VMX isn't showing up as supported
     Status = VmmEnsureFeatureSupport();
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("VMX, or another feature required is not supported on this system...\n");
         return Status;
     }
-    */
 
     PVMM_CONTEXT VmmContext = (PVMM_CONTEXT)ImpAllocateHostNpPool(sizeof(VMM_CONTEXT));
     if (VmmContext == NULL)
@@ -100,16 +106,13 @@ Routine Description:
 
     ImpDebugPrint("Successfully launched hypervisor on %d cores...\n", Params.ActiveVcpuCount);
 
-    // TODO: Here we should use hypercalls to perform initialisation of anything not VMM related...
-    //
-    // Hide Imp* allocation records using HYPERCALL_EPT_MAP_PAGE
-    // Certain sections of this driver should also be hidden, on start up a structure containing info about driver sections will be passed
-    // which will be used to hide certain sections containing VMM only code from the guest OS
-    //
-    // Install basic detours using EhInstallDetour
-    //
-    //
-
+    Status = VmmPostLaunchInitialisation();
+    if (!NT_SUCCESS(Status))
+    {
+        ImpDebugPrint("Failed to spawn VCPU on cores (%x)... (%x)", Params.FailedCoreMask, Status);
+        VmmShutdownHypervisor();
+        goto panic;
+    }
     return STATUS_SUCCESS;
 
 panic:
@@ -233,14 +236,21 @@ Routine Description:
 
 VSC_API
 NTSTATUS
-VmmPostLaunchInitialisation(
-    _In_ PVMM_CONTEXT VmmContext
-)
+VmmPostLaunchInitialisation(VOID)
 /*++
 Routine Description:
     This function does all VMM initialisation after it has launched, this includes things like detours.
 --*/
 {
+    // TODO: Here we should use hypercalls to perform initialisation of anything not VMM related...
+    //
+    // Hide Imp* allocation records using HYPERCALL_EPT_MAP_PAGE
+    // Certain sections of this driver should also be hidden, on start up a structure containing info about driver sections will be passed
+    // which will be used to hide certain sections containing VMM only code from the guest OS
+    //
+    // Install basic detours using EhInstallDetour
+    //
+
     return STATUS_SUCCESS;
 }
 
@@ -252,8 +262,6 @@ Routine Description:
     individually
  */
 {
-    PKIPI_BROADCAST_WORKER Worker = (PKIPI_BROADCAST_WORKER)VcpuShutdownPerCpu;
-
     const volatile VCPU_SHUTDOWN_PARAMS Params = {
         .Status = STATUS_SUCCESS,
         .FailedCoreMask = 0,
@@ -287,9 +295,7 @@ Routine Description:
 
 VSC_API
 NTSTATUS
-VmmEnsureFeatureSupport(
-    _Inout_ PVMM_CONTEXT VmmContext
-)
+VmmEnsureFeatureSupport(VOID)
 /*++
 Routine Description:
     Checks if all the features required for this hypervisor are present and useable on the current hardware
