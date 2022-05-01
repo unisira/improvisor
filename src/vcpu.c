@@ -324,6 +324,19 @@ Routine Description:
     return STATUS_SUCCESS;
 }
 
+VSC_API
+VOID
+VcpuCacheCpuFeatures(
+    _Inout_ PVCPU Vcpu
+)
+/*++
+Routine Description:
+    Caches all relevant CPU feature information from CPUID flags and relevant MSR's
+--*/
+{
+    return;
+}
+
 VOID
 VcpuDestroy(
     _Inout_ PVCPU Vcpu
@@ -772,6 +785,20 @@ VcpuIs64Bit(
 }
 
 VMM_API
+VOID
+VcpuHandleHostException(
+    _In_ PVCPU Vcpu,
+    _In_ PCPU_TRAP_FRAME TrapFrame
+)
+/*++
+Routine Description:
+    Handle host exceptions TODO: Stack walk and log error before aborting
+--*/
+{
+
+}
+
+VMM_API
 DECLSPEC_NORETURN
 VOID
 VcpuResume(VOID)
@@ -809,7 +836,7 @@ Routine Description:
     Vcpu->Vmx.ExitReason.Value = (UINT32)VmxRead(VM_EXIT_REASON);
 
 #ifdef _DEBUG
-    PVMX_EXIT_LOG_ENTRY ExitLog = &Vcpu->Vmx.ExitLog[Vcpu->Vmx.ExitCount++];
+    PVMX_EXIT_LOG_ENTRY ExitLog = &Vcpu->Vmx.ExitLog[Vcpu->Vmx.ExitCount++ % 256];
     ExitLog->Reason = Vcpu->Vmx.ExitReason;
     ExitLog->Rip = Vcpu->Vmx.GuestRip;
     ExitLog->ExitQualification = VmxRead(VM_EXIT_QUALIFICATION);
@@ -829,6 +856,15 @@ Routine Description:
 
     if (Status == VMM_EVENT_CONTINUE)
         VmxAdvanceGuestRip();
+
+#ifdef _DEBUG
+    ImpDebugPrint("[%02X-#%05d]: VM-exit ID: %i - RIP: %llX - EXIT QUAL: %llX\n",
+        Vcpu->Id,
+        Vcpu->Vmx.ExitCount,
+        ExitLog->Reason.BasicExitReason,
+        ExitLog->Rip,
+        ExitLog->ExitQualification);
+#endif
 
     return TRUE;
 }
@@ -1531,12 +1567,11 @@ Routine Description:
 
     if (GuestState->Rbx == 0xF2C889114244161F && Vcpu->TscInfo.VmEntryLatency == 0)
     {
-        VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, VTSC_WATCHDOG_QUANTUM);
         VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
 
-        VmxInjectEvent(INTERRUPT_TYPE_OTHER_EVENT, INTERRUPT_PENDING_MTF, 0);
+        VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, VTSC_WATCHDOG_QUANTUM);
 
-        VcpuPushMTFEvent(Vcpu, MTF_EVENT_MEASURE_VMENTRY);
+        VcpuPushPendingMTFEvent(Vcpu, MTF_EVENT_MEASURE_VMENTRY);
     }
 
     PHYPERCALL_INFO Hypercall = (PHYPERCALL_INFO)&GuestState->Rax;
@@ -1783,22 +1818,8 @@ VcpuHandleEptViolation(
         return VMM_EVENT_ABORT;
     }
 
-#if 0
+#if 1
     ImpDebugPrint("[%02X-#%03d] %llX: Mapped %llX -> %llX...\n", Vcpu->Id, Vcpu->Vmx.ExitCount, Vcpu->Vmx.GuestRip, AttemptedAddress, AttemptedAddress);
-
-    // Dump recent VM-exit logs
-    SIZE_T ExitLogCount = Vcpu->Vmx.ExitCount % 256;
-    for (SIZE_T i = 0; i < ExitLogCount; i++)
-    {
-        PVMX_EXIT_LOG_ENTRY ExitLog = &Vcpu->Vmx.ExitLog[i];
-
-        ImpDebugPrint("[%02X-#%03d]: VM-exit ID: %i - RIP: %llX - EXIT QUAL: %llX\n", 
-            Vcpu->Id, 
-            Vcpu->Vmx.ExitCount - ExitLogCount + i, 
-            ExitLog->Reason.BasicExitReason, 
-            ExitLog->Rip,
-            ExitLog->ExitQualification);
-    }
 #endif
 
     // TODO: Don't think this is necessary
@@ -1870,6 +1891,20 @@ Routine Description:
 
     VcpuPushMTFEventEx(Vcpu, EventEx);
 }
+
+VMM_API
+VOID
+VcpuPushPendingMTFEvent(
+    _In_ PVCPU Vcpu,
+    _In_ MTF_EVENT_TYPE Event
+)
+{
+    // Inject pending MTF interrupt
+    VmxInjectEvent(INTERRUPT_TYPE_OTHER_EVENT, INTERRUPT_PENDING_MTF, 0);
+    // Push MTF event
+    VcpuPushMTFEvent(Vcpu, Event);
+}
+
 
 VMM_API
 BOOLEAN

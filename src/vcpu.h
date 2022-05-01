@@ -140,6 +140,7 @@ typedef struct _VCPU
     TSC_STATUS TscInfo;
     PMTF_EVENT_ENTRY MtfStackHead;
     ULONG LastHypercallResult;
+    ULONG NumQueuedNMIs;
     struct _VMM_CONTEXT* Vmm; 
 } VCPU, *PVCPU;
 
@@ -157,6 +158,11 @@ NTSTATUS
 VcpuSetup(
     _Inout_ PVCPU Vcpu,
     _In_ UINT8 Id
+);
+
+VOID
+VcpuCacheCpuFeatures(
+    _Inout_ PVCPU Vcpu
 );
 
 VOID
@@ -187,10 +193,22 @@ VcpuPushMTFEvent(
     _In_ MTF_EVENT_TYPE Event
 );
 
+VOID
+VcpuPushPendingMTFEvent(
+    _In_ PVCPU Vcpu,
+    _In_ MTF_EVENT_TYPE Event
+);
+
 BOOLEAN
 VcpuPopMTFEvent(
     _In_ PVCPU Vcpu,
     _Out_ PMTF_EVENT Event
+);
+
+VOID
+VcpuHandleHostException(
+    _In_ PVCPU Vcpu,
+    _In_ PCPU_TRAP_FRAME TrapFrame
 );
 
 #endif
