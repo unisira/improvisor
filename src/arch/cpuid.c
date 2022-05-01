@@ -1,7 +1,5 @@
 #include "cpuid.h"
 
-#include "../improvisor.h"
-
 BOOLEAN
 ArchCheckFeatureFlag(
     _In_ X86_CPU_FEATURE Feature

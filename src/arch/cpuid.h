@@ -10,9 +10,9 @@
 //
 
 #define CPUID_REG_EAX 0
-#define CPUID_REG_ECX 1
-#define CPUID_REG_EDX 2
-#define CPUID_REG_EBX 3
+#define CPUID_REG_EBX 1
+#define CPUID_REG_ECX 2
+#define CPUID_REG_EDX 3
 
 /* Credits to Intel: https://github.com/intel/haxm/blob/master/core/include/cpuid.h
  * X86 Features
