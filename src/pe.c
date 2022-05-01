@@ -15,7 +15,7 @@ Routine Description:
 		return FALSE;
 
 	PIMAGE_DOS_HEADER DosHeader = BaseAddress;
-	if (DosHeader->e_magic != (SHORT)'MZ')
+	if (DosHeader->e_magic != (USHORT)'ZM')
 		return FALSE;
 
 	return TRUE;
