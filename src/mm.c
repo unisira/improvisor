@@ -1,5 +1,6 @@
 #include "improvisor.h"
 #include "util/spinlock.h"
+#include "util/macro.h"
 #include "arch/memory.h"
 #include "arch/cr.h"
 #include "section.h"
@@ -524,6 +525,53 @@ Routine Description:
 
 VSC_API
 NTSTATUS
+MmMapVmmHostData(
+    PMM_PTE HostPml4,
+    PVOID ImageBase
+)
+/*++
+Routine Description:
+    Maps all VMM-owned sections for the PE file found at `ImageBase` into the host page tables
+--*/
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    SIZE_T SectionCount;
+    PIMAGE_SECTION_HEADER Sections = PeGetSectionHeaders(ImageBase, &SectionCount);
+
+    if (SectionCount == -1)
+    {
+        ImpDebugPrint("Invalid PE image from ImageBase...\n");
+        return STATUS_INVALID_ADDRESS;
+    }
+
+    for (SIZE_T i = 0; i < SectionCount; i++)
+    {
+        PIMAGE_SECTION_HEADER Section = &Sections[i];
+
+        // Match any .VMM* section name
+        if (memcmp(Section->Name, ".VMM", 4))
+        {
+            SIZE_T SizeCopied = 0;
+            while (Section->SizeOfRawData > SizeCopied)
+            {
+                Status = MmCopyAddressTranslation(HostPml4, RVA_PTR(ImageBase, Section->VirtualAddress + SizeCopied));
+                if (!NT_SUCCESS(Status))
+                {
+                    ImpDebugPrint("Failed to copy IMPV section translation for '%s' (%llx)...\n", Section->Name, RVA_PTR(ImageBase, Section->VirtualAddress + SizeCopied));
+                    return Status;
+                }
+
+                SizeCopied += PAGE_SIZE;
+            }
+        }
+    }
+
+    return Status;
+}
+
+VSC_API
+NTSTATUS
 MmSetupHostPageDirectory(
     _Inout_ PMM_INFORMATION MmSupport
 )
@@ -543,7 +591,7 @@ Routine Description:
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    MmSupport->HostDirectoryPhysical = ImpGetPhysicalAddress(HostPml4);
+    MmSupport->Cr3.PageDirectoryBase = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(HostPml4));
 
     // Loop condition is not wrong, head is always the last one used, one is ignored at the end
     PIMP_ALLOC_RECORD CurrRecord = gHostAllocationsHead;
@@ -552,7 +600,7 @@ Routine Description:
         SIZE_T SizeMapped = 0;
         while (CurrRecord->Size > SizeMapped)
         {
-            Status = MmCopyAddressTranslation(HostPml4, (PCHAR)CurrRecord->Address + SizeMapped);
+            Status = MmCopyAddressTranslation(HostPml4, RVA_PTR(CurrRecord->Address, SizeMapped));
             if (!NT_SUCCESS(Status))
             {
                 ImpDebugPrint("Failed to copy translation for '%llX'...\n", CurrRecord->Address);
@@ -565,31 +613,13 @@ Routine Description:
         CurrRecord = (PIMP_ALLOC_RECORD)CurrRecord->Records.Blink;
     }
  
-    // Copy translations for all PE sections that need to be mapped in host memory
 #ifdef _DEBUG
-    SIZE_T SectionCount;
-    PIMAGE_SECTION_HEADER Sections = PeGetSectionHeaders(&__ImageBase, &SectionCount);
-
-    if (SectionCount == -1)
+    // Copy translations for all PE sections that need to be mapped in host memory
+    Status = MmMapVmmHostData(HostPml4, &__ImageBase);
+    if (!NT_SUCCESS(Status))
     {
-        ImpDebugPrint("Invalid PE image from __ImageBase...\n");
-        return STATUS_INVALID_ADDRESS;
-    }
-
-    for (SIZE_T i = 0; i < SectionCount; i++)
-    {
-        PIMAGE_SECTION_HEADER Section = &Sections[i];
-
-        // Match any .VMM* section name
-        if (memcmp(Section->Name, ".VMM", 4))
-        {
-            Status = MmCopyAddressTranslation(HostPml4, Section->VirtualAddress, Section->SizeOfRawData);
-            if (!NT_SUCCESS(Status))
-            {
-                ImpDebugPrint("Failed to copy IMPV section translation for '%s' (%llx, %llx)...\n", Section->Name, Section->VirtualAddress, Section->SizeOfRawData);
-                return Status;
-            }
-        }
+        ImpDebugPrint("Failed to map VMM host data... (%x)\n", Status);
+        return Status;
     }
 #else
     // TODO: Implement mapping from shared memory block given on startup from client

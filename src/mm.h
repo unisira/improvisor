@@ -3,9 +3,11 @@
 
 #include <ntdef.h>
 
+#include "arch/cr.h"
+
 typedef struct _MM_INFORMATION
 {
-	UINT64 HostDirectoryPhysical;
+	X86_CR3 Cr3;
 } MM_INFORMATION, *PMM_INFORMATION;
 
 typedef union _MM_PTE
