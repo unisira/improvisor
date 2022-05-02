@@ -119,7 +119,7 @@ __vmexit_entry PROC
 	mov [rsp].GUEST_STATE._Cr8, rbx
 	stmxcsr [rsp].GUEST_STATE._MxCsr
 
-	mov rcx, [rsp+SIZEOF GUEST_STATE-5FF0h]	; Load the address of the stack cache (PVCPU) into RCX
+	mov rcx, fs:[0]							; Load the address of the current VCPU into RCX
 	lea rdx, [rsp] 							; Load the address of the GUEST_STATE into RDX
 	sub rsp, 28h							; Allocate shadow stack space
 	call VcpuHandleExit						; Call the VM-exit handler

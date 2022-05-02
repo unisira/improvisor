@@ -210,6 +210,9 @@ Routine Description:
     because VmmStartHypervisor will take care of it
 --*/
 {
+    // Setup the self reference member for getting the VCPU from FS
+    Vcpu->Self = Vcpu;
+
     Vcpu->Id = Id;
 
     Vcpu->Vmcs = VmxAllocateRegion();
@@ -458,10 +461,10 @@ Routine Description:
     VmxWrite(GUEST_IDTR_LIMIT, Idtr.Limit);
 
     VmxWrite(GUEST_GDTR_BASE, Gdtr.BaseAddress);
-    VmxWrite(HOST_GDTR_BASE, Gdtr.BaseAddress);
-
     VmxWrite(GUEST_IDTR_BASE, Idtr.BaseAddress);
-    VmxWrite(HOST_IDTR_BASE, Idtr.BaseAddress);
+
+    VmxWrite(HOST_GDTR_BASE, Vcpu->Vmm->Gdt);
+    VmxWrite(HOST_IDTR_BASE, Vcpu->Vmm->Idt);
     //VmxWrite(HOST_IDTR_BASE, Vcpu->Vmm->HostInterruptDescriptor.BaseAddress);
 
     X86_SEGMENT_SELECTOR Segment = {0};
@@ -504,7 +507,6 @@ Routine Description:
     VmxWrite(GUEST_FS_LIMIT, __segmentlimit(Segment.Value));
     VmxWrite(GUEST_FS_ACCESS_RIGHTS, SegmentAr(Segment));
     VmxWrite(GUEST_FS_BASE, SegmentBaseAddress(Segment));
-    VmxWrite(HOST_FS_BASE, SegmentBaseAddress(Segment));
     VmxWrite(HOST_FS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
     Segment.Value = __readgs();
@@ -531,6 +533,9 @@ Routine Description:
     VmxWrite(GUEST_TR_BASE, SegmentBaseAddress(Segment));
     VmxWrite(HOST_TR_BASE, SegmentBaseAddress(Segment));
     VmxWrite(HOST_TR_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+
+    // Store the current VCPU in the FS register
+    VmxWrite(HOST_FS_BASE, Vcpu);
 
     // Setup MSR load & store regions
     VmxWrite(CONTROL_VMEXIT_MSR_STORE_COUNT, sizeof(sVmExitMsrStore) / sizeof(*sVmExitMsrStore));
@@ -788,14 +793,23 @@ VMM_API
 VOID
 VcpuHandleHostException(
     _In_ PVCPU Vcpu,
-    _In_ PCPU_TRAP_FRAME TrapFrame
+    _In_ PVCPU_TRAP_FRAME TrapFrame
 )
 /*++
 Routine Description:
     Handle host exceptions TODO: Stack walk and log error before aborting
 --*/
 {
-
+    switch (TrapFrame->Vector)
+    {
+    case EXCEPTION_NMI:
+    {
+        // Start exiting on NMI interrupt windows
+        VcpuSetControl(Vcpu, VMX_CTL_NMI_WINDOW_EXITING, TRUE);
+        // Queue a new NMI
+        InterlockedIncrement(&Vcpu->NumQueuedNMIs);
+    } break;
+    }
 }
 
 VMM_API
@@ -1770,13 +1784,19 @@ VcpuHandleExternalInterrupt(
 }
 
 VMM_API
-VMM_EVENT_STATUS 
+VMM_EVENT_STATUS
 VcpuHandleNmiWindow(
     _Inout_ PVCPU Vcpu,
     _Inout_ PGUEST_STATE GuestState
 )
 {
-    return VMM_EVENT_ABORT;
+    // Disable NMI window exiting if no pending NMI interrupts are left
+    if (InterlockedDecrement(&Vcpu->NumQueuedNMIs) == 0)
+        VcpuSetControl(Vcpu, VMX_CTL_NMI_WINDOW_EXITING, FALSE);
+
+    VmxInjectEvent(EXCEPTION_NMI, INTERRUPT_TYPE_NMI, 0);
+
+    return VMM_EVENT_CONTINUE;
 }
 
 VMM_API

@@ -31,7 +31,7 @@ typedef union _EXCEPTION_BITMAP
 	};
 } EXCEPTION_BITMAP, *PEXCEPTION_BITMAP;
 
-typedef union _PENDING_DEBUG_EXCEPTIONS
+typedef union _X86_PENDING_DEBUG_EXCEPTIONS
 {
 	UINT64 Value;
 
@@ -45,8 +45,32 @@ typedef union _PENDING_DEBUG_EXCEPTIONS
 		UINT64 reserved_3 : 1;
 		UINT64 RTMEnabled : 1;
 		UINT64 reserved_4 : 47;
-	} flags;
+	};
 } X86_PENDING_DEBUG_EXCEPTIONS, *PX86_PENDING_DEBUG_EXCEPTIONS;
+
+typedef union _X86_INTERRUPT_TRAP_GATE
+{
+	struct
+	{
+		UINT64 Low;
+		UINT64 High;
+	} Value;
+
+	struct
+	{
+		UINT16 OffsetLow;
+		UINT16 SegmentSelector;
+		UINT32 InterruptStackTable : 3;
+		UINT32 Reserved1 : 5;
+		UINT32 Type : 4;
+		UINT32 Reserved2 : 1;
+		UINT32 Dpl : 2;
+		UINT32 Present : 1;
+		UINT16 OffsetMid;
+		UINT32 OffsetHigh;
+		UINT64 Reserved3;
+	};
+} X86_INTERRUPT_TRAP_GATE, *PX86_INTERRUPT_TRAP_GATE;
 
 typedef enum _X86_EXCEPTION
 {

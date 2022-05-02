@@ -4,6 +4,7 @@
 #include <wdm.h>
 #include <intrin.h>
 
+#include "arch/interrupt.h"
 #include "arch/segment.h"
 #include "section.h"
 #include "vcpu.h"
@@ -15,11 +16,13 @@ typedef struct _VMM_CONTEXT
 {
     UINT8 CpuCount;
     PVCPU VcpuTable;
+    PX86_INTERRUPT_TRAP_GATE Idt;
+    PX86_SEGMENT_DESCRIPTOR Gdt;
+    PX86_TASK_STATE_SEGMENT Tss;
     BOOLEAN UseUnrestrictedGuests;
     BOOLEAN UseTscSpoofing;
     MM_INFORMATION MmInformation;
     EPT_INFORMATION EptInformation;
-    X86_PSEUDO_DESCRIPTOR HostInterruptDescriptor;
 } VMM_CONTEXT, *PVMM_CONTEXT;
 
 NTSTATUS 

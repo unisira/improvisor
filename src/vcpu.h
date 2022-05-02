@@ -55,6 +55,54 @@ typedef struct _GUEST_STATE
 } GUEST_STATE, *PGUEST_STATE;
 #pragma pack(pop)
 
+#pragma pack(push, 1)
+typedef struct _VCPU_TRAP_FRAME
+{
+    // Register State
+    UINT64 Rax;
+    UINT64 Rbx;
+    UINT64 Rcx;
+    UINT64 Rdx;
+    UINT64 Rsi;
+    UINT64 Rdi;
+    UINT64 R8;
+    UINT64 R9;
+    UINT64 R10;
+    UINT64 R11;
+    UINT64 R12;
+    UINT64 R13;
+    UINT64 R14;
+    UINT64 R15;
+    M128 Xmm0;
+    M128 Xmm1;
+    M128 Xmm2;
+    M128 Xmm3;
+    M128 Xmm4;
+    M128 Xmm5;
+    M128 Xmm6;
+    M128 Xmm7;
+    M128 Xmm8;
+    M128 Xmm9;
+    M128 Xmm10;
+    M128 Xmm11;
+    M128 Xmm12;
+    M128 Xmm13;
+    M128 Xmm14;
+    M128 Xmm15;
+
+    // Interrupt Vector
+    UINT8 Vector;
+
+    // Machine Trap Frame
+    UINT64 Error;
+    UINT64 Rip;
+    UINT64 Cs;
+    UINT64 RFlags;
+    UINT64 Rsp;
+    UINT64 Ss;
+} VCPU_TRAP_FRAME, * PVCPU_TRAP_FRAME;
+#pragma pack(pop)
+
 // Base of other VCPU delegates so Status can be generically accessed
 typedef struct _VCPU_DELEGATE_PARAMS
 {
@@ -117,6 +165,7 @@ typedef struct _MTF_EVENT_ENTRY
 
 typedef struct _VCPU
 {
+    PVOID Self;
     UINT8 Id;
     PCHAR MsrBitmap;
     RTL_BITMAP MsrLoReadBitmap;
@@ -208,7 +257,7 @@ VcpuPopMTFEvent(
 VOID
 VcpuHandleHostException(
     _In_ PVCPU Vcpu,
-    _In_ PCPU_TRAP_FRAME TrapFrame
+    _In_ PVCPU_TRAP_FRAME TrapFrame
 );
 
 #endif
