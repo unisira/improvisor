@@ -22,20 +22,20 @@ typedef ULONG HYPERCALL_RESULT;
 
 typedef union _HYPERCALL_INFO
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT64 Id : 16;
-        UINT64 Result: 16;
-    };
+	struct
+	{
+		UINT64 Id : 16;
+		UINT64 Result: 16;
+	};
 } HYPERCALL_INFO, *PHYPERCALL_INFO; 
 
 VMM_EVENT_STATUS
 VmHandleHypercall(
-    _In_ PVCPU Vcpu,
-    _In_ PGUEST_STATE GuestState,
-    _In_ PHYPERCALL_INFO Hypercall
+	_In_ PVCPU Vcpu,
+	_In_ PGUEST_STATE GuestState,
+	_In_ PHYPERCALL_INFO Hypercall
 );
 
 //
@@ -44,29 +44,29 @@ VmHandleHypercall(
 
 HYPERCALL_RESULT
 VmReadSystemMemory(
-    _In_ PVOID Src,
-    _In_ PVOID Dst,
-    _In_ SIZE_T Size
+	_In_ PVOID Src,
+	_In_ PVOID Dst,
+	_In_ SIZE_T Size
 );
 
 HYPERCALL_RESULT
 VmWriteSystemMemory(
-    _In_ PVOID Src,
-    _In_ PVOID Dst,
-    _In_ SIZE_T Size
+	_In_ PVOID Src,
+	_In_ PVOID Dst,
+	_In_ SIZE_T Size
 );
 
 HYPERCALL_RESULT
 VmShutdownVcpu(
-    _Out_ PVCPU* pVcpu
+	_Out_ PVCPU* pVcpu
 );
 
 HYPERCALL_RESULT
 VmEptRemapPages(
-    _In_ UINT64 GuestPhysAddr,
-    _In_ UINT64 PhysAddr,
-    _In_ SIZE_T Size,
-    _In_ EPT_PAGE_PERMISSIONS Permissions
+	_In_ UINT64 GuestPhysAddr,
+	_In_ UINT64 PhysAddr,
+	_In_ SIZE_T Size,
+	_In_ EPT_PAGE_PERMISSIONS Permissions
 );
 
 #endif

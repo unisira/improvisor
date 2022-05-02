@@ -5,72 +5,72 @@
 
 typedef union _IA32_MTRR_CAPABILITIES_MSR
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT64 VariableRangeRegCount : 8;
-        UINT64 FixedRangeRegSupport : 1;
-        UINT64 Reserved1 : 1;
-        UINT64 WriteCombineTypeSupport : 1;
-        UINT64 SmrrInterfaceSupport : 1;
-        UINT64 Reserved2 : 52;
-    };
+	struct
+	{
+		UINT64 VariableRangeRegCount : 8;
+		UINT64 FixedRangeRegSupport : 1;
+		UINT64 Reserved1 : 1;
+		UINT64 WriteCombineTypeSupport : 1;
+		UINT64 SmrrInterfaceSupport : 1;
+		UINT64 Reserved2 : 52;
+	};
 } IA32_MTRR_CAPABILITIES_MSR, *PIA32_MTRR_CAPABILITIES_MSR;
 
 typedef union _IA32_MTRR_DEFAULT_TYPE_MSR
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT64 Type : 8;
-        UINT64 Reserved1 : 2;
-        UINT64 EnableFixedMtrr : 1;
-        UINT64 EnableMtrr : 1;
-        UINT64 Reserved2 : 52;
-    };
+	struct
+	{
+		UINT64 Type : 8;
+		UINT64 Reserved1 : 2;
+		UINT64 EnableFixedMtrr : 1;
+		UINT64 EnableMtrr : 1;
+		UINT64 Reserved2 : 52;
+	};
 } IA32_MTRR_DEFAULT_TYPE_MSR, *PIA32_MTRR_DEFAULT_TYPE_MSR;
 
 typedef union _IA32_MTRR_PHYSBASE_N_MSR
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT64 Type : 8;
-        UINT64 Reserved1 : 4;
-        UINT64 Base : 36;
-        UINT64 Reserved2 : 16;
-    };
+	struct
+	{
+		UINT64 Type : 8;
+		UINT64 Reserved1 : 4;
+		UINT64 Base : 36;
+		UINT64 Reserved2 : 16;
+	};
 } IA32_MTRR_PHYSBASE_N_MSR, *PIA32_MTRR_PHYSBASE_N_MSR;
 
 typedef union _IA32_MTRR_PHYSMASK_N_MSR
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT64 Reserved1 : 11;
-        UINT64 Valid : 1;
-        UINT64 Mask : 36;
-        UINT64 Reserved2 : 16;
-    };
+	struct
+	{
+		UINT64 Reserved1 : 11;
+		UINT64 Valid : 1;
+		UINT64 Mask : 36;
+		UINT64 Reserved2 : 16;
+	};
 } IA32_MTRR_PHYSMASK_N_MSR, *PIA32_MTRR_PHYSMASK_N_MSR;
 
 typedef union _IA32_MTRR_FIXED_RANGE_MSR
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT8 Types[8];
-    };
+	struct
+	{
+		UINT8 Types[8];
+	};
 } IA32_MTRR_FIXED_RANGE_MSR, *PIA32_MTRR_FIXED_RANGE_MSR;
 
 typedef enum _MEMORY_TYPE
 {
-    MT_UNCACHABLE = 0,
+	MT_UNCACHABLE = 0,
 	MT_WRITE_COMBINING = 1,
 	MT_WRITE_THROUGH = 4,
 	MT_WRITE_PROTECTED = 5,

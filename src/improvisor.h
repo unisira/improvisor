@@ -14,23 +14,23 @@
 
 typedef struct _IMP_LOG_RECORD
 {
-    LIST_ENTRY Links;
-    CHAR Buffer[512];
+	LIST_ENTRY Links;
+	CHAR Buffer[512];
 } IMP_LOG_RECORD, * PIMP_LOG_RECORD;
 
 typedef struct _IMP_ALLOC_RECORD
 {
-    LIST_ENTRY Records;
-    PVOID Address;
-    SIZE_T Size;
-    UINT64 Flags;
-    UINT64 PhysAddr;
+	LIST_ENTRY Records;
+	PVOID Address;
+	SIZE_T Size;
+	UINT64 Flags;
+	UINT64 PhysAddr;
 } IMP_ALLOC_RECORD, *PIMP_ALLOC_RECORD;
 
 typedef enum _IMP_ALLOC_FLAGS
 {
-    IMP_DEFAULT = (1 << 0),
-    IMP_SHADOW_ALLOCATION = (1 << 1)
+	IMP_DEFAULT = (1 << 0),
+	IMP_SHADOW_ALLOCATION = (1 << 1)
 } IMP_ALLOC_FLAGS, *PIMP_ALLOC_FLAGS;
 
 extern PIMP_ALLOC_RECORD gHostAllocationsHead;
@@ -39,54 +39,54 @@ extern PIMP_LOG_RECORD gLogRecordsTail;
 
 VOID
 ImpLog(
-    _In_ LPCSTR Fmt, ...
+	_In_ LPCSTR Fmt, ...
 );
 
 NTSTATUS
 ImpRetrieveLogRecord(
-    _Out_ PIMP_LOG_RECORD* Record
+	_Out_ PIMP_LOG_RECORD* Record
 );
 
 NTSTATUS
 ImpReserveAllocationRecords(
-    _In_ SIZE_T Count
+	_In_ SIZE_T Count
 );
 
 NTSTATUS
 ImpReserveLogRecords(
-    _In_ SIZE_T Count
+	_In_ SIZE_T Count
 );
 
 PVOID
 ImpAllocateHostContiguousMemory(
-    _In_ SIZE_T Size
+	_In_ SIZE_T Size
 );
 
 PVOID
 ImpAllocateContiguousMemory(
-    _In_ SIZE_T Size
+	_In_ SIZE_T Size
 );
 
 PVOID
 ImpAllocateContiguousMemoryEx(
-    _In_ SIZE_T Size,
-    _In_ UINT64 Flags
+	_In_ SIZE_T Size,
+	_In_ UINT64 Flags
 );
 
 PVOID
 ImpAllocateHostNpPool(
-    _In_ SIZE_T Size
+	_In_ SIZE_T Size
 );
 
 PVOID
 ImpAllocateNpPool(
-    _In_ SIZE_T Size
+	_In_ SIZE_T Size
 );
 
 PVOID
 ImpAllocateNpPoolEx(
-    _In_ SIZE_T Size,
-    _In_ UINT64 Flags
+	_In_ SIZE_T Size,
+	_In_ UINT64 Flags
 );
 
 VOID
@@ -94,12 +94,12 @@ ImpFreeAllAllocations(VOID);
 
 UINT64
 ImpGetPhysicalAddress(
-    _In_ PVOID Address
+	_In_ PVOID Address
 );
 
 VOID 
 ImpDebugPrint(
-    _In_ PCSTR Str, ...
+	_In_ PCSTR Str, ...
 );
 
 #endif

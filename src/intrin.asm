@@ -49,11 +49,11 @@ __readgs PROC
 __readgs ENDP
 
 __segmentar PROC
-        lar     rax, rcx 
-        jz      no_error 
-        xor     rax, rax 
+		lar     rax, rcx 
+		jz      no_error 
+		xor     rax, rax 
 no_error:
-        ret
+		ret
 __segmentar ENDP
 
 __invept PROC

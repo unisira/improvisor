@@ -31,7 +31,7 @@ typedef union _X86_SEGMENT_SELECTOR
 
 typedef struct _X86_SEGMENT_DESCRIPTOR
 {
-    UINT16 LimitLow;
+	UINT16 LimitLow;
 	UINT16 BaseLow;
 	UINT32 BaseMiddle : 8;
 	UINT32 Type : 4;
@@ -48,7 +48,7 @@ typedef struct _X86_SEGMENT_DESCRIPTOR
 
 typedef struct _X86_SYSTEM_DESCRIPTOR
 {
-    UINT16 LimitLow;
+	UINT16 LimitLow;
 	UINT16 BaseLow;
 	UINT32 BaseMiddle : 8;
 	UINT32 Type : 4;
@@ -143,12 +143,12 @@ typedef enum _X86_SEGMENT_DATA_TYPE
 
 UINT64
 SegmentBaseAddress(
-    _In_ X86_SEGMENT_SELECTOR Selector
+	_In_ X86_SEGMENT_SELECTOR Selector
 );
 
 UINT32
 SegmentAr(
-    _In_ X86_SEGMENT_SELECTOR Selector
+	_In_ X86_SEGMENT_SELECTOR Selector
 );
 
 #endif

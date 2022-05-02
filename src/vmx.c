@@ -8,23 +8,23 @@
 
 VOID
 __invvpid(
-    _In_ UINT8 Vpid, 
-    _In_ PVMX_INVVPID_DESCRIPTOR Desc
+	_In_ UINT8 Vpid, 
+	_In_ PVMX_INVVPID_DESCRIPTOR Desc
 );
 
 UINT64
 VmxGetFixedBits(
-    _In_ UINT64 VmxCapability
+	_In_ UINT64 VmxCapability
 );
 
 typedef union _VMX_CAPABILITY_MSR
 {
-    UINT64 Value;
+	UINT64 Value;
 
 	struct
 	{
-        UINT32 OnBits;
-        UINT32 OffBits;
+		UINT32 OnBits;
+		UINT32 OffBits;
 	};
 } VMX_CAPABILITY_MSR, *PVMX_CAPABILITY_MSR;
 
@@ -33,20 +33,20 @@ PVMX_REGION
 VmxAllocateRegion(VOID)
 /*++
 Routine Description:
-    This function allocates a 1 KiB block of memory and initialises it as a VMX region. 
+	This function allocates a 1 KiB block of memory and initialises it as a VMX region. 
 --*/
 {
-    PVMX_REGION VmxRegion = (PVMX_REGION)ImpAllocateHostContiguousMemory(sizeof(VMX_REGION));
-    if (VmxRegion == NULL)
-        return NULL;
+	PVMX_REGION VmxRegion = (PVMX_REGION)ImpAllocateHostContiguousMemory(sizeof(VMX_REGION));
+	if (VmxRegion == NULL)
+		return NULL;
 
-    IA32_VMX_BASIC_MSR VmxCap = {
-        .Value = __readmsr(IA32_VMX_BASIC)
-    };
+	IA32_VMX_BASIC_MSR VmxCap = {
+		.Value = __readmsr(IA32_VMX_BASIC)
+	};
 
-    VmxRegion->VmcsRevisionId = VmxCap.VmcsRevisionId; 
+	VmxRegion->VmcsRevisionId = VmxCap.VmcsRevisionId; 
 
-    return VmxRegion;
+	return VmxRegion;
 }
 
 VSC_API
@@ -54,10 +54,10 @@ BOOLEAN
 VmxCheckSupport(VOID)
 /*++
 Routine Description:
-    Checks if VMX is supported by querying the VMX flag via CPUID
+	Checks if VMX is supported by querying the VMX flag via CPUID
 --*/
 {
-    return ArchCheckFeatureFlag(X86_FEATURE_VMX); 
+	return ArchCheckFeatureFlag(X86_FEATURE_VMX); 
 }
 
 VSC_API
@@ -65,18 +65,18 @@ BOOLEAN
 VmxCheckPreemptionTimerSupport(VOID)
 /*++
 Routine Description:
-    Checks if the VMX preemption timer is supported by querying pinbased controls capabilties MSR
+	Checks if the VMX preemption timer is supported by querying pinbased controls capabilties MSR
 --*/
 {
-    const IA32_VMX_BASIC_MSR VmxCap = {
-        .Value = __readmsr(IA32_VMX_BASIC)
-    };
+	const IA32_VMX_BASIC_MSR VmxCap = {
+		.Value = __readmsr(IA32_VMX_BASIC)
+	};
 
-    VMX_CAPABILITY_MSR PinbasedCap = {
-        .Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_PINBASED_CTLS) : __readmsr(IA32_VMX_PINBASED_CTLS)
-    };
+	VMX_CAPABILITY_MSR PinbasedCap = {
+		.Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_PINBASED_CTLS) : __readmsr(IA32_VMX_PINBASED_CTLS)
+	};
 
-    return (~VmxGetFixedBits(PinbasedCap.Value) & VMX_CONTROL_MASK(VMX_CTL_VMX_PREEMPTION_TIMER)) != 0;
+	return (~VmxGetFixedBits(PinbasedCap.Value) & VMX_CONTROL_MASK(VMX_CTL_VMX_PREEMPTION_TIMER)) != 0;
 }
 
 VSC_API
@@ -84,57 +84,57 @@ BOOLEAN
 VmxEnableVmxon(VOID)
 /*++
 Routine Description:
-    Enables VMX inside of CR4 and enables/checks the VMXON outside SMX flag in 
-    the feature control MSR
+	Enables VMX inside of CR4 and enables/checks the VMXON outside SMX flag in 
+	the feature control MSR
 --*/
 {
-    X86_CR4 Cr4 = (X86_CR4){
-        .Value = __readcr4()
-    };
+	X86_CR4 Cr4 = (X86_CR4){
+		.Value = __readcr4()
+	};
 
-    Cr4.VmxEnable = TRUE;
+	Cr4.VmxEnable = TRUE;
 
-    __writecr4(Cr4.Value);
+	__writecr4(Cr4.Value);
 
-    IA32_FEATURE_CONTROL_MSR FeatureControl = {
-        .Value = __readmsr(IA32_FEATURE_CONTROL)
-    };
+	IA32_FEATURE_CONTROL_MSR FeatureControl = {
+		.Value = __readmsr(IA32_FEATURE_CONTROL)
+	};
 
-    if (FeatureControl.Lock == 0)
-    {
-        FeatureControl.VmxonOutsideSmx = TRUE;
-        FeatureControl.Lock = TRUE;
+	if (FeatureControl.Lock == 0)
+	{
+		FeatureControl.VmxonOutsideSmx = TRUE;
+		FeatureControl.Lock = TRUE;
 
-        __writemsr(IA32_FEATURE_CONTROL, FeatureControl.Value);
+		__writemsr(IA32_FEATURE_CONTROL, FeatureControl.Value);
 
-        return TRUE;
-    }
+		return TRUE;
+	}
 
-    return FeatureControl.VmxonOutsideSmx == 1;
+	return FeatureControl.VmxonOutsideSmx == 1;
 }
 
 VSC_API
 UINT64
 VmxApplyCr0Restrictions(
-    _In_ UINT64 Cr0
+	_In_ UINT64 Cr0
 )
 {
-    Cr0 |= __readmsr(IA32_VMX_CR0_FIXED0);
-    Cr0 &= __readmsr(IA32_VMX_CR0_FIXED1); 
+	Cr0 |= __readmsr(IA32_VMX_CR0_FIXED0);
+	Cr0 &= __readmsr(IA32_VMX_CR0_FIXED1); 
 
-    return Cr0;
+	return Cr0;
 }
 
 VSC_API
 UINT64
 VmxApplyCr4Restrictions(
-    _In_ UINT64 Cr4
+	_In_ UINT64 Cr4
 )
 {
-    Cr4 |= __readmsr(IA32_VMX_CR4_FIXED0);
-    Cr4 &= __readmsr(IA32_VMX_CR4_FIXED1);
+	Cr4 |= __readmsr(IA32_VMX_CR4_FIXED0);
+	Cr4 &= __readmsr(IA32_VMX_CR4_FIXED1);
 
-    return Cr4;
+	return Cr4;
 }
 
 VSC_API
@@ -142,265 +142,265 @@ VOID
 VmxRestrictControlRegisters(VOID)
 /*++
 Routine Description:
-    Applies restrictions on the CR0 and CR4 registers to prepare this CPU
-    for VMX operation. See Intel SDM Vol.3 Chapter 23.8
+	Applies restrictions on the CR0 and CR4 registers to prepare this CPU
+	for VMX operation. See Intel SDM Vol.3 Chapter 23.8
 --*/
 {
-    __writecr0(VmxApplyCr0Restrictions(__readcr0()));
-    __writecr4(VmxApplyCr4Restrictions(__readcr4()));
+	__writecr0(VmxApplyCr0Restrictions(__readcr0()));
+	__writecr4(VmxApplyCr4Restrictions(__readcr4()));
 }
 
 VMM_API
 BOOLEAN
 VmxShouldPushErrorCode(
-    _In_ VMX_ENTRY_INTERRUPT_INFO Interrupt
+	_In_ VMX_ENTRY_INTERRUPT_INFO Interrupt
 )
 /*++
 Routine Description:
-    Checks if the current interrupt should push an error code onto the interrupt trap frame. See the Intel SDM
-    Vol. 3 Chapter 26.2.1.3 where these checks are described
+	Checks if the current interrupt should push an error code onto the interrupt trap frame. See the Intel SDM
+	Vol. 3 Chapter 26.2.1.3 where these checks are described
 --*/
 {
-    if (Interrupt.Type != INTERRUPT_TYPE_HARDWARE_EXCEPTION)
-        return FALSE;
+	if (Interrupt.Type != INTERRUPT_TYPE_HARDWARE_EXCEPTION)
+		return FALSE;
 
-    IA32_VMX_BASIC_MSR VmxCap = {
-        .Value = __readmsr(IA32_VMX_BASIC)
-    };
+	IA32_VMX_BASIC_MSR VmxCap = {
+		.Value = __readmsr(IA32_VMX_BASIC)
+	};
 
-    if (VmxCap.NoErrCodeRequirement)
-        return FALSE;
+	if (VmxCap.NoErrCodeRequirement)
+		return FALSE;
 
-    X86_CR0 Cr0 = {
-        .Value = VmxRead(GUEST_CR0)
-    };
+	X86_CR0 Cr0 = {
+		.Value = VmxRead(GUEST_CR0)
+	};
 
-    if (!Cr0.ProtectedMode)
-        return FALSE;
+	if (!Cr0.ProtectedMode)
+		return FALSE;
 
-    if (Interrupt.Vector != EXCEPTION_DOUBLE_FAULT ||
-        Interrupt.Vector != EXCEPTION_INVALID_TSS ||
-        Interrupt.Vector != EXCEPTION_SEGMENT_NOT_PRESENT ||
-        Interrupt.Vector != EXCEPTION_STACK_SEGMENT_FAULT ||
-        Interrupt.Vector != EXCEPTION_GENERAL_PROTECTION_FAULT ||
-        Interrupt.Vector != EXCEPTION_PAGE_FAULT ||
-        Interrupt.Vector != EXCEPTION_ALIGNMENT_CHECK)
-        return FALSE;
+	if (Interrupt.Vector != EXCEPTION_DOUBLE_FAULT ||
+		Interrupt.Vector != EXCEPTION_INVALID_TSS ||
+		Interrupt.Vector != EXCEPTION_SEGMENT_NOT_PRESENT ||
+		Interrupt.Vector != EXCEPTION_STACK_SEGMENT_FAULT ||
+		Interrupt.Vector != EXCEPTION_GENERAL_PROTECTION_FAULT ||
+		Interrupt.Vector != EXCEPTION_PAGE_FAULT ||
+		Interrupt.Vector != EXCEPTION_ALIGNMENT_CHECK)
+		return FALSE;
 
-    return TRUE;
+	return TRUE;
 }
 
 VMM_API
 VOID
 VmxInjectEvent(
-    _In_ UINT8 Vector,
-    _In_ UINT8 Type,
-    _In_ UINT16 ErrorCode
+	_In_ UINT8 Vector,
+	_In_ UINT8 Type,
+	_In_ UINT16 ErrorCode
 )
 /*++
 Routine Description:
-    Injects a VMX event by filling out the VM-entry interrupt information VMCS component 
+	Injects a VMX event by filling out the VM-entry interrupt information VMCS component 
 --*/
 {
-    VMX_ENTRY_INTERRUPT_INFO Interrupt = {0};
+	VMX_ENTRY_INTERRUPT_INFO Interrupt = {0};
 
-    Interrupt.Valid = TRUE;
-    Interrupt.Vector = Vector;
-    Interrupt.Type = Type;
-    Interrupt.DeliverErrorCode = VmxShouldPushErrorCode(Interrupt);
+	Interrupt.Valid = TRUE;
+	Interrupt.Vector = Vector;
+	Interrupt.Type = Type;
+	Interrupt.DeliverErrorCode = VmxShouldPushErrorCode(Interrupt);
 
-    VmxWrite(CONTROL_VMENTRY_EXCEPTION_ERROR_CODE, ErrorCode);
-    VmxWrite(CONTROL_VMENTRY_INTERRUPT_INFO, Interrupt.Value);
+	VmxWrite(CONTROL_VMENTRY_EXCEPTION_ERROR_CODE, ErrorCode);
+	VmxWrite(CONTROL_VMENTRY_INTERRUPT_INFO, Interrupt.Value);
 
-    if (Interrupt.Type == INTERRUPT_TYPE_SOFTWARE_EXCEPTION ||
-        Interrupt.Type == INTERRUPT_TYPE_SOFTWARE_INTERRUPT ||
-        Interrupt.Type == INTERRUPT_TYPE_PRIVILEGED_SOFTWARE_INTERRUPT)
-        VmxWrite(CONTROL_VMENTRY_INSTRUCTION_LEN, VmxRead(VM_EXIT_INSTRUCTION_LEN));
+	if (Interrupt.Type == INTERRUPT_TYPE_SOFTWARE_EXCEPTION ||
+		Interrupt.Type == INTERRUPT_TYPE_SOFTWARE_INTERRUPT ||
+		Interrupt.Type == INTERRUPT_TYPE_PRIVILEGED_SOFTWARE_INTERRUPT)
+		VmxWrite(CONTROL_VMENTRY_INSTRUCTION_LEN, VmxRead(VM_EXIT_INSTRUCTION_LEN));
 }
 
 VMM_API
 UINT64
 VmxRead(
-    _In_ VMCS Component
+	_In_ VMCS Component
 )
 /*++
 Routine Description:
-    Read the value of a VMCS component from the active VMCS
+	Read the value of a VMCS component from the active VMCS
 --*/
 {
-    UINT64 Value = 0;
-    __vmx_vmread(Component, &Value);
+	UINT64 Value = 0;
+	__vmx_vmread(Component, &Value);
 
-    return Value;
+	return Value;
 }
 
 VMM_API
 VOID
 VmxWrite(
-    _In_ VMCS Component,
-    _In_ UINT64 Value
+	_In_ VMCS Component,
+	_In_ UINT64 Value
 )
 /*++
 Routine Description:
-    Write a value to a VMCS component in the active VMCS
+	Write a value to a VMCS component in the active VMCS
 --*/
 {
-    __vmx_vmwrite(Component, Value);
+	__vmx_vmwrite(Component, Value);
 }
 
 VMM_API
 VOID
 VmxInvvpid(
-    _In_ VMX_INVEPT_MODE InvMode,
-    _In_ UINT16 Vpid
+	_In_ VMX_INVEPT_MODE InvMode,
+	_In_ UINT16 Vpid
 )
 {
-    VMX_INVVPID_DESCRIPTOR Desc = {
-        .Vpid = Vpid
-    };
+	VMX_INVVPID_DESCRIPTOR Desc = {
+		.Vpid = Vpid
+	};
 
-    __invvpid(InvMode, &Desc);
+	__invvpid(InvMode, &Desc);
 }
 
 UINT64
 VmxGetFixedBits(
-    _In_ UINT64 VmxCapability
+	_In_ UINT64 VmxCapability
 )
 /*++
 Routine Description:
 	Calculates the bits that can be modified in a VMX control capability
 --*/
 {
-    const VMX_CAPABILITY_MSR Cap = {
-        .Value = VmxCapability
-    };
+	const VMX_CAPABILITY_MSR Cap = {
+		.Value = VmxCapability
+	};
 
-    return ~(Cap.OnBits ^ Cap.OffBits);
+	return ~(Cap.OnBits ^ Cap.OffBits);
 }
 
 VOID
 VmxSetControl(
-    _Inout_ PVMX_STATE Vmx,
-    _In_ VMX_CONTROL Control,
-    _In_ BOOLEAN State
+	_Inout_ PVMX_STATE Vmx,
+	_In_ VMX_CONTROL Control,
+	_In_ BOOLEAN State
 )
 /*++
 Routine Description:
 	Toggles a VMX execution control
 --*/
 {
-    PUINT32 TargetControls = NULL;
-    UINT64 TargetCap = 0;
+	PUINT32 TargetControls = NULL;
+	UINT64 TargetCap = 0;
 	
-    switch (VMX_CONTROL_FIELD(Control))
-    {
-    case VMX_PINBASED_CTLS:
-        TargetControls = &Vmx->Controls.PinbasedCtls;
-        TargetCap = Vmx->Cap.PinbasedCtls;
-        break;
+	switch (VMX_CONTROL_FIELD(Control))
+	{
+	case VMX_PINBASED_CTLS:
+		TargetControls = &Vmx->Controls.PinbasedCtls;
+		TargetCap = Vmx->Cap.PinbasedCtls;
+		break;
 
-    case VMX_PRIM_PROCBASED_CTLS:
-        TargetControls = &Vmx->Controls.PrimaryProcbasedCtls;
-        TargetCap = Vmx->Cap.PrimaryProcbasedCtls;
-        break;
+	case VMX_PRIM_PROCBASED_CTLS:
+		TargetControls = &Vmx->Controls.PrimaryProcbasedCtls;
+		TargetCap = Vmx->Cap.PrimaryProcbasedCtls;
+		break;
 
-    case VMX_SEC_PROCBASED_CTLS:
-        TargetControls = &Vmx->Controls.SecondaryProcbasedCtls;
-        TargetCap = Vmx->Cap.SecondaryProcbasedCtls;
-        break;
+	case VMX_SEC_PROCBASED_CTLS:
+		TargetControls = &Vmx->Controls.SecondaryProcbasedCtls;
+		TargetCap = Vmx->Cap.SecondaryProcbasedCtls;
+		break;
 
-    case VMX_EXIT_CTLS:
-        TargetControls = &Vmx->Controls.VmExitCtls;
-        TargetCap = Vmx->Cap.VmExitCtls;
-        break;
+	case VMX_EXIT_CTLS:
+		TargetControls = &Vmx->Controls.VmExitCtls;
+		TargetCap = Vmx->Cap.VmExitCtls;
+		break;
 
-    case VMX_ENTRY_CTLS:
-        TargetControls = &Vmx->Controls.VmEntryCtls;
-        TargetCap = Vmx->Cap.VmEntryCtls;
-        break;
-    }
+	case VMX_ENTRY_CTLS:
+		TargetControls = &Vmx->Controls.VmEntryCtls;
+		TargetCap = Vmx->Cap.VmEntryCtls;
+		break;
+	}
 
 	if (VmxGetFixedBits(TargetCap) & VMX_CONTROL_MASK(Control))
 		return;
 	
-    if (State)
-        *TargetControls |= VMX_CONTROL_MASK(Control);
-    else
-        *TargetControls &= ~VMX_CONTROL_MASK(Control);
+	if (State)
+		*TargetControls |= VMX_CONTROL_MASK(Control);
+	else
+		*TargetControls &= ~VMX_CONTROL_MASK(Control);
 }
 
 VMM_API
 BOOLEAN
 VmxIsControlSupported(
-    _Inout_ PVMX_STATE Vmx,
-    _In_ VMX_CONTROL Control
+	_Inout_ PVMX_STATE Vmx,
+	_In_ VMX_CONTROL Control
 )
 /*++
 Routine Description:
-    Checks VMX control capability MSRs to see if a VMX control is supported
+	Checks VMX control capability MSRs to see if a VMX control is supported
 --*/
 {
-    UINT64 ControlCap = 0;
+	UINT64 ControlCap = 0;
 
-    switch (VMX_CONTROL_FIELD(Control))
-    {
-    case VMX_PINBASED_CTLS: ControlCap = Vmx->Cap.PinbasedCtls; break;
-    case VMX_PRIM_PROCBASED_CTLS: ControlCap = Vmx->Cap.PrimaryProcbasedCtls; break;
-    case VMX_SEC_PROCBASED_CTLS: ControlCap = Vmx->Cap.SecondaryProcbasedCtls; break;
-    case VMX_EXIT_CTLS: ControlCap = Vmx->Cap.VmExitCtls; break;
-    case VMX_ENTRY_CTLS: ControlCap = Vmx->Cap.VmEntryCtls; break;
-    }
+	switch (VMX_CONTROL_FIELD(Control))
+	{
+	case VMX_PINBASED_CTLS: ControlCap = Vmx->Cap.PinbasedCtls; break;
+	case VMX_PRIM_PROCBASED_CTLS: ControlCap = Vmx->Cap.PrimaryProcbasedCtls; break;
+	case VMX_SEC_PROCBASED_CTLS: ControlCap = Vmx->Cap.SecondaryProcbasedCtls; break;
+	case VMX_EXIT_CTLS: ControlCap = Vmx->Cap.VmExitCtls; break;
+	case VMX_ENTRY_CTLS: ControlCap = Vmx->Cap.VmEntryCtls; break;
+	}
 
-    return (VmxGetFixedBits(ControlCap) & VMX_CONTROL_MASK(Control)) != 0;
+	return (VmxGetFixedBits(ControlCap) & VMX_CONTROL_MASK(Control)) != 0;
 }
 
 VSC_API
 VOID
 VmxSetupVmxState(
-    _Inout_ PVMX_STATE Vmx
+	_Inout_ PVMX_STATE Vmx
 )
 /*++
 Routine Description:
-    Initialises the VMX state's controls and capability fields to default values for VMX operation
+	Initialises the VMX state's controls and capability fields to default values for VMX operation
 --*/
 {
-    const IA32_VMX_BASIC_MSR VmxCap = {
-        .Value = __readmsr(IA32_VMX_BASIC)
-    };
+	const IA32_VMX_BASIC_MSR VmxCap = {
+		.Value = __readmsr(IA32_VMX_BASIC)
+	};
 
-    VMX_CAPABILITY_MSR PinbasedCap = {
+	VMX_CAPABILITY_MSR PinbasedCap = {
 		.Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_PINBASED_CTLS) : __readmsr(IA32_VMX_PINBASED_CTLS)
-    };
+	};
 
-    VMX_CAPABILITY_MSR PrimProcbasedCap = {
-        .Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_PROCBASED_CTLS) : __readmsr(IA32_VMX_PROCBASED_CTLS)
-    };
+	VMX_CAPABILITY_MSR PrimProcbasedCap = {
+		.Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_PROCBASED_CTLS) : __readmsr(IA32_VMX_PROCBASED_CTLS)
+	};
 
-    VMX_CAPABILITY_MSR SecProcbasedCap = {
-        .Value = __readmsr(IA32_VMX_PROCBASED_CTLS2)
-    };
+	VMX_CAPABILITY_MSR SecProcbasedCap = {
+		.Value = __readmsr(IA32_VMX_PROCBASED_CTLS2)
+	};
 
-    VMX_CAPABILITY_MSR VmEntryCap = {
-        .Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_ENTRY_CTLS) : __readmsr(IA32_VMX_ENTRY_CTLS)
-    };
+	VMX_CAPABILITY_MSR VmEntryCap = {
+		.Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_ENTRY_CTLS) : __readmsr(IA32_VMX_ENTRY_CTLS)
+	};
 
-    VMX_CAPABILITY_MSR VmExitCap = {
-        .Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_EXIT_CTLS) : __readmsr(IA32_VMX_EXIT_CTLS)
-    };
+	VMX_CAPABILITY_MSR VmExitCap = {
+		.Value = VmxCap.TrueControls ? __readmsr(IA32_VMX_TRUE_EXIT_CTLS) : __readmsr(IA32_VMX_EXIT_CTLS)
+	};
 
-    *Vmx = (VMX_STATE){
-        .Cap.PinbasedCtls = PinbasedCap.Value,
-        .Cap.PrimaryProcbasedCtls = PrimProcbasedCap.Value,
-        .Cap.SecondaryProcbasedCtls = SecProcbasedCap.Value,
-        .Cap.VmEntryCtls = VmEntryCap.Value,
-        .Cap.VmExitCtls = VmExitCap.Value,
+	*Vmx = (VMX_STATE){
+		.Cap.PinbasedCtls = PinbasedCap.Value,
+		.Cap.PrimaryProcbasedCtls = PrimProcbasedCap.Value,
+		.Cap.SecondaryProcbasedCtls = SecProcbasedCap.Value,
+		.Cap.VmEntryCtls = VmEntryCap.Value,
+		.Cap.VmExitCtls = VmExitCap.Value,
 
-        .Controls.PinbasedCtls = PinbasedCap.OnBits,
-        .Controls.PrimaryProcbasedCtls = PrimProcbasedCap.OnBits,
-        .Controls.SecondaryProcbasedCtls = SecProcbasedCap.OnBits,
-        .Controls.VmEntryCtls = VmEntryCap.OnBits,
-        .Controls.VmExitCtls = VmExitCap.OnBits,
-    };
+		.Controls.PinbasedCtls = PinbasedCap.OnBits,
+		.Controls.PrimaryProcbasedCtls = PrimProcbasedCap.OnBits,
+		.Controls.SecondaryProcbasedCtls = SecProcbasedCap.OnBits,
+		.Controls.VmEntryCtls = VmEntryCap.OnBits,
+		.Controls.VmExitCtls = VmExitCap.OnBits,
+	};
 }
 
 VMM_API
@@ -408,8 +408,8 @@ VOID
 VmxAdvanceGuestRip(VOID)
 /*++
 Routine Description:
-    Advances the guest's RIP to the next instruction
+	Advances the guest's RIP to the next instruction
 --*/
 {
-    VmxWrite(GUEST_RIP, VmxRead(GUEST_RIP) + VmxRead(VM_EXIT_INSTRUCTION_LEN));
+	VmxWrite(GUEST_RIP, VmxRead(GUEST_RIP) + VmxRead(VM_EXIT_INSTRUCTION_LEN));
 }

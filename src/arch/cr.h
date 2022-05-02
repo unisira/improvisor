@@ -34,13 +34,13 @@ typedef union _X86_CR0
 
 typedef union _X86_CR3
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT64 Pcid : 12;
-        UINT64 PageDirectoryBase : 52;
-    };
+	struct
+	{
+		UINT64 Pcid : 12;
+		UINT64 PageDirectoryBase : 52;
+	};
 } X86_CR3, *PX86_CR3;
 
 typedef union _X86_CR4

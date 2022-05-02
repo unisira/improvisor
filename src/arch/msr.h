@@ -50,107 +50,107 @@
 
 typedef union _IA32_FEATURE_CONTROL_MSR
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT64 Lock : 1;
-        UINT64 VmxonInsideSmx : 1; 
-        UINT64 VmxonOutsideSmx : 1;
-        UINT64 Reserved1 : 5;
-        UINT64 SenterLocal : 7;
-        UINT64 SenterGlobal : 1;
-        UINT64 Reserved2 : 1;
-        UINT64 SGXLaunchControlEnable : 1;
-        UINT64 SGXGlobalEnable : 1;
-        UINT64 Reserved3 : 1;
-        UINT64 LMCEOn : 1;
-        UINT64 Reserve4 : 43;
-    };
+	struct
+	{
+		UINT64 Lock : 1;
+		UINT64 VmxonInsideSmx : 1; 
+		UINT64 VmxonOutsideSmx : 1;
+		UINT64 Reserved1 : 5;
+		UINT64 SenterLocal : 7;
+		UINT64 SenterGlobal : 1;
+		UINT64 Reserved2 : 1;
+		UINT64 SGXLaunchControlEnable : 1;
+		UINT64 SGXGlobalEnable : 1;
+		UINT64 Reserved3 : 1;
+		UINT64 LMCEOn : 1;
+		UINT64 Reserve4 : 43;
+	};
 } IA32_FEATURE_CONTROL_MSR, *PIA32_FEATURE_CONTROL_MSR;
 
 typedef union _IA32_VMX_BASIC_MSR
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT64 VmcsRevisionId : 32;
-        UINT64 VmxRegionSize : 13;
-        UINT64 Reserved1 : 3;
-        UINT64 VmxonPhysicalAddressWidth : 1;
-        UINT64 DualMonitorSmi : 1;
-        UINT64 MemoryType : 4;
-        UINT64 IOInstructionReporting : 1;
-        UINT64 TrueControls : 1;
-        UINT64 NoErrCodeRequirement : 1;
-        UINT64 Reserved2 : 7;
-    };
+	struct
+	{
+		UINT64 VmcsRevisionId : 32;
+		UINT64 VmxRegionSize : 13;
+		UINT64 Reserved1 : 3;
+		UINT64 VmxonPhysicalAddressWidth : 1;
+		UINT64 DualMonitorSmi : 1;
+		UINT64 MemoryType : 4;
+		UINT64 IOInstructionReporting : 1;
+		UINT64 TrueControls : 1;
+		UINT64 NoErrCodeRequirement : 1;
+		UINT64 Reserved2 : 7;
+	};
 } IA32_VMX_BASIC_MSR, *PIA32_VMX_BASIC_MSR;
 
 typedef union _IA32_EFER_MSR
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT64 SyscallEnable : 1;
-        UINT64 Reserved1 : 1;
-        UINT64 LongModeEnable : 1;
-        UINT64 LongModeActive : 1;
-        UINT64 ExecuteDisable : 1;
-        UINT64 Reserved3 : 52;
-    };
+	struct
+	{
+		UINT64 SyscallEnable : 1;
+		UINT64 Reserved1 : 1;
+		UINT64 LongModeEnable : 1;
+		UINT64 LongModeActive : 1;
+		UINT64 ExecuteDisable : 1;
+		UINT64 Reserved3 : 52;
+	};
 } IA32_EFER_MSR, *PIA32_EFER_MSR;
 
 typedef union _IA32_APIC_BASE_MSR
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT64 Reserved1: 8;
-        UINT64 Bsp : 1;
-        UINT64 Reserved2 : 1;
-        UINT64 X2APICMode : 1;
-        UINT64 APICEnable : 1;
-        UINT64 APICBase: 52;
-    };
+	struct
+	{
+		UINT64 Reserved1: 8;
+		UINT64 Bsp : 1;
+		UINT64 Reserved2 : 1;
+		UINT64 X2APICMode : 1;
+		UINT64 APICEnable : 1;
+		UINT64 APICBase: 52;
+	};
 } IA32_APIC_BASE_MSR, *PIA32_APIC_BASE_MSR;
 
 typedef union _IA32_VMX_EPT_VPID_CAP_MSR
 {
-    UINT64 Value;
+	UINT64 Value;
 
-    struct
-    {
-        UINT64 ExecuteOnlyTranslationSupport : 1;
-        UINT64 Reserved1 : 5;
-        UINT64 PageWalkLength4Support : 1;
-        UINT64 Reserved2 : 1;
-        UINT64 UcMemoryTypeSupport : 1;
-        UINT64 Reserved3 : 5;
-        UINT64 WbMemoryTypeSupport : 1;
-        UINT64 Reserved4 : 1;
-        UINT64 LargePdeSupport : 1;
-        UINT64 SuperPdpteSupport : 1;
-        UINT64 Reserved5 : 2;
-        UINT64 InveptSupport : 1;
-        UINT64 AccessedDirtyFlagsSupport : 1;
-        UINT64 AdvancedEptViolationInfo : 1;
-        UINT64 SupervisorShadowStackControlSupport : 1;
-        UINT64 Reserved6 : 1;
-        UINT64 InveptSingleCtxSupport : 1;
-        UINT64 InveptAllCtxSupport : 1;
-        UINT64 Reserved7 : 5;
-        UINT64 InvvpidSupport : 1;
-        UINT64 Reserved8 : 7;
-        UINT64 SingleAddrInvvpidSupport : 1;
-        UINT64 SingleCtxInvvpidSupport : 1;
-        UINT64 AllCtxInvvpidSupport : 1;
-        UINT64 SingleCtxRetainGlobalsInvvpidSupport : 1;
-        UINT64 Reserved9 : 20;
-    };
+	struct
+	{
+		UINT64 ExecuteOnlyTranslationSupport : 1;
+		UINT64 Reserved1 : 5;
+		UINT64 PageWalkLength4Support : 1;
+		UINT64 Reserved2 : 1;
+		UINT64 UcMemoryTypeSupport : 1;
+		UINT64 Reserved3 : 5;
+		UINT64 WbMemoryTypeSupport : 1;
+		UINT64 Reserved4 : 1;
+		UINT64 LargePdeSupport : 1;
+		UINT64 SuperPdpteSupport : 1;
+		UINT64 Reserved5 : 2;
+		UINT64 InveptSupport : 1;
+		UINT64 AccessedDirtyFlagsSupport : 1;
+		UINT64 AdvancedEptViolationInfo : 1;
+		UINT64 SupervisorShadowStackControlSupport : 1;
+		UINT64 Reserved6 : 1;
+		UINT64 InveptSingleCtxSupport : 1;
+		UINT64 InveptAllCtxSupport : 1;
+		UINT64 Reserved7 : 5;
+		UINT64 InvvpidSupport : 1;
+		UINT64 Reserved8 : 7;
+		UINT64 SingleAddrInvvpidSupport : 1;
+		UINT64 SingleCtxInvvpidSupport : 1;
+		UINT64 AllCtxInvvpidSupport : 1;
+		UINT64 SingleCtxRetainGlobalsInvvpidSupport : 1;
+		UINT64 Reserved9 : 20;
+	};
 } IA32_VMX_EPT_VPID_CAP_MSR, *PIA32_VMX_EPT_VPID_CAP_MSR;
 
 #endif

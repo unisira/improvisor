@@ -6,12 +6,12 @@ typedef SPINLOCK* PSPINLOCK;
 
 VOID
 SpinLock(
-    _Inout_ PSPINLOCK Lock
+	_Inout_ PSPINLOCK Lock
 );
 
 VOID
 SpinUnlock(
-    _Inout_ PSPINLOCK Lock
+	_Inout_ PSPINLOCK Lock
 );
 
 #endif

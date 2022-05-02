@@ -125,8 +125,8 @@ __vmexit_entry PROC
 	call VcpuHandleExit						; Call the VM-exit handler
 	add rsp, 28h							; Remove shadow stack space
 
-    test rax, rax							; Test if RAX == 0
-    jne no_abort                            ; TODO: Check for KVA shadowing
+	test rax, rax							; Test if RAX == 0
+	jne no_abort                            ; TODO: Check for KVA shadowing
 	add rsp, SIZEOF GUEST_STATE				; Get rid of GUEST_STATE data
 	sub rsp, SIZEOF CPU_STATE				; Allocate CPU_STATE
 	lea rcx, [rsp]							; RCX = &CPU_STATE
