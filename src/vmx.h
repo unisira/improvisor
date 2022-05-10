@@ -426,6 +426,12 @@ VmxInjectEvent(
 	_In_ UINT16 ErrorCode
 );
 
+BOOLEAN
+VmxIsEventPending(
+	_In_ UINT8 Vector,
+	_In_ UINT8 Type
+);
+
 UINT64
 VmxRead(
 	_In_ VMCS Component

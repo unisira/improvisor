@@ -219,6 +219,31 @@ Routine Description:
 }
 
 VMM_API
+BOOLEAN
+VmxIsEventPending(
+	_In_ UINT8 Vector,
+	_In_ UINT8 Type
+)
+/*++
+Routine Description:
+	Checks if the active VMCS has an injected event pending matching `Vector` and `Type`.
+--*/
+{
+	VMX_ENTRY_INTERRUPT_INFO Interrupt = {
+		.Value = VmxRead(CONTROL_VMENTRY_INTERRUPT_INFO)
+	};
+
+	if (Interrupt.Valid == FALSE)
+		return FALSE;
+
+	if (Interrupt.Vector == Vector &&
+		Interrupt.Type == Type)
+		return TRUE;
+
+	return FALSE;
+}
+
+VMM_API
 UINT64
 VmxRead(
 	_In_ VMCS Component

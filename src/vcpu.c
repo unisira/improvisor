@@ -21,6 +21,10 @@ EXTERN_C
 VOID
 __vmexit_entry(VOID);
 
+EXTERN_C
+PVCPU
+__current_vcpu(VOID);
+
 VMEXIT_HANDLER VcpuUnknownExitReason;
 VMEXIT_HANDLER VcpuHandleCpuid;
 VMEXIT_HANDLER VcpuHandleInvalidGuestState;
@@ -265,6 +269,7 @@ Routine Description:
 		CurrEvent->Links.Blink = i > 0                      ? &(CurrEvent - 1)->Links : NULL;
 	}
 
+	// Setup VCPU reference in the stack so the guest can return to execution after VM-launch
 	Vcpu->Stack->Cache.Vcpu = Vcpu;
 
 	// TODO: Temp fix until we are using VMM created host CR3
@@ -465,7 +470,6 @@ Routine Description:
 
 	VmxWrite(HOST_GDTR_BASE, Vcpu->Vmm->Gdt);
 	VmxWrite(HOST_IDTR_BASE, Vcpu->Vmm->Idt);
-	//VmxWrite(HOST_IDTR_BASE, Vcpu->Vmm->HostInterruptDescriptor.BaseAddress);
 
 	X86_SEGMENT_SELECTOR Segment = {0};
 
@@ -533,6 +537,10 @@ Routine Description:
 	VmxWrite(GUEST_TR_BASE, SegmentBaseAddress(Segment));
 	VmxWrite(HOST_TR_BASE, SegmentBaseAddress(Segment));
 	VmxWrite(HOST_TR_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+
+	// Write the host CS and TSS selectors
+	VmxWrite(HOST_CS_SELECTOR, gVmmCsSelector.Value);
+	VmxWrite(HOST_TR_SELECTOR, gVmmTssSelector.Value);
 
 	// Store the current VCPU in the FS register
 	VmxWrite(HOST_FS_BASE, Vcpu);
@@ -1886,6 +1894,10 @@ Routine Description:
 		MtfEntry = (PMTF_EVENT_ENTRY)MtfEntry->Links.Flink;
 	}
 
+	// If this MTF event entry is the first (MTF_EVENT_ENTRY::Links::Blink == NULL), enable MTF exiting
+	if (MtfEntry->Links.Blink == NULL && !VmxIsEventPending(INTERRUPT_PENDING_MTF, INTERRUPT_TYPE_OTHER_EVENT))
+		VcpuSetControl(Vcpu, VMX_CTL_MONITOR_TRAP_FLAG, TRUE);
+
 	MtfEntry->Event = Event;
 	MtfEntry->Valid = TRUE;
 
@@ -1920,7 +1932,7 @@ VcpuPushPendingMTFEvent(
 )
 {
 	// Inject pending MTF interrupt
-	VmxInjectEvent(INTERRUPT_TYPE_OTHER_EVENT, INTERRUPT_PENDING_MTF, 0);
+	VmxInjectEvent(INTERRUPT_PENDING_MTF, INTERRUPT_TYPE_OTHER_EVENT, 0);
 	// Push MTF event
 	VcpuPushMTFEvent(Vcpu, Event);
 }
