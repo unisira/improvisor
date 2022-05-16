@@ -34,7 +34,7 @@ Routine Description:
 
 	PX86_SEGMENT_DESCRIPTOR Segment = LookupSegmentDescriptor(Selector);
 
-	if (Segment == NULL)
+	if (Segment == NULL || !Segment->Present)
 	{
 		ImpDebugPrint("Invalid segment selector '%u'...\n", Selector.Value);
 		return 0;
