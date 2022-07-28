@@ -3,8 +3,9 @@
 #include "arch/memory.h"
 #include "arch/cpuid.h"
 #include "arch/msr.h"
-#include "arch/cr.h"
+#include "arch/cr.h" 
 #include "util/macro.h"
+#include "util/spinlock.h"
 #include "section.h"
 #include "intrin.h"
 #include "vmcall.h"
@@ -12,11 +13,62 @@
 #include "vcpu.h"
 #include "vmm.h"
 
+#include <intrin.h>
+
+//#define IMPV_USE_WINDOWS_CPU_STRUCTURES
+
+#define VCPU_IST_STACK_SIZE 0x2000
+#define VCPU_NMI_IST_STACK 3
 // The value of the VMX preemption timer used as a watchdog for TSC virtualisation
 #define VTSC_WATCHDOG_QUANTUM 4000
 // Amount of entries in the MTF event stack
 #define MTF_EVENT_MAX_COUNT 16
 
+EXTERN_C_START
+#define VMM_INTR_GATE(Index)    \
+	VOID                        \
+	__vmm_intr_gate_##Index()   \
+
+VMM_INTR_GATE(0);
+VMM_INTR_GATE(1);
+VMM_INTR_GATE(2);
+VMM_INTR_GATE(3);
+VMM_INTR_GATE(4);
+VMM_INTR_GATE(5);
+VMM_INTR_GATE(6);
+VMM_INTR_GATE(7);
+VMM_INTR_GATE(8);
+VMM_INTR_GATE(9);
+VMM_INTR_GATE(10);
+VMM_INTR_GATE(11);
+VMM_INTR_GATE(12);
+VMM_INTR_GATE(13);
+VMM_INTR_GATE(14);
+VMM_INTR_GATE(15);
+VMM_INTR_GATE(16);
+VMM_INTR_GATE(17);
+VMM_INTR_GATE(18);
+VMM_INTR_GATE(19);
+VMM_INTR_GATE(20);
+VMM_INTR_GATE(21);
+VMM_INTR_GATE(22);
+VMM_INTR_GATE(23);
+VMM_INTR_GATE(24);
+VMM_INTR_GATE(25);
+VMM_INTR_GATE(26);
+VMM_INTR_GATE(27);
+VMM_INTR_GATE(28);
+VMM_INTR_GATE(29);
+VMM_INTR_GATE(30);
+VMM_INTR_GATE(31);
+VMM_INTR_GATE(32);
+
+VMM_INTR_GATE(unk);
+
+#undef VMM_INTR_GATE
+EXTERN_C_END
+
+// TODO: Figure out how to make this allocated in 
 EXTERN_C
 VOID
 __vmexit_entry(VOID);
@@ -47,8 +99,9 @@ VMEXIT_HANDLER VcpuHandleMTFExit;
 VMEXIT_HANDLER VcpuHandleWbinvd;
 VMEXIT_HANDLER VcpuHandleXsetbv;
 VMEXIT_HANDLER VcpuHandleInvlpg;
+VMEXIT_HANDLER VcpuHandleInvd;
 
-static VMM_RDATA const VMEXIT_HANDLER* sExitHandlers[] = {
+VMM_RDATA static const VMEXIT_HANDLER* sExitHandlers[] = {
 	VcpuHandleExceptionNmi,         // Exception or non-maskable interrupt (NMI)
 	VcpuHandleExternalInterrupt, 	// External interrupt
 	VcpuUnknownExitReason, 			// Triple fault
@@ -62,7 +115,7 @@ static VMM_RDATA const VMEXIT_HANDLER* sExitHandlers[] = {
 	VcpuHandleCpuid,				// CPUID
 	VcpuHandleVmxInstruction, 		// GETSEC
 	VcpuUnknownExitReason, 			// HLT
-	VcpuUnknownExitReason, 			// INVD
+	VcpuHandleInvd, 				// INVD
 	VcpuUnknownExitReason, 			// INVLPG
 	VcpuUnknownExitReason, 			// RDPMC
 	VcpuHandleRdtsc, 			    // RDTSC
@@ -103,7 +156,7 @@ static VMM_RDATA const VMEXIT_HANDLER* sExitHandlers[] = {
 	VcpuHandleRdtscp,     			// RDTSCP
 	VcpuHandleTimerExpire,          // VMX-preemption timer expired
 	VcpuHandleVmxInstruction, 		// INVVPID
-	VcpuUnknownExitReason, 			// WBINVD or WBNOINVD
+	VcpuHandleWbinvd, 				// WBINVD or WBNOINVD
 	VcpuHandleXsetbv, 			    // XSETBV
 	VcpuUnknownExitReason, 			// APIC write
 	VcpuUnknownExitReason, 			// RDRAND
@@ -121,6 +174,41 @@ static VMM_RDATA const VMEXIT_HANDLER* sExitHandlers[] = {
 	VcpuUnknownExitReason, 			// LOADIWKEY
 };
 
+VMM_RDATA static const PVOID sExceptionRoutines[] = {
+	__vmm_intr_gate_0,
+	__vmm_intr_gate_1,
+	__vmm_intr_gate_2,
+	__vmm_intr_gate_3,
+	__vmm_intr_gate_4,
+	__vmm_intr_gate_5,
+	__vmm_intr_gate_6,
+	__vmm_intr_gate_7,
+	__vmm_intr_gate_8,
+	__vmm_intr_gate_9,
+	__vmm_intr_gate_10,
+	__vmm_intr_gate_11,
+	__vmm_intr_gate_12,
+	__vmm_intr_gate_13,
+	__vmm_intr_gate_14,
+	__vmm_intr_gate_15,
+	__vmm_intr_gate_16,
+	__vmm_intr_gate_17,
+	__vmm_intr_gate_18,
+	__vmm_intr_gate_19,
+	__vmm_intr_gate_20,
+	__vmm_intr_gate_21,
+	__vmm_intr_gate_22,
+	__vmm_intr_gate_23,
+	__vmm_intr_gate_24,
+	__vmm_intr_gate_25,
+	__vmm_intr_gate_26,
+	__vmm_intr_gate_27,
+	__vmm_intr_gate_28,
+	__vmm_intr_gate_29,
+	__vmm_intr_gate_30,
+	__vmm_intr_gate_31
+};
+
 #define CREATE_MSR_ENTRY(Msr) \
 	{Msr, 0UL, 0ULL}
 
@@ -131,7 +219,9 @@ static const VMX_MSR_ENTRY sVmExitMsrStore[] = {
 };
 
 /*
-static DECLSPEC_ALIGN(16) VMX_MSR_ENTRY sVmEntryMsrLoad[] = {
+VMM_RDATA 
+DECLSPEC_ALIGN(16)
+static const VMX_MSR_ENTRY sVmEntryMsrLoad[] = {
 };
 */
 
@@ -178,7 +268,7 @@ VcpuDestroy(
 	_Inout_ PVCPU Vcpu
 );
 
-VMM_API
+VSC_API
 NTSTATUS
 VcpuPostSpawnInitialisation(
 	_Inout_ PVCPU Vcpu
@@ -200,6 +290,17 @@ VMM_API
 NTSTATUS
 VcpuLoadPDPTRs(
 	_In_ PVCPU Vcpu
+);
+
+NTSTATUS
+VcpuPrepareHostGDT(
+	_Inout_ PVCPU Vcpu
+);
+
+
+NTSTATUS
+VcpuPrepareHostIDT(
+	_Inout_ PVCPU Vcpu
 );
 
 VSC_API
@@ -246,13 +347,18 @@ Routine Description:
 
 	Vcpu->MsrBitmapPhysical = ImpGetPhysicalAddress(Vcpu->MsrBitmap);
 	
-	// VCPU stack cant be hidden because it is used breifly after VMLaunch
-	Vcpu->Stack = (PVCPU_STACK)ImpAllocateNpPool(sizeof(VCPU_STACK));
+	// VCPU stack is registered as hidden even though it is used after launch as VMM will not have hidden it yet
+	Vcpu->Stack = (PVCPU_STACK)ImpAllocateHostNpPool(sizeof(VCPU_STACK));
 	if (Vcpu->Stack == NULL)
 	{
 		ImpDebugPrint("Failed to allocate a host stack for VCPU #%d...\n", Id);
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
+
+	// Setup VCPU reference in the stack so the guest can return to execution after VM-launch
+	Vcpu->Stack->Cache.Vcpu = Vcpu;
+
+	// TODO: Allocate NMI and other interrupt stacks here, set Vcpu->Tss->Rsp0 to interrupt stack
 
 	Vcpu->MtfStackHead = (PMTF_EVENT_ENTRY)ImpAllocateHostNpPool(sizeof(MTF_EVENT_ENTRY) * MTF_EVENT_MAX_COUNT);
 	if (Vcpu->MtfStackHead == NULL)
@@ -265,12 +371,22 @@ Routine Description:
 	{
 		PMTF_EVENT_ENTRY CurrEvent = Vcpu->MtfStackHead + i;
 
-		CurrEvent->Links.Flink = i < MTF_EVENT_MAX_COUNT    ? &(CurrEvent + 1)->Links : NULL;
-		CurrEvent->Links.Blink = i > 0                      ? &(CurrEvent - 1)->Links : NULL;
+		CurrEvent->Links.Flink = i < MTF_EVENT_MAX_COUNT - 1	? &(CurrEvent + 1)->Links : NULL;
+		CurrEvent->Links.Blink = i > 0							? &(CurrEvent - 1)->Links : NULL;
 	}
 
-	// Setup VCPU reference in the stack so the guest can return to execution after VM-launch
-	Vcpu->Stack->Cache.Vcpu = Vcpu;
+	// Setup VCPU host GDT and IDT
+	if (!NT_SUCCESS(VcpuPrepareHostGDT(Vcpu)))
+	{
+		ImpDebugPrint("Failed to allocate GDT for VCPU #%d...\n", Id);
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	if (!NT_SUCCESS(VcpuPrepareHostIDT(Vcpu)))
+	{
+		ImpDebugPrint("Failed to allocate IDT for VCPU #%d...\n", Id);
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
 
 	// TODO: Temp fix until we are using VMM created host CR3
 	Vcpu->SystemDirectoryBase = __readcr3();
@@ -322,6 +438,8 @@ Routine Description:
 
 	// Save GUEST_EFER on VM-exit
 	VcpuSetControl(Vcpu, VMX_CTL_SAVE_EFER_ON_EXIT, TRUE);
+	// Load HOST_EFER on VM-exit
+	VcpuSetControl(Vcpu, VMX_CTL_LOAD_EFER_ON_EXIT, TRUE);
 
 	// Temporarily disable CR3 exiting
 	VcpuSetControl(Vcpu, VMX_CTL_CR3_LOAD_EXITING, FALSE);
@@ -330,6 +448,221 @@ Routine Description:
 	VTscInitialise(&Vcpu->TscInfo);
 
 	return STATUS_SUCCESS;
+}
+
+VSC_API
+NTSTATUS
+VcpuPrepareHostGDT(
+	_Inout_ PVCPU Vcpu
+)
+/*++
+Routine Description:
+	Sets up a GDT with CS and TSS selectors for the host
+--*/
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+
+	X86_PSEUDO_DESCRIPTOR Gdtr;
+	__sgdt(&Gdtr);
+
+#if 1
+	ImpDebugPrint("[%02d] GDTR Base: 0x%llX, Limit: 0x%llX", Vcpu->Id, Gdtr.BaseAddress, Gdtr.Limit);
+
+	for (SIZE_T i = 0; i < Gdtr.Limit / sizeof(X86_SEGMENT_DESCRIPTOR); i++)
+	{
+		PX86_SEGMENT_DESCRIPTOR Desc = &((PX86_SEGMENT_DESCRIPTOR)Gdtr.BaseAddress)[i];
+
+		if (!Desc->Present)
+			continue;
+
+		const UINT64 Limit = ((UINT64)Desc->LimitHigh << 16) | (UINT64)Desc->LimitLow;
+
+		UINT64 Address = (((UINT64)Desc->BaseHigh << 24) |
+					((UINT64)Desc->BaseMiddle << 16) |
+					((UINT64)Desc->BaseLow));
+
+		if (Desc->System == 0)
+		{
+			PX86_SYSTEM_DESCRIPTOR SystemDesc = (PX86_SYSTEM_DESCRIPTOR)Desc;
+			Address |= (UINT64)SystemDesc->BaseUpper << 32;
+		}
+
+		ImpDebugPrint("[%02d] Descriptor #%d:\n\tAddress: 0x%llX\n\tLimit: 0x%llX\n\tSystem: %d\n\tDPL: %d\n\tType: %d\n\tLong: %d\n\tDOS: %d\n\tGRAN: %d\n\tOS: %d\n",
+			Vcpu->Id,
+			i,
+			Address,
+			Limit,
+			Desc->System,
+			Desc->Dpl,
+			Desc->Type,
+			Desc->Long,
+			Desc->DefaultOperationSize,
+			Desc->Granularity,
+			Desc->OsDefined);
+	}
+#endif
+
+	PX86_SEGMENT_DESCRIPTOR Descriptors = ImpAllocateHostContiguousMemory(Gdtr.Limit + 1);
+	if (Descriptors == NULL)
+	{
+		ImpDebugPrint("Failed to allocate GDT descriptors...\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto panic;
+	}
+
+#ifndef IMPV_USE_WINDOWS_CPU_STRUCTURES
+	PX86_SEGMENT_DESCRIPTOR Cs = &Descriptors[gVmmCsSelector.Index];
+
+	Cs->Type = CODE_DATA_TYPE_EXECUTE_READ_ACCESSED;
+	Cs->System = TRUE;
+	Cs->Dpl = 0;
+	Cs->Present = TRUE;
+	Cs->Long = TRUE;
+	Cs->DefaultOperationSize = 0;
+	Cs->Granularity = 0;
+
+	PX86_SYSTEM_DESCRIPTOR Tss = &Descriptors[gVmmTssSelector.Index];
+
+	Tss->Type = SEGMENT_TYPE_NATURAL_TSS_BUSY;
+	Tss->System = FALSE;
+	Tss->Dpl = 0;
+	Tss->Present = TRUE;
+	Tss->Long = FALSE;
+	Tss->DefaultOperationSize = 0;
+	Tss->Granularity = 0;
+	Tss->LimitLow = sizeof(X86_TASK_STATE_SEGMENT) - 1;
+	Tss->LimitHigh = 0;
+
+	Vcpu->Tss = ImpAllocateHostContiguousMemory(sizeof(X86_TASK_STATE_SEGMENT));
+	if (Vcpu->Tss == NULL)
+	{
+		ImpDebugPrint("Failed to allocate TSS segment...\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto panic;
+	}
+
+	PVOID InterruptStack = ImpAllocateHostContiguousMemory(VCPU_IST_STACK_SIZE);
+	if (InterruptStack == NULL)
+	{
+		ImpDebugPrint("Failed to allocate interrupt stack...\n");
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto panic;
+	}
+
+	Vcpu->Tss->Ist1 = (UINT64)InterruptStack + VCPU_IST_STACK_SIZE - 0x10;
+
+	const UINT64 Address = (UINT64)Vcpu->Tss;
+
+	Tss->BaseLow = Address & 0xFFFF;
+	Tss->BaseMiddle = (Address >> 16) & 0xFF;
+	Tss->BaseHigh = (Address >> 24) & 0xFF;
+	Tss->BaseUpper = (Address >> 32) & 0xFFFFFFFF;
+#else
+	RtlCopyMemory(Descriptors, Gdtr.BaseAddress, Gdtr.Limit + 1);
+#endif
+
+	Vcpu->Gdt = Descriptors;
+
+panic:
+	if (!NT_SUCCESS(Status))
+	{
+		if (Vcpu->Tss != NULL)
+			ExFreePoolWithTag(Vcpu->Tss, POOL_TAG);
+		if (Vcpu->Gdt != NULL)
+			ExFreePoolWithTag(Vcpu->Gdt, POOL_TAG);
+	}
+
+	return Status;
+}
+
+VSC_API
+VOID
+VcpuInitialiseInterruptGate(
+	PX86_INTERRUPT_TRAP_GATE Gates,
+	UINT8 Vector,
+	PVOID Handler,
+	UINT8 IstEntry,
+	UINT8 Dpl
+)
+{
+	PX86_INTERRUPT_TRAP_GATE Gate = &Gates[Vector];
+
+	Gate->SegmentSelector = gVmmCsSelector.Value;
+	Gate->Type = SEGMENT_TYPE_NATURAL_INTERRUPT_GATE;
+	Gate->Dpl = Dpl;
+	Gate->InterruptStackTable = IstEntry;
+	Gate->Present = TRUE;
+
+	const UINT64 Address = (UINT64)Handler;
+	Gate->OffsetLow = Address & 0xFFFF;
+	Gate->OffsetMid = (Address >> 16) & 0xFFFF;
+	Gate->OffsetHigh = (Address >> 32) & 0xFFFFFFFF;
+}
+
+EXTERN_C
+VOID
+__vmm_generic_intr_handler();
+
+VSC_API
+NTSTATUS
+VcpuPrepareHostIDT(
+	_Inout_ PVCPU Vcpu
+)
+/*++
+Routine Description:
+	Creates a host IDT pointing to VcpuHandleHostException
+--*/
+{
+	X86_PSEUDO_DESCRIPTOR Idtr;
+	__sidt(&Idtr);
+
+#if 0
+	ImpDebugPrint("[%02d] IDTR Base: 0x%llX, Limit: 0x%llX\n", Vcpu->Id, Idtr.BaseAddress, Idtr.Limit);
+
+	for (SIZE_T i = 0; i < Idtr.Limit / sizeof(X86_INTERRUPT_TRAP_GATE); i++)
+	{
+		X86_INTERRUPT_TRAP_GATE Gate = ((PX86_INTERRUPT_TRAP_GATE)Idtr.BaseAddress)[i];
+
+		if (!Gate.Present)
+			continue;
+
+		UINT64 Address = (((UINT64)Gate.OffsetHigh << 32) |
+							((UINT64)Gate.OffsetMid << 16) |
+							((UINT64)Gate.OffsetLow));
+
+		ImpDebugPrint("[%02d] Gate #%d:\n\tAddress: 0x%llX\n\tSelector: %x\n\tDPL: %d\n\tType: %d\n\tIST: %d\n", 
+			Vcpu->Id, 
+			i, 
+			Address,
+			Gate.SegmentSelector,
+			Gate.Dpl,
+			Gate.Type,
+			Gate.InterruptStackTable);
+	}
+#endif
+
+	NTSTATUS Status = STATUS_SUCCESS;
+
+	PX86_INTERRUPT_TRAP_GATE InterruptGates = ImpAllocateHostContiguousMemory(Idtr.Limit + 1);
+	if (InterruptGates == NULL)
+	{
+		ImpDebugPrint("[%02d] Failed to allocate 256 interrupt gates for host IDT...\n", Vcpu->Id);
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+#ifndef IMPV_USE_WINDOWS_CPU_STRUCTURES
+	for (SIZE_T i = 0; i < 32; i++)
+		VcpuInitialiseInterruptGate(InterruptGates, i, sExceptionRoutines[i], 1, 0);
+#else
+	RtlCopyMemory(InterruptGates, Idtr.BaseAddress, Idtr.Limit + 1);
+#endif
+
+	Vcpu->Idt = InterruptGates;
+
+	// TODO: Enable interrupts during root mode and write a small debugger to walk the stack after an interrupt occurs
+	// VcpuInitialiseInterruptGate(InterruptGates, 2, __vmm_intr_gate_2, 0, 0);
+
+	return Status;
 }
 
 VSC_API
@@ -447,8 +780,12 @@ Routine Description:
 	VmxWrite(HOST_CR4, __readcr4());
 
 	VmxWrite(GUEST_CR3, __readcr3());
+
+#ifndef IMPV_USE_WINDOWS_CPU_STRUCTURES
+	VmxWrite(HOST_CR3, Vcpu->Vmm->MmInformation.Cr3.Value);
+#else
 	VmxWrite(HOST_CR3, Vcpu->SystemDirectoryBase);
-	//VmxWrite(HOST_CR3, Vcpu->Vmm->MmSupport->HostDirectoryPhysical);
+#endif
 
 	VmxWrite(GUEST_DR7, __readdr(7));
 
@@ -457,7 +794,7 @@ Routine Description:
 	VmxWrite(GUEST_SYSENTER_ESP, __readmsr(IA32_SYSENTER_ESP));
 	VmxWrite(GUEST_SYSENTER_EIP, __readmsr(IA32_SYSENTER_EIP));
 	VmxWrite(GUEST_SYSENTER_CS, __readmsr(IA32_SYSENTER_CS));
-
+	
 	X86_PSEUDO_DESCRIPTOR Gdtr = {0}, Idtr = {0};
 	__sgdt(&Gdtr);
 	__sidt(&Idtr);
@@ -468,8 +805,44 @@ Routine Description:
 	VmxWrite(GUEST_GDTR_BASE, Gdtr.BaseAddress);
 	VmxWrite(GUEST_IDTR_BASE, Idtr.BaseAddress);
 
-	VmxWrite(HOST_GDTR_BASE, Vcpu->Vmm->Gdt);
-	VmxWrite(HOST_IDTR_BASE, Vcpu->Vmm->Idt);
+	VmxWrite(HOST_GDTR_BASE, Vcpu->Gdt);
+	VmxWrite(HOST_IDTR_BASE, Vcpu->Idt);
+
+#ifndef IMPV_USE_WINDOWS_CPU_STRUCTURES
+	// Custom TSS is only used in RELEASE build
+	VmxWrite(HOST_TR_BASE, Vcpu->Tss);
+#endif
+
+	// Store the current VCPU in the FS segment
+	VmxWrite(HOST_FS_BASE, Vcpu);
+
+#ifndef IMPV_USE_WINDOWS_CPU_STRUCTURES
+	VmxWrite(HOST_GS_BASE, 0); 
+#else
+	VmxWrite(HOST_GS_BASE, __readmsr(IA32_GS_BASE));
+#endif
+
+#ifndef IMPV_USE_WINDOWS_CPU_STRUCTURES
+	// Custom GDT, CS, and TR selectors are only used in RELEASE mode
+	VmxWrite(HOST_CS_SELECTOR, gVmmCsSelector.Value);
+	VmxWrite(HOST_TR_SELECTOR, gVmmTssSelector.Value);
+#else
+	X86_SEGMENT_SELECTOR Cs = {
+		.Value = __readcs()
+	};
+
+	X86_SEGMENT_SELECTOR Tr = {
+		.Value = __readtr()
+	};
+
+	VmxWrite(HOST_CS_SELECTOR, Cs.Value);
+	VmxWrite(HOST_SS_SELECTOR, 0);
+	VmxWrite(HOST_DS_SELECTOR, 0);
+	VmxWrite(HOST_ES_SELECTOR, 0);
+	VmxWrite(HOST_FS_SELECTOR, 0);
+	VmxWrite(HOST_GS_SELECTOR, 0);
+	VmxWrite(HOST_TR_SELECTOR, Tr.Value);
+#endif
 
 	X86_SEGMENT_SELECTOR Segment = {0};
 
@@ -479,7 +852,6 @@ Routine Description:
 	VmxWrite(GUEST_CS_LIMIT, __segmentlimit(Segment.Value));
 	VmxWrite(GUEST_CS_ACCESS_RIGHTS, SegmentAr(Segment));
 	VmxWrite(GUEST_CS_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_CS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
 	Segment.Value = __readss();
 
@@ -487,7 +859,6 @@ Routine Description:
 	VmxWrite(GUEST_SS_LIMIT, __segmentlimit(Segment.Value));
 	VmxWrite(GUEST_SS_ACCESS_RIGHTS, SegmentAr(Segment));
 	VmxWrite(GUEST_SS_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_SS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
 	Segment.Value = __readds();
 
@@ -495,7 +866,6 @@ Routine Description:
 	VmxWrite(GUEST_DS_LIMIT, __segmentlimit(Segment.Value));
 	VmxWrite(GUEST_DS_ACCESS_RIGHTS, SegmentAr(Segment));
 	VmxWrite(GUEST_DS_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_DS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
 	Segment.Value = __reades();
 
@@ -503,7 +873,6 @@ Routine Description:
 	VmxWrite(GUEST_ES_LIMIT, __segmentlimit(Segment.Value));
 	VmxWrite(GUEST_ES_ACCESS_RIGHTS, SegmentAr(Segment));
 	VmxWrite(GUEST_ES_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_ES_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
 	Segment.Value = __readfs();
 
@@ -511,7 +880,6 @@ Routine Description:
 	VmxWrite(GUEST_FS_LIMIT, __segmentlimit(Segment.Value));
 	VmxWrite(GUEST_FS_ACCESS_RIGHTS, SegmentAr(Segment));
 	VmxWrite(GUEST_FS_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_FS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
 	Segment.Value = __readgs();
 
@@ -519,8 +887,6 @@ Routine Description:
 	VmxWrite(GUEST_GS_LIMIT, __segmentlimit(Segment.Value));
 	VmxWrite(GUEST_GS_ACCESS_RIGHTS, SegmentAr(Segment));
 	VmxWrite(GUEST_GS_BASE, __readmsr(IA32_GS_BASE));
-	VmxWrite(HOST_GS_BASE, __readmsr(IA32_GS_BASE));
-	VmxWrite(HOST_GS_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
 
 	Segment.Value = __readldt();
 
@@ -535,15 +901,13 @@ Routine Description:
 	VmxWrite(GUEST_TR_LIMIT, __segmentlimit(Segment.Value));
 	VmxWrite(GUEST_TR_ACCESS_RIGHTS, SegmentAr(Segment));
 	VmxWrite(GUEST_TR_BASE, SegmentBaseAddress(Segment));
+
+#ifdef IMPV_USE_WINDOWS_CPU_STRUCTURES
 	VmxWrite(HOST_TR_BASE, SegmentBaseAddress(Segment));
-	VmxWrite(HOST_TR_SELECTOR, Segment.Value & HOST_SEGMENT_SELECTOR_MASK);
+#endif
 
-	// Write the host CS and TSS selectors
-	VmxWrite(HOST_CS_SELECTOR, gVmmCsSelector.Value);
-	VmxWrite(HOST_TR_SELECTOR, gVmmTssSelector.Value);
-
-	// Store the current VCPU in the FS register
-	VmxWrite(HOST_FS_BASE, Vcpu);
+	// Setup the HOST_EFER as the current EFER
+	VmxWrite(HOST_EFER, __readmsr(IA32_EFER));
 
 	// Setup MSR load & store regions
 	VmxWrite(CONTROL_VMEXIT_MSR_STORE_COUNT, sizeof(sVmExitMsrStore) / sizeof(*sVmExitMsrStore));
@@ -554,13 +918,13 @@ Routine Description:
 
 	VcpuCommitVmxState(Vcpu);
 	
-	VmxWrite(HOST_RSP, (UINT64)(Vcpu->Stack->Limit + 0x6000 - 16));
-	VmxWrite(GUEST_RSP, (UINT64)(Vcpu->Stack->Limit + 0x6000 - 16));
+	VmxWrite(HOST_RSP, (UINT64)(Vcpu->Stack->Data + 0x6000 - 16));
+	VmxWrite(GUEST_RSP, (UINT64)(Vcpu->Stack->Data + 0x6000 - 16));
 
 	VmxWrite(HOST_RIP, (UINT64)__vmexit_entry);
 	VmxWrite(GUEST_RIP, (UINT64)VcpuLaunch);
 
-	Vcpu->IsLaunched = TRUE;
+	Vcpu->Mode = VCPU_MODE_LAUNCHED;
 	
 	__vmx_vmlaunch();
 
@@ -582,15 +946,17 @@ Routine Description:
 	with VCPU_DELEGATE_PARAMS::Status as STATUS_SUCCESS, indicating everything went well
 --*/
 {
+	// TODO: Fix issue with VMCALL happening during IPIs due to incorrect IRQL after returning from IPI function, might be needed so work it out.
+
 	ULONG CpuId = KeGetCurrentProcessorNumber();
 	PVCPU Vcpu = &Params->VmmContext->VcpuTable[CpuId];
 	
 	Vcpu->Vmm = Params->VmmContext;
 
 	__cpu_save_state(&Vcpu->LaunchState);
-	
+
 	// Control flow is restored here upon successful virtualisation of the CPU
-	if (Vcpu->IsLaunched)
+	if (Vcpu->Mode == VCPU_MODE_LAUNCHED)
 	{
 		InterlockedIncrement(&Params->ActiveVcpuCount);
 		ImpDebugPrint("VCPU #%d is now running...\n", Vcpu->Id);
@@ -663,7 +1029,7 @@ Routine Description:
 	__cpu_restore_state(CpuState);
 }
 
-VMM_API
+VSC_API
 NTSTATUS
 VcpuPostSpawnInitialisation(
 	_Inout_ PVCPU Vcpu
@@ -673,6 +1039,16 @@ Routine Description:
 	This function performs all post-VMLAUNCH initialisation that might be required, such as measuing VM-exit and VM-entry latencies
 --*/
 {
+#if 0
+	CHAR Log[512] = { 0 };
+
+	HYPERCALL_RESULT Result = VmGetLogRecords(Log, 1);
+	if (Result != HRESULT_SUCCESS)
+		ImpDebugPrint("VmGetLogRecords returned %x...\n", Result);
+
+	ImpDebugPrint("Log #1: %.\n", Log);
+#endif
+
 	//VTscEstimateVmExitLatency(&Vcpu->TscInfo);
 	//VTscEstimateVmEntryLatency(&Vcpu->TscInfo);
 
@@ -799,6 +1175,52 @@ VcpuIs64Bit(
 
 VMM_API
 VOID
+VcpuTrapFrameToContext(
+	_In_ PVCPU_TRAP_FRAME TrapFrame,
+	_Out_ PVCPU_CONTEXT Context
+)
+/*++
+Routine Description:
+	Converts a VCPU trap frame into a succinct VPCU context state for stack walking
+--*/
+{
+	Context->Rax = TrapFrame->Rax;
+	Context->Rbx = TrapFrame->Rbx;
+	Context->Rcx = TrapFrame->Rcx;
+	Context->Rdx = TrapFrame->Rdx;
+	Context->Rsi = TrapFrame->Rsi;
+	Context->Rdi = TrapFrame->Rdi;
+	Context->R8 = TrapFrame->R8;
+	Context->R9 = TrapFrame->R9;
+	Context->R10 = TrapFrame->R10;
+	Context->R11 = TrapFrame->R11;
+	Context->R12 = TrapFrame->R12;
+	Context->R13 = TrapFrame->R13;
+	Context->R14 = TrapFrame->R14;
+	Context->R15 = TrapFrame->R15;
+	Context->Rip = TrapFrame->Rip;
+	Context->Rsp = TrapFrame->Rsp;
+	Context->RFlags = TrapFrame->RFlags;
+	Context->Xmm0 = TrapFrame->Xmm0;
+	Context->Xmm1 = TrapFrame->Xmm1;
+	Context->Xmm2 = TrapFrame->Xmm2;
+	Context->Xmm3 = TrapFrame->Xmm3;
+	Context->Xmm4 = TrapFrame->Xmm4;
+	Context->Xmm5 = TrapFrame->Xmm5;
+	Context->Xmm6 = TrapFrame->Xmm6;
+	Context->Xmm7 = TrapFrame->Xmm7;
+	Context->Xmm8 = TrapFrame->Xmm8;
+	Context->Xmm9 = TrapFrame->Xmm9;
+	Context->Xmm10 = TrapFrame->Xmm10;
+	Context->Xmm11 = TrapFrame->Xmm11;
+	Context->Xmm12 = TrapFrame->Xmm12;
+	Context->Xmm13 = TrapFrame->Xmm13;
+	Context->Xmm14 = TrapFrame->Xmm14;
+	Context->Xmm15 = TrapFrame->Xmm15;
+}
+
+VMM_API
+VOID
 VcpuHandleHostException(
 	_In_ PVCPU Vcpu,
 	_In_ PVCPU_TRAP_FRAME TrapFrame
@@ -808,16 +1230,24 @@ Routine Description:
 	Handle host exceptions TODO: Stack walk and log error before aborting
 --*/
 {
+	// TODO: Complete interrupts
 	switch (TrapFrame->Vector)
 	{
-	case EXCEPTION_NMI:
+	case EXCEPTION_NON_MASKABLE_INTERRUPT:
 	{
 		// Start exiting on NMI interrupt windows
 		VcpuSetControl(Vcpu, VMX_CTL_NMI_WINDOW_EXITING, TRUE);
 		// Queue a new NMI
 		InterlockedIncrement(&Vcpu->NumQueuedNMIs);
 	} break;
+	default:
+	{
+		// Stack walk like the fucking genius you are
+		VCPU_CONTEXT Context = {0};
+		VcpuTrapFrameToContext(TrapFrame, &Context);
+	} break;
 	}
+
 }
 
 VMM_API
@@ -853,20 +1283,28 @@ Routine Description:
 --*/
 {	
 	// TODO: Acknowledge interrupt on exit and check interrupt info in EPT violation handler?
-
+	Vcpu->Mode = VCPU_MODE_HOST;
 	Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
 	Vcpu->Vmx.ExitReason.Value = (UINT32)VmxRead(VM_EXIT_REASON);
 
-#ifdef _DEBUG
 	PVMX_EXIT_LOG_ENTRY ExitLog = &Vcpu->Vmx.ExitLog[Vcpu->Vmx.ExitCount++ % 256];
 	ExitLog->Reason = Vcpu->Vmx.ExitReason;
 	ExitLog->Rip = Vcpu->Vmx.GuestRip;
 	ExitLog->ExitQualification = VmxRead(VM_EXIT_QUALIFICATION);
+
+#if 0
+	if (Vcpu->Vmx.ExitReason.BasicExitReason != 18 /* VMCALL */)
+		ImpLog("[%02X-#%05d]: VM-exit ID: %i - RIP: %llX - EXIT QUAL: %llX\n",
+			Vcpu->Id,
+			Vcpu->Vmx.ExitCount,
+			ExitLog->Reason.BasicExitReason,
+			ExitLog->Rip,
+			ExitLog->ExitQualification);
 #endif
 
 	VMM_EVENT_STATUS Status = sExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState);
 
-	if (Vcpu->IsShuttingDown)
+	if (Vcpu->Mode == VCPU_MODE_SHUTDOWN)
 		Status = VMM_EVENT_ABORT;
 
 	if (Status == VMM_EVENT_ABORT)
@@ -879,14 +1317,7 @@ Routine Description:
 	if (Status == VMM_EVENT_CONTINUE)
 		VmxAdvanceGuestRip();
 
-#ifdef _DEBUG
-	ImpDebugPrint("[%02X-#%05d]: VM-exit ID: %i - RIP: %llX - EXIT QUAL: %llX\n",
-		Vcpu->Id,
-		Vcpu->Vmx.ExitCount,
-		ExitLog->Reason.BasicExitReason,
-		ExitLog->Rip,
-		ExitLog->ExitQualification);
-#endif
+	Vcpu->Mode = VCPU_MODE_GUEST;
 
 	return TRUE;
 }
@@ -1063,7 +1494,7 @@ Routine Description:
 	Converts a register to a pointer to the corresponding register inside a GUEST_STATE structure 
 --*/
 {
-	static const UINT64 sRegIdToGuestStateOffs[] = {
+	VMM_RDATA static const UINT64 sRegIdToGuestStateOffs[] = {
 		/* RAX */ offsetof(GUEST_STATE, Rax),
 		/* RCX */ offsetof(GUEST_STATE, Rcx),
 		/* RDX */ offsetof(GUEST_STATE, Rdx),
@@ -1594,9 +2025,12 @@ Routine Description:
 		VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, VTSC_WATCHDOG_QUANTUM);
 
 		VcpuPushPendingMTFEvent(Vcpu, MTF_EVENT_MEASURE_VMENTRY);
+
+		return VMM_EVENT_CONTINUE;
 	}
 
 	PHYPERCALL_INFO Hypercall = (PHYPERCALL_INFO)&GuestState->Rax;
+
 	Status = VmHandleHypercall(Vcpu, GuestState, Hypercall);
 
 	Vcpu->LastHypercallResult = Hypercall->Result;
@@ -1842,12 +2276,12 @@ VcpuHandleEptViolation(
 			EPT_PAGE_RWX)
 		))
 	{
-		ImpDebugPrint("[%02X] Failed to map basic %llX -> %llX...\n", Vcpu->Id, AttemptedAddress, AttemptedAddress);
+		ImpLog("[%02X] Failed to map %llX -> %llX...\n", Vcpu->Id, AttemptedAddress, AttemptedAddress);
 		return VMM_EVENT_ABORT;
 	}
 
-#if 1
-	ImpDebugPrint("[%02X-#%03d] %llX: Mapped %llX -> %llX...\n", Vcpu->Id, Vcpu->Vmx.ExitCount, Vcpu->Vmx.GuestRip, AttemptedAddress, AttemptedAddress);
+#if 0
+	ImpLog("[%02X-#%03d] %llX: Mapped %llX -> %llX...\n", Vcpu->Id, Vcpu->Vmx.ExitCount, Vcpu->Vmx.GuestRip, AttemptedAddress, AttemptedAddress);
 #endif
 
 	// TODO: Don't think this is necessary
@@ -1865,8 +2299,8 @@ VcpuHandleEptMisconfig(
 )
 {
 	// TODO: Panic
-	__debugbreak();
 	ImpDebugPrint("[%02X] EPT MISCONFIG...\n", Vcpu->Id);
+	__debugbreak();
 
 	return VMM_EVENT_ABORT;
 }
@@ -1978,7 +2412,7 @@ VcpuHandleMTFExit(
 		{
 		case MTF_EVENT_MEASURE_VMENTRY:
 		{
-			// TODO: Check VMX preemption timer value and sub vm-exit time :)!
+			GuestState->Rax = VTSC_WATCHDOG_QUANTUM - VmxRead(GUEST_VMX_PREEMPTION_TIMER_VALUE) - Vcpu->TscInfo.VmExitLatency;
 		} break;
 		case MTF_EVENT_RESET_EPT_PERMISSIONS:
 		{
@@ -2011,7 +2445,7 @@ VcpuHandleMTFExit(
 	}
 	else
 	{
-		// Disable MTF exiting
+		// Disable MTF exiting - no events left in queue
 		VcpuSetControl(Vcpu, VMX_CTL_MONITOR_TRAP_FLAG, FALSE);
 	}
 
@@ -2095,6 +2529,16 @@ VcpuHandleXsetbv(
 VMM_API
 VMM_EVENT_STATUS 
 VcpuHandleInvlpg(
+	_Inout_ PVCPU Vcpu,
+	_Inout_ PGUEST_STATE GuestState
+)
+{
+	return VMM_EVENT_CONTINUE;
+}
+
+VMM_API
+VMM_EVENT_STATUS
+VcpuHandleInvd(
 	_Inout_ PVCPU Vcpu,
 	_Inout_ PGUEST_STATE GuestState
 )

@@ -2,6 +2,8 @@
 #define IMP_VCPU_H
 
 #include "improvisor.h"
+#include "arch/interrupt.h"
+#include "arch/segment.h"
 #include "vmx.h"
 #include "cpu.h"
 #include "mm.h"
@@ -56,6 +58,44 @@ typedef struct _GUEST_STATE
 #pragma pack(pop)
 
 #pragma pack(push, 1)
+typedef struct _VCPU_CONTEXT
+{
+	UINT64 Rax;
+	UINT64 Rbx;
+	UINT64 Rcx;
+	UINT64 Rdx;
+	UINT64 Rsi;
+	UINT64 Rdi;
+	UINT64 R8;
+	UINT64 R9;
+	UINT64 R10;
+	UINT64 R11;
+	UINT64 R12;
+	UINT64 R13;
+	UINT64 R14;
+	UINT64 R15;
+	UINT64 Rip;
+	UINT64 Rsp;
+	UINT64 RFlags;
+	M128 Xmm0;
+	M128 Xmm1;
+	M128 Xmm2;
+	M128 Xmm3;
+	M128 Xmm4;
+	M128 Xmm5;
+	M128 Xmm6;
+	M128 Xmm7;
+	M128 Xmm8;
+	M128 Xmm9;
+	M128 Xmm10;
+	M128 Xmm11;
+	M128 Xmm12;
+	M128 Xmm13;
+	M128 Xmm14;
+	M128 Xmm15;
+} VCPU_CONTEXT, *PVCPU_CONTEXT;
+
+#pragma pack(push, 1)
 typedef struct _VCPU_TRAP_FRAME
 {
 	// Register State
@@ -91,7 +131,7 @@ typedef struct _VCPU_TRAP_FRAME
 	M128 Xmm15;
 
 	// Interrupt Vector
-	UINT8 Vector;
+	UINT64 Vector;
 
 	// Machine Trap Frame
 	UINT64 Error;
@@ -100,7 +140,7 @@ typedef struct _VCPU_TRAP_FRAME
 	UINT64 RFlags;
 	UINT64 Rsp;
 	UINT64 Ss;
-} VCPU_TRAP_FRAME, * PVCPU_TRAP_FRAME;
+} VCPU_TRAP_FRAME, *PVCPU_TRAP_FRAME;
 #pragma pack(pop)
 
 // Base of other VCPU delegates so Status can be generically accessed
@@ -126,7 +166,7 @@ typedef struct _VCPU_SHUTDOWN_PARAMS
 
 typedef union _VCPU_STACK
 {
-	UINT8 Limit[0x6000];
+	UINT8 Data[0x6000];
 
 	struct 
 	{
@@ -163,6 +203,15 @@ typedef struct _MTF_EVENT_ENTRY
 	BOOLEAN Valid;
 } MTF_EVENT_ENTRY, *PMTF_EVENT_ENTRY;
 
+typedef enum _VCPU_MODE
+{
+	VCPU_MODE_INACTIVE,
+	VCPU_MODE_LAUNCHED,
+	VCPU_MODE_GUEST,
+	VCPU_MODE_HOST,
+	VCPU_MODE_SHUTDOWN
+} VCPU_MODE, *PVCPU_MODE;
+
 typedef struct _VCPU
 {
 	PVOID Self;
@@ -175,14 +224,16 @@ typedef struct _VCPU
 	PVCPU_STACK Stack;
 	PVMX_REGION Vmcs;
 	PVMX_REGION Vmxon;
+	PX86_INTERRUPT_TRAP_GATE Idt;
+	PX86_SEGMENT_DESCRIPTOR Gdt;
+	PX86_TASK_STATE_SEGMENT Tss;
 	UINT64 VmcsPhysical;
 	UINT64 VmxonPhysical;
 	UINT64 MsrBitmapPhysical;
 	UINT64 Cr0ShadowableBits;
 	UINT64 Cr4ShadowableBits;
 	UINT64 SystemDirectoryBase;
-	BOOLEAN IsLaunched;
-	BOOLEAN IsShuttingDown;
+	VCPU_MODE Mode;
 	BOOLEAN IsUnrestrictedGuest;
 	CPU_STATE LaunchState;
 	VMX_STATE Vmx;
