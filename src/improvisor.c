@@ -3,7 +3,8 @@
 #include "util/fmt.h"
 #include "section.h"
 
-// TODO: Add a logger, and add routine descriptions for everything
+#define IMPV_LOG_SIZE 512
+#define IMPV_LOG_COUNT 512
 
 VMM_DATA PIMP_ALLOC_RECORD gHostAllocationsHead = NULL;
 
@@ -35,8 +36,8 @@ ImpReserveLogRecords(
 		PIMP_LOG_RECORD CurrLogRecord = sImpLogRecordsRaw + i;
 
 		// Set up Flink and Blink
-		CurrLogRecord->Links.Flink = i < Count ? &(CurrLogRecord + 1)->Links : NULL;
-		CurrLogRecord->Links.Blink = i > 0     ? &(CurrLogRecord - 1)->Links : NULL;
+		CurrLogRecord->Links.Flink = i < Count - 1	? &(CurrLogRecord + 1)->Links : NULL;
+		CurrLogRecord->Links.Blink = i > 0			? &(CurrLogRecord - 1)->Links : NULL;
 	}
 
 	return STATUS_SUCCESS;
@@ -50,12 +51,8 @@ ImpAllocateLogRecord(
 {
 	SpinLock(&sLogWriterLock);
 
-	if (gLogRecordsHead->Links.Flink == NULL)
-		return STATUS_INSUFFICIENT_RESOURCES;
-
-	 *LogRecord = gLogRecordsHead;
-
-	gLogRecordsHead = (PIMP_LOG_RECORD)gLogRecordsHead->Links.Flink;
+	// If gLogRecordsHead == NULL, we have ran out of entries, loop back around
+	if (gLogRecordsHead == NULL)
 
 	SpinUnlock(&sLogWriterLock);
 
@@ -72,8 +69,6 @@ Routine Description:
 	Creates a log entry with the contents of `Fmt` formatted with variadic args
 --*/
 {
-	SpinLock(&sLogWriterLock);
-
 	// TODO: Panic on this failing?
 	PIMP_LOG_RECORD Record = NULL;
 	if (!NT_SUCCESS(ImpAllocateLogRecord(&Record)))
@@ -83,8 +78,6 @@ Routine Description:
 	va_start(Arg, Fmt);
 	vsprintf_s(Record->Buffer, 512, Fmt, Arg);
 	va_end(Arg);
-
-	SpinUnlock(&sLogWriterLock);
 }
 
 VMM_API
@@ -103,16 +96,13 @@ ImpRetrieveLogRecord(
 	PIMP_LOG_RECORD Next = (PIMP_LOG_RECORD)Tail->Links.Flink;
 
 	// The tail never has a previous link
-	if (Next != NULL)
-		Next->Links.Blink = NULL;
-	else
-		return STATUS_INSUFFICIENT_RESOURCES;
+	Next->Links.Blink = NULL;
 
-	// The new tail is the next entry
+	// The new tail is the entry following the current tail
 	gLogRecordsTail = Next;
-
-	// The head is now the old tail, as this entry is now unlinked
+	// The original tail entry becomes the head entry 
 	gLogRecordsHead = Tail;
+
 	// Update the new head entry with the old head entry's forward link
 	Tail->Links.Flink = Head->Links.Flink;
 	// Update the old head entry's forward link to the new head entry
@@ -204,7 +194,7 @@ Routine Description:
 	signals that it should be mapped to an empty page using EPT
 --*/
 {
-	return ImpAllocateContiguousMemoryEx(Size, IMP_SHADOW_ALLOCATION);
+	return ImpAllocateContiguousMemoryEx(Size, IMP_HOST_ALLOCATION);
 }
 
 VSC_API
@@ -218,7 +208,7 @@ Routine Description:
 --*/
 
 {
-	return ImpAllocateContiguousMemoryEx(Size, 0);
+	return ImpAllocateContiguousMemoryEx(Size, IMP_DEFAULT);
 }
 
 VSC_API
@@ -249,7 +239,7 @@ Routine Description:
 		ImpDebugPrint("Couldn't record Alloc(%llX, %x), no more allocation records...\n", Address, Size);
 		return NULL;
 	}
-
+	
 	return Address;
 }
 
@@ -264,7 +254,7 @@ Routine Description:
 	mapped to an empty page using EPT
 --*/
 {
-	return ImpAllocateNpPoolEx(Size, IMP_SHADOW_ALLOCATION);
+	return ImpAllocateNpPoolEx(Size, IMP_HOST_ALLOCATION);
 }
 
 VSC_API
@@ -277,7 +267,7 @@ Routine Description:
 	This function allocates a zero'd non-paged pool of memory using ImpAllocateNpPoolEx
 --*/
 {
-	return ImpAllocateNpPoolEx(Size, 0);
+	return ImpAllocateNpPoolEx(Size, IMP_DEFAULT);
 }    
 
 VSC_API
@@ -353,14 +343,10 @@ Routine Description:
 	Just a wrapper around DbgPrint, making sure to print to the correct output depending on the build
 --*/
 {
-	SpinLock(&sDebugPrintLock);
-
 	va_list Args;
 	va_start(Args, Str);
 
 	vDbgPrintExWithPrefix("[Improvisor DEBUG]: ", DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, Str, Args);
 
 	va_end(Args);
-
-	SpinUnlock(&sDebugPrintLock);
 }
