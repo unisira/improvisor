@@ -148,7 +148,7 @@ Routine Description:
 	}
 
 	Pde->PageFrameNumber =
-		PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
+		PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTable()->TablePhysAddr);
 
 	// Since we are subverting a large page, the MTRR region is constant throughout the whole memory range
 	MEMORY_TYPE RegionType = MtrrGetRegionType(PhysAddr);
@@ -240,7 +240,7 @@ Routine Description:
 	}
 
 	Pdpte->PageFrameNumber =
-		PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
+		PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTable()->TablePhysAddr);
 
 	// Since we are subverting a large page, the MTRR region is constant throughout the whole memory range
 	MEMORY_TYPE RegionType = MtrrGetRegionType(PhysAddr);
@@ -285,7 +285,7 @@ Routine Description:
 
 				Pde->Present = TRUE;
 				Pde->PageFrameNumber =
-					PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
+					PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTable()->TablePhysAddr);
 			}
 		}
 		else
@@ -348,7 +348,7 @@ Routine Description:
 
 			Pml4e->Present = TRUE;
 			Pml4e->PageFrameNumber = 
-				PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
+				PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTable()->TablePhysAddr);
 		}
 		else
 			Pdpte = EptReadExistingPte(Pml4e->PageFrameNumber, Gpa.PdptIndex);
@@ -384,7 +384,7 @@ Routine Description:
 
 				Pdpte->Present = TRUE;
 				Pdpte->PageFrameNumber =
-					PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
+					PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTable()->TablePhysAddr);
 			}
 		}
 		else
@@ -432,7 +432,7 @@ Routine Description:
 
 				Pde->Present = TRUE;
 				Pde->PageFrameNumber =
-					PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTableEntry()->TablePhysAddr);
+					PAGE_FRAME_NUMBER(MmGetLastAllocatedPageTable()->TablePhysAddr);
 			}
 		}
 		else
@@ -549,9 +549,6 @@ Routine Description:
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 
-	if (!NT_SUCCESS(MtrrInitialise()))
-		return STATUS_INSUFFICIENT_RESOURCES;
-
 	PEPT_PTE Pml4 = NULL;
 	if (!NT_SUCCESS(MmAllocateHostPageTable(&Pml4)))
 		return STATUS_INSUFFICIENT_RESOURCES;
@@ -565,10 +562,10 @@ Routine Description:
 	if (!NT_SUCCESS(MmAllocateHostPageTable(&EptInformation->DummyPage)))
 		return STATUS_INSUFFICIENT_RESOURCES;
 
-	EptInformation->DummyPagePhysAddr = MmGetLastAllocatedPageTableEntry()->TablePhysAddr;
+	// Watermark the dummy page to avoid page combining
+	EptInformation->DummyPage->Watermark = 'IMPV' ^ (ULONG)__rdtsc();
 
-	// Watermark the dummy page to avoid page folding
-	*(PULONG)EptInformation->DummyPage = 'IMPV' ^ (ULONG)__rdtsc();
+	EptInformation->DummyPagePhysAddr = MmGetLastAllocatedPageTable()->TablePhysAddr;
 
 	return Status;
 }
