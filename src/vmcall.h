@@ -4,19 +4,22 @@
 #include "vcpu.h"
 #include "ept.h"
 
-#define HRESULT_SUCCESS (0x8100)
+// This bit is set if the error was something we can handle
+#define HRESULT_MARKER (0x8000)
+
+#define HRESULT_SUCCESS (HRESULT_MARKER | 0x100)
 // Unknown hypercall ID
-#define HRESULT_UNKNOWN_HCID (0x8101) 
+#define HRESULT_UNKNOWN_HCID (HRESULT_MARKER | 0x101) 
 // Invalid target address (RDX) value
-#define HRESULT_INVALID_TARGET_ADDR (0x8102)
+#define HRESULT_INVALID_TARGET_ADDR (HRESULT_MARKER | 0x102)
 // Invalid buffer address (RCX) value
-#define HRESULT_INVALID_BUFFER_ADDR (0x8103)
+#define HRESULT_INVALID_BUFFER_ADDR (HRESULT_MARKER | 0x103)
 // Insufficient resources to complete the requested task
-#define HRESULT_INSUFFICIENT_RESOURCES (0x8104)
+#define HRESULT_INSUFFICIENT_RESOURCES (HRESULT_MARKER | 0x104)
 // The extended hypercall info (RBX) value was invalid 
-#define HRESULT_INVALID_EXT_INFO (0x8105)
+#define HRESULT_INVALID_EXT_INFO (HRESULT_MARKER | 0x105)
 // The amount of log records requested was more than we currently had.
-#define HRESULT_LOG_RECORD_OVERFLOW (0x8106)
+#define HRESULT_LOG_RECORD_OVERFLOW (HRESULT_MARKER | 0x106)
 
 typedef ULONG HYPERCALL_RESULT; 
 
@@ -26,7 +29,7 @@ typedef union _HYPERCALL_INFO
 
 	struct
 	{
-		UINT64 Id : 16;
+		UINT64 Id : 32;
 		UINT64 Result: 16;
 	};
 } HYPERCALL_INFO, *PHYPERCALL_INFO; 
@@ -67,6 +70,12 @@ VmEptRemapPages(
 	_In_ UINT64 PhysAddr,
 	_In_ SIZE_T Size,
 	_In_ EPT_PAGE_PERMISSIONS Permissions
+);
+
+HYPERCALL_RESULT
+VmGetLogRecords(
+	_In_ PVOID Dst,
+	_In_ SIZE_T Count
 );
 
 #endif

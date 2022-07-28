@@ -1,4 +1,5 @@
 #include "arch/interrupt.h"
+#include "arch/memory.h"
 #include "section.h"
 #include "vmcall.h"
 #include "vmx.h"
@@ -57,6 +58,8 @@ typedef enum _HYPERCALL_ID
 	HYPERCALL_WRITE_VIRT,
 	// Scan for a byte signature inside of a virtual address range using translations specified
 	HYPERCALL_VIRT_SIGSCAN,
+	// Convert a physical address into a virtual address in a specific address space
+	HYPERCALL_PHYS_TO_VIRT,
 	// Shutdown the current VCPU and free its resources
 	HYPERCALL_SHUTDOWN_VCPU,
 	// Returns the value of the system CR3 in RAX
@@ -131,6 +134,8 @@ VmGetCachedCr3(
 	return VMM_EVENT_CONTINUE;
 }
 
+// TODO: Design better system for reading and writing processes
+
 VMM_API
 VMM_EVENT_STATUS
 VmHandleHypercall(
@@ -160,6 +165,10 @@ VmHandleHypercall(
 		if (VirtEx.Cr3 == CR3_INVALID || VirtEx.Size == 0)
 			return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
 
+		UINT64 Cr3 = 0;
+		if (VmGetCachedCr3(Vcpu, VirtEx, &Cr3) != VMM_EVENT_CONTINUE)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
+
 		PMM_VPTE Vpte = NULL; 
 		if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
 			return VmAbortHypercall(Hypercall, HRESULT_INSUFFICIENT_RESOURCES);
@@ -167,14 +176,18 @@ VmHandleHypercall(
 		SIZE_T SizeRead = 0;
 		while (VirtEx.Size > SizeRead)
 		{
+			// MaxReadable is the maximum amount of bytes before hitting a page boundary
+			const SIZE_T MaxReadable = PAGE_SIZE - max(PAGE_OFFSET(GuestState->Rcx + SizeRead), PAGE_OFFSET(GuestState->Rdx + SizeRead));
+
 			if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx + SizeRead)))
 				return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
 
-			SIZE_T SizeToRead = VirtEx.Size - SizeRead > PAGE_SIZE ? PAGE_SIZE : VirtEx.Size - SizeRead;
-			if (!NT_SUCCESS(MmReadGuestVirt(VirtEx.Cr3, GuestState->Rdx + SizeRead, SizeToRead, (PCHAR)Vpte->MappedVirtAddr + SizeRead)))
+			SIZE_T SizeToRead = VirtEx.Size - SizeRead > MaxReadable ? MaxReadable : VirtEx.Size - SizeRead;
+			
+			if (!NT_SUCCESS(MmReadGuestVirt(Cr3, GuestState->Rdx + SizeRead, SizeToRead, (PCHAR)Vpte->MappedVirtAddr + SizeRead)))
 				return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
-
-			SizeRead += PAGE_SIZE;
+			
+			SizeRead += SizeToRead;
 		}
 		   
 		MmFreeVpte(Vpte);
@@ -194,6 +207,10 @@ VmHandleHypercall(
 		if (VirtEx.Cr3 == 0 || VirtEx.Size == 0)
 			return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
 
+		UINT64 Cr3;
+		if (VmGetCachedCr3(Vcpu, VirtEx, &Cr3) != VMM_EVENT_CONTINUE)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
+
 		PMM_VPTE Vpte = NULL;
 		if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
 			return VmAbortHypercall(Hypercall, HRESULT_INSUFFICIENT_RESOURCES);
@@ -201,14 +218,18 @@ VmHandleHypercall(
 		SIZE_T SizeWritten = 0;
 		while (VirtEx.Size > SizeWritten)
 		{
+			// MaxReadable is the maximum amount of bytes before hitting a page boundary in Src or Dst
+			const SIZE_T MaxWriteable = PAGE_SIZE - max(PAGE_OFFSET(GuestState->Rcx + SizeWritten), PAGE_OFFSET(GuestState->Rdx + SizeWritten));
+
 			if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx + SizeWritten)))
 				return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
 		
-			SIZE_T SizeToWrite = VirtEx.Size - SizeWritten > PAGE_SIZE ? PAGE_SIZE : VirtEx.Size - SizeWritten;
-			if (!NT_SUCCESS(MmWriteGuestVirt(VirtEx.Cr3, GuestState->Rdx + SizeWritten, SizeToWrite, (PCHAR)Vpte->MappedVirtAddr + SizeWritten)))
+			SIZE_T SizeToWrite = VirtEx.Size - SizeWritten > MaxWriteable ? MaxWriteable : VirtEx.Size - SizeWritten;
+			
+			if (!NT_SUCCESS(MmWriteGuestVirt(Cr3, GuestState->Rdx + SizeWritten, SizeToWrite, (PCHAR)Vpte->MappedVirtAddr + SizeWritten)))
 				return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
 
-			SizeWritten += PAGE_SIZE;
+			SizeWritten += SizeToWrite;
 		}
 
 		MmFreeVpte(Vpte);
@@ -217,9 +238,35 @@ VmHandleHypercall(
 	{
 		// TODO: Finish this, add signature parsing function & scanner 
 	} break;
+	case HYPERCALL_PHYS_TO_VIRT:
+	{
+		if (GuestState->Rcx == 0)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+
+		if (GuestState->Rdx == 0)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+
+		HYPERCALL_VIRT_EX VirtEx = {
+			.Value = GuestState->Rbx
+		};
+
+		if (VirtEx.Cr3 == 0)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
+
+		UINT64 Cr3;
+		if (VmGetCachedCr3(Vcpu, VirtEx, &Cr3) != VMM_EVENT_CONTINUE)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
+
+		UINT64 Result = MmResolveGuestVirtAddr(Cr3, GuestState->Rdx);
+		if (Result == -1)
+			Hypercall->Result = HRESULT_INVALID_TARGET_ADDR;
+		else
+			if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rcx, sizeof(UINT64), Result)))
+				return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+	} break;
 	case HYPERCALL_SHUTDOWN_VCPU:
 	{
-		Vcpu->IsShuttingDown = TRUE;
+		Vcpu->Mode = VCPU_MODE_SHUTDOWN;
 
 		// Write the current VCPU to GuestState->Rdx, the VCPU table are mapped as host memory,
 		// but by the time this function returns VcpuLeaveVmx will have disabled EPT
@@ -255,33 +302,34 @@ VmHandleHypercall(
 	} break;
 	case HYPERCALL_HIDE_HOST_RESOURCES:
 	{
-		UINT64 DummyPhysAddr = Vcpu->Vmm->EptInformation.DummyPagePhysAddr;
-
 		// Loop condition is not wrong, head is always the last one used, one is ignored at the end
 		PIMP_ALLOC_RECORD CurrRecord = gHostAllocationsHead;
 		while (CurrRecord != NULL)
 		{
+			// Only hide host allocations or memory allocations that aren't needed anymore
+			if ((CurrRecord->Flags & (IMP_SHADOW_ALLOCATION | IMP_HOST_ALLOCATION)) == 0)
+				goto skip;
+
 			if (!NT_SUCCESS(
 				EptMapMemoryRange(
 					Vcpu->Vmm->EptInformation.SystemPml4,
 					CurrRecord->PhysAddr,
-					DummyPhysAddr,
+					Vcpu->Vmm->EptInformation.DummyPagePhysAddr,
 					CurrRecord->Size,
 					EPT_PAGE_RW)
 				))
 				return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
 
+		skip:
 			CurrRecord = (PIMP_ALLOC_RECORD)CurrRecord->Records.Blink;
 		}
-
-		// TODO: Hide VMM code/data and VSC code
 
 		EptInvalidateCache();
 	} break;
 	case HYPERCALL_GET_LOG_RECORDS:
 	{
-		if (GuestState->Rdx == 0)
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+		if (GuestState->Rcx == 0)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
 
 		HYPERCALL_GET_LOGS_EX LogEx = {
 			.Value = GuestState->Rbx
@@ -294,8 +342,8 @@ VmHandleHypercall(
 			if (!NT_SUCCESS(ImpRetrieveLogRecord(&CurrLog)))
 				return VmAbortHypercall(Hypercall, HRESULT_LOG_RECORD_OVERFLOW);
 
-			if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx + 512 * Count, 512, CurrLog->Buffer)))
-				return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+			if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rcx + IMP_LOG_SIZE * Count, IMP_LOG_SIZE, CurrLog->Buffer)))
+				return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
 
 			Count++;
 		}
@@ -393,6 +441,26 @@ VmEptRemapPages(
 	};
 
 	Hypercall = __vmcall(Hypercall, RemapEx.Value, (PVOID)GuestPhysAddr, (PVOID)PhysAddr);
+
+	return Hypercall.Result;
+}
+
+HYPERCALL_RESULT
+VmGetLogRecords(
+	_In_ PVOID Dst,
+	_In_ SIZE_T Count
+)
+{
+	HYPERCALL_INFO Hypercall = {
+		.Id = HYPERCALL_GET_LOG_RECORDS,
+		.Result = HRESULT_SUCCESS
+	};
+
+	HYPERCALL_GET_LOGS_EX LogEx = {
+		.Count = Count,
+	};
+
+	Hypercall = __vmcall(Hypercall, LogEx.Value, Dst, NULL);
 
 	return Hypercall.Result;
 }
