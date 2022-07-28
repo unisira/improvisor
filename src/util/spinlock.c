@@ -17,7 +17,13 @@ Routine Description:
 	to the lock (should never happen in our case).
 --*/
 {
-	return (*Lock == 0 && InterlockedCompareExchange(Lock, 1, 0) == 0);
+	SPINLOCK Contents = *Lock;
+
+	// If the lock is already exclusively held, return false
+	if (Contents != 0)
+		return FALSE;
+
+	return (InterlockedCompareExchange(Lock, 1, 0) == 0);
 }
 
 VOID
@@ -42,6 +48,5 @@ Routine Description:
 	Unlocks a spinlock
 --*/
 {
-	if (InterlockedCompareExchange(Lock, 0, 1) == 0)
-		ImpDebugPrint("WARNING: SpinUnlock called on an already unlocked spinlock...\n");
+	*Lock = 0;
 }
