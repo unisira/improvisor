@@ -79,7 +79,7 @@ _Xmm15 XMMWORD ?
 _RFlags QWORD ?
 CPU_STATE ENDS
 
-.code
+.CODE
 
 __vmexit_entry PROC
 	sub rsp, SIZEOF GUEST_STATE					; We are on the host stack now, which is guaranteed to be 16-byte aligned
@@ -132,7 +132,7 @@ __vmexit_entry PROC
 	lea rcx, [rsp]							; RCX = &CPU_STATE
 	call __cpu_save_state
 	mov rdx, rcx							; Set second parameter as the CPU_STATE
-	mov rcx, [rsp+SIZEOF GUEST_STATE-5FF0h]	; Load the address of the stack cache (PVCPU) into RCX
+	mov rcx, fs:[0]							; Load the address of the current VCPU into RCX
 	sub rsp, 28h							
 	call VcpuShutdownVmx					; Shutdown VMX and restore guest register state
 	int 3									; VcpuShutdownVmx doesn't return							
