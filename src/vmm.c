@@ -1,14 +1,17 @@
 #include "vmm.h"
+#include "vmcall.h"
 
-EXTERN_C_START
-#define VMM_INTR_GATE(Index)    \
-	VOID                        \
-	__vmm_intr_gate_##Index()   \
+VMM_RDATA const X86_SEGMENT_SELECTOR gVmmCsSelector = {
+	.Table = SEGMENT_SELECTOR_TABLE_GDT,
+	.Index = 2,
+	.Rpl = 0
+};
 
-VMM_INTR_GATE(2);
-
-#undef VMM_INTR_GATE
-EXTERN_C_END
+VMM_RDATA const X86_SEGMENT_SELECTOR gVmmTssSelector = {
+	.Table = SEGMENT_SELECTOR_TABLE_GDT,
+	.Index = 8,
+	.Rpl = 0
+};
 
 NTSTATUS
 VmmEnsureFeatureSupport(
@@ -41,18 +44,6 @@ VmmFreeResources(
 	_In_ PVMM_CONTEXT VmmContext
 );
 
-static const X86_SEGMENT_SELECTOR sVmmCsSelector = {
-	.Table = SEGMENT_SELECTOR_TABLE_GDT,
-	.Index = 1,
-	.Rpl = 0
-};
-
-static const X86_SEGMENT_SELECTOR sVmmTssSelector = {
-	.Table = SEGMENT_SELECTOR_TABLE_GDT,
-	.Index = 2,
-	.Rpl = 0
-};
-
 VSC_API
 NTSTATUS 
 VmmStartHypervisor(VOID)
@@ -78,7 +69,6 @@ Routine Description:
 		return Status;
 	}
 
-	// TODO: Debug why VMX isn't showing up as supported
 	Status = VmmEnsureFeatureSupport();
 	if (!NT_SUCCESS(Status))
 	{
@@ -128,6 +118,16 @@ Routine Description:
 
 	ImpDebugPrint("Successfully launched hypervisor on %d cores...\n", Params.ActiveVcpuCount);
 
+	ImpLog("This is a test log, Number 1: %i\n", 1);
+
+	CHAR Log[512] = { 0 };
+
+	HYPERCALL_RESULT Result = VmGetLogRecords(Log, 1);
+	if (Result != HRESULT_SUCCESS)
+		ImpDebugPrint("VmGetLogRecords returned %x...\n", Result);
+
+	ImpDebugPrint("Log #1: %s.\n", Log);
+
 	Status = VmmPostLaunchInitialisation();
 	if (!NT_SUCCESS(Status))
 	{
@@ -135,6 +135,7 @@ Routine Description:
 		VmmShutdownHypervisor();
 		goto panic;
 	}
+
 	return STATUS_SUCCESS;
 
 panic:
@@ -183,123 +184,6 @@ Routine Description:
 
 VSC_API
 NTSTATUS
-VmmPrepareHostGDT(
-	_Inout_ PVMM_CONTEXT VmmContext
-)
-{
-	NTSTATUS Status = STATUS_SUCCESS;
-
-	PX86_SEGMENT_DESCRIPTOR Descriptors = ImpAllocateHostNpPool(sizeof(X86_SEGMENT_DESCRIPTOR) * 2 + sizeof(X86_SYSTEM_DESCRIPTOR));
-	if (Descriptors == NULL)
-	{
-		ImpDebugPrint("Failed to allocate GDT descriptors...\n");
-		Status = STATUS_INSUFFICIENT_RESOURCES;
-		goto panic;
-	}
-
-	PX86_SEGMENT_DESCRIPTOR Cs = &Descriptors[sVmmCsSelector.Index];
-
-	Cs->Type = CODE_DATA_TYPE_EXECUTE_READ;
-	Cs->System = FALSE;
-	Cs->Dpl = 0;
-	Cs->Present = TRUE;
-	Cs->Long = TRUE;
-	Cs->DefaultOperationSize = 0;
-	Cs->Granularity = 0;
-
-	PX86_SYSTEM_DESCRIPTOR Tss = &Descriptors[sVmmTssSelector.Index];
-
-	Tss->Type = SEGMENT_TYPE_WORD_TSS_BUSY_32;
-	Tss->System = TRUE;
-	Tss->Dpl = 0;
-	Tss->Present = TRUE;
-	Tss->Long = TRUE;
-	Tss->DefaultOperationSize = 0;
-	Tss->Granularity = 0;
-	Tss->LimitLow = sizeof(X86_TASK_STATE_SEGMENT) & 0xFFFF;
-	Tss->LimitHigh = (sizeof(X86_TASK_STATE_SEGMENT) >> 16) & 0xF;
-
-	VmmContext->Tss = ImpAllocateHostNpPool(sizeof(X86_TASK_STATE_SEGMENT));
-	if (VmmContext->Tss == NULL)
-	{
-		ImpDebugPrint("Failed to allocate TSS segment...\n");
-		Status = STATUS_INSUFFICIENT_RESOURCES;
-		goto panic;
-	}
-
-	const UINT64 Address = (UINT64)VmmContext->Tss;
-
-	Tss->BaseLow = Address & 0xFFFF;
-	Tss->BaseMiddle = (Address >> 16) & 0xFF;
-	Tss->BaseHigh = (Address >> 24) & 0xFF;
-	Tss->BaseUpper = (Address >> 32) & 0xFFFFFFFF;
-
-	VmmContext->Gdt = Descriptors;
-
-panic:
-	if (!NT_SUCCESS(Status))
-	{
-		if (VmmContext->Tss != NULL)
-			ExFreePoolWithTag(VmmContext->Tss, POOL_TAG);
-		if (VmmContext->Gdt != NULL)
-			ExFreePoolWithTag(VmmContext->Gdt, POOL_TAG);
-	}
-
-	return Status;
-}
-
-VSC_API
-VOID
-VmmCreateInterruptGate(
-	PX86_INTERRUPT_TRAP_GATE Gates,
-	UINT8 Vector,
-	PVOID Handler
-)
-{
-	PX86_INTERRUPT_TRAP_GATE Gate = &Gates[Vector];
-
-	Gate->SegmentSelector = sVmmCsSelector.Index;                
-	Gate->InterruptStackTable = FALSE;                                
-	Gate->Type = SEGMENT_TYPE_NATURAL_INTERRUPT_GATE;  
-	Gate->Dpl = 0;                                   
-	Gate->Present = TRUE;                                 
-
-	const UINT64 Address = (UINT64)Handler;
-	Gate->OffsetLow = Address & 0xFFFF;
-	Gate->OffsetMid = (Address >> 16) & 0xFFFF;
-	Gate->OffsetHigh = (Address >> 32) & 0xFFFFFFFF;
-}
-
-VSC_API
-NTSTATUS
-VmmPrepareHostIDT(
-	_Inout_ PVMM_CONTEXT VmmContext
-)
-/*++
-Routine Description:
-	Creates a host IDT pointing to VcpuHandleHostException
---*/
-{
-	NTSTATUS Status = STATUS_SUCCESS;
-
-	PX86_INTERRUPT_TRAP_GATE InterruptGates = ImpAllocateContiguousMemory(sizeof(X86_INTERRUPT_TRAP_GATE) * 32);
-	if (InterruptGates == NULL)
-	{
-		ImpDebugPrint("Failed to allocate 32 interrupt gates for host IDT...\n");
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-
-	VmmCreateInterruptGate(InterruptGates, 2, __vmm_intr_gate_2);
-
-	// TODO: Enable interrupts during root mode and write a small debugger to walk the stack after an interrupt occurs
-
-	VmmContext->Idt = InterruptGates;
-
-	return Status;
-}
-
-VSC_API
-NTSTATUS
 VmmPrepareSystemResources(
 	_Inout_ PVMM_CONTEXT VmmContext
 )
@@ -311,20 +195,6 @@ Routine Description:
 {
 	// TODO: Complete this
 	NTSTATUS Status = STATUS_SUCCESS;
-
-	Status = VmmPrepareHostGDT(VmmContext);
-	if (!NT_SUCCESS(Status))
-	{
-		ImpDebugPrint("Failed to create host GDT... (%X)\n", Status);
-		return Status;
-	}
-
-	Status = VmmPrepareHostIDT(VmmContext);
-	if (!NT_SUCCESS(Status))
-	{
-		ImpDebugPrint("Failed to create host GDT... (%X)\n", Status);
-		return Status;
-	}
 
 	Status = MmInitialise(&VmmContext->MmInformation);
 	if (!NT_SUCCESS(Status))

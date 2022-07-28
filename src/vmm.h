@@ -12,13 +12,13 @@
 #include "ept.h"
 #include "mm.h"
 
+extern const X86_SEGMENT_SELECTOR gVmmCsSelector;
+extern const X86_SEGMENT_SELECTOR gVmmTssSelector;
+
 typedef struct _VMM_CONTEXT
 {
 	UINT8 CpuCount;
 	PVCPU VcpuTable;
-	PX86_INTERRUPT_TRAP_GATE Idt;
-	PX86_SEGMENT_DESCRIPTOR Gdt;
-	PX86_TASK_STATE_SEGMENT Tss;
 	BOOLEAN UseUnrestrictedGuests;
 	BOOLEAN UseTscSpoofing;
 	MM_INFORMATION MmInformation;
