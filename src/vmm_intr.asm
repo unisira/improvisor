@@ -47,10 +47,7 @@ VCPU_MACHINE_FRAME ENDS
 
 ; This design is stolen from the darwin kernel, thanks Apple
 __vmm_generic_intr_handler proc
-	sub rsp, 8										; Fix stack alignment to 16-bytes 
-
 	sub rsp, SIZEOF VCPU_TRAP_FRAME
-
 	mov [rsp].VCPU_TRAP_FRAME._Rax, rax				; Save guest system state
 	mov [rsp].VCPU_TRAP_FRAME._Rbx, rbx
 	mov [rsp].VCPU_TRAP_FRAME._Rcx, rcx
@@ -119,11 +116,9 @@ __vmm_generic_intr_handler proc
 	movups xmm13, [rsp].VCPU_TRAP_FRAME._Xmm13
 	movups xmm14, [rsp].VCPU_TRAP_FRAME._Xmm14
 	movups xmm15, [rsp].VCPU_TRAP_FRAME._Xmm15
-
 	add rsp, SIZEOF VCPU_TRAP_FRAME
-
-	add rsp, 16	; Skip the vector and error code on the stack
-	iretq		; Return to code again
+	add rsp, 010h	; Skip the vector and error code on the stack
+	iretq			; Return to code again
 __vmm_generic_intr_handler endp
 
 ; Define __vmm_intr_handler_X for each exception
@@ -138,6 +133,41 @@ name endp
 endm
 
 ; Define NMI Host interrupt handler
+VMM_INTR_HANDLER 0, __vmm_intr_gate_0
+VMM_INTR_HANDLER 1, __vmm_intr_gate_1
 VMM_INTR_HANDLER 2, __vmm_intr_gate_2
+VMM_INTR_HANDLER 3, __vmm_intr_gate_3
+VMM_INTR_HANDLER 4, __vmm_intr_gate_4
+VMM_INTR_HANDLER 5, __vmm_intr_gate_5
+VMM_INTR_HANDLER 6, __vmm_intr_gate_6
+VMM_INTR_HANDLER 7, __vmm_intr_gate_7
+VMM_INTR_HANDLER 8, __vmm_intr_gate_8
+VMM_INTR_HANDLER 9, __vmm_intr_gate_9
+VMM_INTR_HANDLER 10, __vmm_intr_gate_10
+VMM_INTR_HANDLER 11, __vmm_intr_gate_11
+VMM_INTR_HANDLER 12, __vmm_intr_gate_12
+VMM_INTR_HANDLER 13, __vmm_intr_gate_13
+VMM_INTR_HANDLER 14, __vmm_intr_gate_14
+VMM_INTR_HANDLER 15, __vmm_intr_gate_15
+VMM_INTR_HANDLER 16, __vmm_intr_gate_16
+VMM_INTR_HANDLER 17, __vmm_intr_gate_17
+VMM_INTR_HANDLER 18, __vmm_intr_gate_18
+VMM_INTR_HANDLER 19, __vmm_intr_gate_19
+VMM_INTR_HANDLER 20, __vmm_intr_gate_20
+VMM_INTR_HANDLER 21, __vmm_intr_gate_21
+VMM_INTR_HANDLER 22, __vmm_intr_gate_22
+VMM_INTR_HANDLER 23, __vmm_intr_gate_23
+VMM_INTR_HANDLER 24, __vmm_intr_gate_24
+VMM_INTR_HANDLER 25, __vmm_intr_gate_25
+VMM_INTR_HANDLER 26, __vmm_intr_gate_26
+VMM_INTR_HANDLER 27, __vmm_intr_gate_27
+VMM_INTR_HANDLER 28, __vmm_intr_gate_28
+VMM_INTR_HANDLER 29, __vmm_intr_gate_29
+VMM_INTR_HANDLER 30, __vmm_intr_gate_30
+VMM_INTR_HANDLER 31, __vmm_intr_gate_31
+VMM_INTR_HANDLER 32, __vmm_intr_gate_32
+
+; Define unknown host interrupt handler
+VMM_INTR_HANDLER 0FFFFFFFFFFFFFFFFh, __vmm_intr_gate_unk
 
 END
