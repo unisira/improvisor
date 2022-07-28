@@ -265,7 +265,7 @@ do {				    \
 	++pos;			    \
 } while (0);
 
-int minimal_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
+int vsprintf_s(char *buf, size_t size, const char *fmt, va_list ap)
 {
 	/* The maximum space required is to print a 64-bit number in octal */
 	char tmp[(sizeof(UINT64) * 8 + 2) / 3];
@@ -511,15 +511,4 @@ fail:
 		buf[min____(pos, size - 1)] = '\0';
 
 	return (int)pos;
-}
-
-int vsprintf_s(char *buf, size_t size, const char *fmt, ...)
-{
-	va_list args;
-	int i;
-
-	va_start(args, fmt);
-	i = minimal_vsnprintf(buf, size, fmt, args);
-	va_end(args);
-	return i;
 }

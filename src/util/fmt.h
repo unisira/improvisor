@@ -3,6 +3,6 @@
 
 #include <stdarg.h>
 
-int vsprintf_s(char *buf, size_t size, const char *fmt, ...);
+int vsprintf_s(char* buf, size_t size, const char* fmt, va_list ap);
 
 #endif
