@@ -55,8 +55,8 @@ EhReserveHookRecords(
 	{
 		PEH_HOOK_REGISTRATION CurrHook = sHookRegistrationListRaw + i;
 
-		CurrHook->Links.Flink = i < Count   ? &(CurrHook + 1)->Links : NULL;
-		CurrHook->Links.Blink = i > 0       ? &(CurrHook - 1)->Links : NULL;
+		CurrHook->Links.Flink = i < Count - 1 ? &(CurrHook + 1)->Links : NULL;
+		CurrHook->Links.Blink = i > 0		  ? &(CurrHook - 1)->Links : NULL;
 	}
 
 	return STATUS_SUCCESS;
@@ -285,7 +285,7 @@ Routine Description:
 	PUCHAR DetourShellcode = ImpAllocateNpPool(Hook->PrologueSize); 
 		
 	for (SIZE_T i = 0; i < Hook->PrologueSize; i++)
-		*(DetourShellcode + i) = 0xCC /* NOP */;
+		*(DetourShellcode + i) = 0xCC;
 
 	if (VmWriteSystemMemory(
 			RVA_PTR(Hook->ShadowPage, PAGE_OFFSET(Hook->TargetFunction)), 
