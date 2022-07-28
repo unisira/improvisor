@@ -6,10 +6,18 @@
 #define PAGE_FRAME_NUMBER(Addr) ((UINT64)(Addr) >> 12)
 #define PAGE_ADDRESS(Pfn) ((UINT64)(Pfn) << 12)
 #define PAGE_ALIGN(Addr) ((UINT64)(Addr) & ~0xFFFULL)
+#define PAGE_END_ALIGN(Addr) ((UINT64)(Addr + PAGE_SIZE) & ~0xFFFULL)
 #define PAGE_OFFSET(Addr) ((UINT64)(Addr) & 0xFFFULL)
 #define GB(N) ((UINT64)(N) * 1024 * 1024 * 1024)
 #define MB(N) ((UINT64)(N) * 1024 * 1024)
 #define KB(N) ((UINT64)(N) * 1024)
+
+
+#define RVA_PTR(Addr, Offs) \
+	((PUCHAR)Addr + (UINT64)Offs)
+
+#define RVA(Addr, Offs) \
+	((UINT64)RVA_PTR(Addr, Offs))
 
 typedef union _X86_LA48
 {
