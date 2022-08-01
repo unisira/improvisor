@@ -32,4 +32,5 @@ build/*
 
 # Kernel Module Compile Results
 *.sys
-/.vs/improvisor/v16
+
+/.vs/*
