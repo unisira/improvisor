@@ -71,6 +71,7 @@ set(WDK_COMPILE_FLAGS
     "/GF"  # enable string pooling
     "/GR-" # disable RTTI
     "/Gz" # __stdcall by default
+	"/GS-" # Disable stack checks
     "/kernel"  # create kernel mode binary
     "/FIwarning.h" # disable warnings in WDK headers
     "/FI${WDK_ADDITIONAL_FLAGS_FILE}" # include file to disable RTC
