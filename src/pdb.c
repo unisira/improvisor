@@ -390,6 +390,13 @@ typedef struct _TPI_MEMBER_LEAF_RECORD
 	UINT8 Data[1];
 } TPI_MEMBER_LEAF_RECORD, * PTPI_MEMBER_LEAF_RECORD;
 
+SIZE_T
+PdbSearchFieldList(
+	_In_ PPDB_ENTRY Pdb,
+	_In_ PTPI_FIELD_LIST_LEAF_RECORD Lr,
+	_In_ FNV1A Member
+);
+
 NTSTATUS
 PdbReserveEntries(
 	_In_ SIZE_T Count
@@ -420,8 +427,18 @@ NTSTATUS
 PdbAllocateEntry(
 	_In_ PPDB_ENTRY* Entry
 )
+/*++
+Routine Description:
+	Consumes one entry from the PDB entry list
+--*/
 {
-	// TODO: Implement me
+	if (sPdbEntriesHead->Links.Flink == NULL)
+		return STATUS_INSUFFICIENT_RESOURCES;
+
+	*Entry = sPdbEntriesHead;
+
+	sPdbEntriesHead = sPdbEntriesHead->Links.Flink;
+
 	return STATUS_SUCCESS;
 }
 
@@ -429,6 +446,10 @@ PPDB_ENTRY
 PdbFindEntry(
 	_In_ FNV1A Name
 )
+/*++
+Routine Description:
+	Finds a PDB entry using `Name`
+--*/
 {
 	PPDB_ENTRY CurrEntry = sPdbEntriesHead;
 	while (CurrEntry != NULL)
@@ -446,6 +467,10 @@ BOOLEAN
 MsfIsMagicValid(
 	_In_ PMSF_SUPER_BLOCK SuperBlock
 )
+/*++
+Routine Description:
+	Makes sure the MSF superblock header magic is correct
+--*/
 {
 	return RtlCompareMemory(MSF_MAGIC, SuperBlock->Magic, sizeof(SuperBlock->Magic)) == 0;
 }
@@ -454,6 +479,10 @@ PMSF_STREAM_DIRECTORY
 MsfParseStreamDirectory(
 	_In_ PMSF_SUPER_BLOCK SuperBlock
 )
+/*++
+Routine Description:
+	Extracts the MSF stream directory using the MSF superblock
+--*/
 {
 	if (MsfIsMagicValid(SuperBlock))
 		return NULL;
@@ -485,6 +514,10 @@ PVOID*
 MsfParseStreams(
 	_In_ PMSF_SUPER_BLOCK SuperBlock
 )
+/*++
+Routine Description:
+	Extracts all streams from an MSF stream directory
+--*/
 {
 	const PMSF_STREAM_DIRECTORY Sd = MsfParseStreamDirectory(SuperBlock);
 	if (Sd == NULL)
@@ -561,25 +594,25 @@ Routine Description:
 	switch (*Leaf)
 	{
 	case LF_CHAR: 
-		*Number = *(PCHAR)RVA_PTR(Leaf, sizeof(USHORT));
+		*Number = *RVA_PTR_T(CHAR, Leaf, sizeof(USHORT));
 		return sizeof(USHORT) + sizeof(CHAR);
 	case LF_SHORT: 
-		*Number = *(PSHORT)RVA_PTR(Leaf, sizeof(USHORT));
+		*Number = *RVA_PTR_T(SHORT, Leaf, sizeof(USHORT));
 		return sizeof(USHORT) + sizeof(SHORT);
 	case LF_USHORT: 
-		*Number = *(PUSHORT)RVA_PTR(Leaf, sizeof(USHORT));
+		*Number = *RVA_PTR_T(USHORT, Leaf, sizeof(USHORT));
 		return sizeof(USHORT) + sizeof(USHORT);
 	case LF_LONG: 
-		*Number = *(PULONG)RVA_PTR(Leaf, sizeof(USHORT));
+		*Number = *RVA_PTR_T(LONG, Leaf, sizeof(USHORT));
 		return sizeof(USHORT) + sizeof(LONG);
 	case LF_ULONG: 
-		*Number = *(PULONG)RVA_PTR(Leaf, sizeof(USHORT));
+		*Number = *RVA_PTR_T(ULONG, Leaf, sizeof(USHORT));
 		return sizeof(USHORT) + sizeof(ULONG);
 	case LF_QUADWORD: 
-		*Number = *(PINT64)RVA_PTR(Leaf, sizeof(USHORT));
+		*Number = *RVA_PTR_T(INT64, Leaf, sizeof(USHORT));
 		return sizeof(USHORT) + sizeof(INT64);
 	case LF_UQUADWORD: 
-		*Number = *(PUINT64)RVA_PTR(Leaf, sizeof(USHORT));
+		*Number = *RVA_PTR_T(UINT64, Leaf, sizeof(USHORT));
 		return sizeof(USHORT) + sizeof(UINT64);
 	}
 }
@@ -591,6 +624,7 @@ PdbLookupTypeIndex(
 )
 /*++
 Routine Description:
+	O(Log(n)) lookup of complex type indices to type record using the IndexOffsetBuffer and a linear search
 --*/
 {
 	PTPI_HEADER Tpi = Pdb->TpiStream;
@@ -634,12 +668,18 @@ Routine Description:
 	return Lr;
 }
 
+
+
 SIZE_T
 PdbSearchStructure(
 	_In_ PPDB_ENTRY Pdb,
 	_In_ PTPI_STRUCTURE_LEAF_RECORD Lr,
 	_In_ FNV1A Member
 )
+/*++
+Routine Description:
+	Searches a LF_STRUCTURE's Field type record for `Member`
+--*/
 {
 	if (Lr->Field.Value != 0)
 		// The type index in Field will always point to a LF_FIELDLIST type record
@@ -658,6 +698,7 @@ PdbSearchFieldList(
 )
 /*++
 Routine Description:
+	Iterate over the members of an LF_FIELDLIST type record looking for an entry with name equal to `Member`
 --*/
 {
 	// TODO: Clean this up more
@@ -666,7 +707,7 @@ Routine Description:
 	while (Size < Lr->Head.Length - sizeof(UINT16))
 	{
 		// Skip all LF_PAD entries
-		while (*RVA_PTR(Lr->Data, Size) >= LF_PAD0)
+		while (*RVA_PTR_T(UCHAR, Lr->Data, Size) >= LF_PAD0)
 			Size++;
 
 		// The - sizeof(UINT16) is a hack, length isn't included in the type records
