@@ -14,10 +14,13 @@
 
 
 #define RVA_PTR(Addr, Offs) \
-	((PUCHAR)Addr + (UINT64)Offs)
+	((PVOID)((PUCHAR)Addr + (UINT64)Offs))
+
+#define RVA_PTR_T(T, Addr, Offs) \
+	((T*)RVA_PTR(Addr, Offs))
 
 #define RVA(Addr, Offs) \
-	((UINT64)RVA_PTR(Addr, Offs))
+	(RVA_PTR_T(UINT64, Addr, Offs))
 
 typedef union _X86_LA48
 {

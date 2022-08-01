@@ -94,6 +94,7 @@ typedef struct _VCPU_CONTEXT
 	M128 Xmm14;
 	M128 Xmm15;
 } VCPU_CONTEXT, *PVCPU_CONTEXT;
+#pragma pack(pop)
 
 #pragma pack(push, 1)
 typedef struct _VCPU_TRAP_FRAME
