@@ -301,6 +301,54 @@ Routine Description:
 }
 
 VOID
+ImpFreeAllocation(
+	_In_ PVOID Memory
+)
+/*++
+Routine Description:
+	Frees a specific allocation and removes the allocation entry
+--*/
+{
+	PIMP_ALLOC_RECORD CurrRecord = gHostAllocationsHead;
+	while (CurrRecord != NULL)
+	{
+		if (CurrRecord->Address == Memory)
+		{
+			ExFreePoolWithTag(CurrRecord->Address, POOL_TAG);
+			// Break and unlink this allocation
+			break;
+		}
+
+		CurrRecord = (PIMP_ALLOC_RECORD)CurrRecord->Records.Blink;
+	}
+
+	// No allocation was found with address `Memory`
+	if (CurrRecord == NULL)
+		return;
+
+	CurrRecord->Address = NULL;
+	CurrRecord->PhysAddr = 0;
+	CurrRecord->Size = 0;
+	CurrRecord->Flags = 0;
+
+	PIMP_ALLOC_RECORD Next = CurrRecord->Records.Flink;
+	PIMP_ALLOC_RECORD Prev = CurrRecord->Records.Blink;
+
+	if (Prev != NULL)
+		Prev->Records.Flink = &Next->Records;
+	if (Next != NULL)
+		Next->Records.Blink = &Prev->Records;
+
+	PIMP_ALLOC_RECORD Head = gHostAllocationsHead;
+	// The original head is now the previous entry to the new head
+	CurrRecord->Records.Blink = &Head->Records;
+	// The original head's next entry is now the next entry for us too
+	CurrRecord->Records.Flink = Head->Records.Flink;
+
+	gHostAllocationsHead = CurrRecord;
+}
+
+VOID
 ImpFreeAllAllocations(VOID)
 /*++
 Routine Description:

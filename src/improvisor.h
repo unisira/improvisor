@@ -104,6 +104,11 @@ ImpAllocateNpPoolEx(
 );
 
 VOID
+ImpFreeAllocation(
+	_In_ PVOID Memory
+);
+
+VOID
 ImpFreeAllAllocations(VOID);
 
 UINT64
