@@ -55,7 +55,7 @@ UINT32 ldasm(const void *code, ldasm_data *ld, BOOLEAN is64)
  length of instruction
  */
 {
-	const UINT32 *p = (const UINT8*)code;
+	const UINT8 *p = (const UINT8*)code;
 	UINT8 s, op, f;
 	UINT8 rexw, pr_66, pr_67;
 

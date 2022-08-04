@@ -111,7 +111,7 @@ typedef union _EPT_SHADOW_PAGE
 
 typedef struct _EPT_INFORMATION
 {
-	PEPT_PTE SystemPml4;
+	PEPT_PTE Pml4;
 	PEPT_SHADOW_PAGE DummyPage;
 	UINT64 DummyPagePhysAddr;
 } EPT_INFORMATION, *PEPT_INFORMATION;

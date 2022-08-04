@@ -20,9 +20,9 @@ typedef struct _EH_HOOK_REGISTRATION
 	LIST_ENTRY Links;
 	FNV1A Hash;
 	EH_DETOUR_STATE State;
+	PVOID TargetFunction;
 	PVOID ShadowPage;
 	PVOID Trampoline;
-	PVOID TargetFunction;
 	PVOID CallbackFunction;
 	SIZE_T PrologueSize;
 	UINT64 ShadowPhysAddr;
