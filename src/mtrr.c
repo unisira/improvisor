@@ -35,10 +35,10 @@ static const MTRR_STATIC_REGION sFixedMtrrRanges[] = {
 	{IA32_MTRR_FIX4K_F8000, 0xF8000ul, KB(4)}
 };
 
-static PMTRR_REGION_CACHE_ENTRY sMtrrRegionCacheRaw = NULL;
+VMM_DATA static PMTRR_REGION_CACHE_ENTRY sMtrrRegionCacheRaw = NULL;
 
 // The head of the MTRR variable range cache list
-PMTRR_REGION_CACHE_ENTRY gMtrrRegionCacheHead = NULL;
+VMM_DATA PMTRR_REGION_CACHE_ENTRY gMtrrRegionCacheHead = NULL;
 
 VMM_API
 PMTRR_REGION_CACHE_ENTRY
@@ -141,6 +141,7 @@ Routine Description:
 	return Entry->Base + Entry->Size;
 }
 
+VSC_API
 NTSTATUS
 MtrrSaveVariableRange(
 	_In_ IA32_MTRR_PHYSBASE_N_MSR Base,
@@ -164,6 +165,7 @@ MtrrSaveVariableRange(
 	return STATUS_SUCCESS;
 }
 
+VSC_API
 NTSTATUS
 MtrrSaveStaticRange(
 	_In_ MTRR_STATIC_REGION FixedRegion
@@ -189,6 +191,7 @@ MtrrSaveStaticRange(
 	return STATUS_SUCCESS;
 }
 
+VSC_API
 NTSTATUS
 MtrrInitialise(VOID)
 {
@@ -221,8 +224,8 @@ MtrrInitialise(VOID)
 	{
 		PMTRR_REGION_CACHE_ENTRY CurrMtrrEntry = sMtrrRegionCacheRaw + i;
 
-		CurrMtrrEntry->Links.Flink = i < MtrrRegionCount + 1 ? &(CurrMtrrEntry + 1)->Links : NULL;
-		CurrMtrrEntry->Links.Blink = i > 0                   ? &(CurrMtrrEntry - 1)->Links : NULL;
+		CurrMtrrEntry->Links.Flink = i < MtrrRegionCount	? &(CurrMtrrEntry + 1)->Links : NULL;
+		CurrMtrrEntry->Links.Blink = i > 0					? &(CurrMtrrEntry - 1)->Links : NULL;
 	}
 
 	// Save all variable MTRR range registers
