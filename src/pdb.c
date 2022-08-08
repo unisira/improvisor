@@ -668,8 +668,6 @@ Routine Description:
 	return Lr;
 }
 
-
-
 SIZE_T
 PdbSearchStructure(
 	_In_ PPDB_ENTRY Pdb,
@@ -728,7 +726,9 @@ Routine Description:
 			
 			// Check if this member's name's hash equals `Member`
 			if (FNV1A_HASH(Name) == Member)
+			{
 				return CurrOffset;
+			}
 			else if (TypeLr->Kind == LF_STRUCTURE || TypeLr->Kind == LF_CLASS)
 			{
 				// Try to find `Member` if this type is a structure 
