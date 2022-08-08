@@ -654,6 +654,10 @@ Routine Description:
 	if (Curr == NULL)
 		return NULL;
 
+	// FIXME: Sometimes the closest entry's TI is greater than `Ti`
+	while (Curr->Ti.Value > Ti.Value)
+		Curr = Curr - 1;
+
 	SIZE_T i = Ti.Value - Curr->Ti.Value;
 
 	// Move forward `i` times from the closest to our type index
@@ -713,14 +717,13 @@ Routine Description:
 		switch (Curr->Kind)
 		{
 		// TODO: Check if i need to search LF_BCLASS type for member
+		// TODO: Handle LF_NESTEDTYPE
 		case LF_MEMBER:
 		{
 			PTPI_MEMBER_LEAF_RECORD MemberLr = Curr;
-			// TODO: Maybe wrap this into a function
-			PTPI_LEAF_RECORD TypeLr = PdbLookupTypeIndex(Pdb, MemberLr->Type);
 
 			UINT64 CurrOffset = 0;
-			SIZE_T OffsetSize = PdbExtractVar(MemberLr->Data, &CurrOffset);
+			UINT64 OffsetSize = PdbExtractVar(MemberLr->Data, &CurrOffset);
 			// Get the name of the current member
 			LPCSTR Name = RVA_PTR(MemberLr->Data, OffsetSize);
 			
@@ -729,19 +732,25 @@ Routine Description:
 			{
 				return CurrOffset;
 			}
-			else if (TypeLr->Kind == LF_STRUCTURE || TypeLr->Kind == LF_CLASS)
+			// If this type is complex, get its leaf record and check if it needs to be searched
+			else if (MemberLr->Type.Complex != 0)
 			{
-				// Try to find `Member` if this type is a structure 
-				SIZE_T Offset = PdbSearchStructure(Pdb, TypeLr, Member);
-				if (Offset != -1)
-					return CurrOffset + Offset;
+				PTPI_LEAF_RECORD TypeLr = PdbLookupTypeIndex(Pdb, MemberLr->Type);
+
+				if (TypeLr->Kind == LF_STRUCTURE || TypeLr->Kind == LF_CLASS)
+				{
+					// Try to find `Member` if this type is a structure 
+					SIZE_T Offset = PdbSearchStructure(Pdb, TypeLr, Member);
+					if (Offset != -1)
+						return CurrOffset + Offset;
+				}
 			}
 
 			SIZE_T NameSz = 0;
 			while (*Name++ != '\x00')
 				NameSz++;
 
-			Size += sizeof(TPI_MEMBER_LEAF_RECORD) - sizeof(UINT16) + OffsetSize + NameSz + 1;
+			Size += sizeof(TPI_MEMBER_LEAF_RECORD) - sizeof(UINT16) + OffsetSize + NameSz;
 		} break;
 		}
 	}
@@ -788,13 +797,13 @@ Routine Description:
 		// TODO: Look at LF_*_ST, these also follow the structure type
 		if (Record->Kind != LF_STRUCTURE &&
 			Record->Kind != LF_CLASS )
-			goto cont;
+			goto next;
 
 		PTPI_STRUCTURE_LEAF_RECORD Lr = Record;
 
 		// Forward references don't have a Field TI
 		if (Lr->Properties.ForwardRef)
-			goto cont;
+			goto next;
 
 		UINT64 Size = 0;
 		// Get the name of the structure after the data size
@@ -802,12 +811,12 @@ Routine Description:
 
 		// If we have a match, search the field list for `Member`
 		if (FNV1A_HASH(Name) != Structure)
-			goto cont;
+			goto next;
 
 		// If we make it here, this should be our structure
 		return PdbSearchStructure(Pdb, Lr, Member);
 
-cont:
+	next:
 		Record = RVA_PTR(Record, Record->Length + sizeof(UINT16));
 	}
 
