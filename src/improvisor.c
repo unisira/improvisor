@@ -49,10 +49,16 @@ ImpAllocateLogRecord(
 	_Out_ PIMP_LOG_RECORD* LogRecord
 )
 {
+	// TODO: Rewrite this
+
 	SpinLock(&sLogWriterLock);
 
-	// If gLogRecordsHead == NULL, we have ran out of entries, loop back around
-	if (gLogRecordsHead == NULL)
+	if (gLogRecordsHead->Links.Flink == NULL)
+		return STATUS_INSUFFICIENT_RESOURCES;
+
+	*LogRecord = gLogRecordsHead;
+
+	gLogRecordsHead = gLogRecordsHead->Links.Flink;
 
 	SpinUnlock(&sLogWriterLock);
 
