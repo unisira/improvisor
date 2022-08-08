@@ -633,6 +633,17 @@ Routine Description:
 			}
 		}
 
+		// Map the .rdata section for strings
+		if (memcmp(Section->Name, ".rdata", 6) == 0)
+		{
+			// Map all .VMM* sections as host allocations.
+			if (!NT_SUCCESS(ImpInsertAllocRecord(RVA_PTR(ImageBase, Section->VirtualAddress), Section->SizeOfRawData, IMP_SHARED_ALLOCATION)))
+			{
+				ImpDebugPrint("Failed to create IMPV section allocation record for '%s' (%llx)...\n", Section->Name, RVA_PTR(ImageBase, Section->VirtualAddress));
+				return STATUS_INSUFFICIENT_RESOURCES;
+			}
+		}
+
 		// .VSC section contains VMM startup code. This shouldn't be mapped anywhere once the VMM starts
 		if (memcmp(Section->Name, ".VSC", 4) == 0)
 		{
@@ -1010,7 +1021,7 @@ Routine Description:
 	for `VirtAddr` or `Buffer`
 --*/
 {
-	if (Size >= PAGE_SIZE - max(PAGE_OFFSET(VirtAddr), PAGE_OFFSET(Buffer)))
+	if (Size > PAGE_SIZE - max(PAGE_OFFSET(VirtAddr), PAGE_OFFSET(Buffer)))
 		return STATUS_INVALID_BUFFER_SIZE;
 
 	PMM_VPTE Vpte = NULL;
@@ -1041,7 +1052,7 @@ Routine Description:
 	for `VirtAddr` or `Buffer`
 --*/
 {
-	if (Size >= PAGE_SIZE - max(PAGE_OFFSET(VirtAddr), PAGE_OFFSET(Buffer)))
+	if (Size > PAGE_SIZE - max(PAGE_OFFSET(VirtAddr), PAGE_OFFSET(Buffer)))
 		return STATUS_INVALID_BUFFER_SIZE;
 
 	PMM_VPTE Vpte = NULL;
