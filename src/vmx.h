@@ -59,7 +59,7 @@ typedef union _VMX_MOV_CR_EXIT_QUALIFICATION
 	};
 } VMX_MOV_CR_EXIT_QUALIFICATION, *PVMX_MOV_CR_EXIT_QUALIFICATION;
 
-typedef union _VMX_INTERRUPT_INFO
+typedef union _VMX_ENTRY_INTERRUPT_INFO
 {
 	UINT32 Value;
 
@@ -72,6 +72,21 @@ typedef union _VMX_INTERRUPT_INFO
 		UINT32 Valid : 1;
 	};
 } VMX_ENTRY_INTERRUPT_INFO, *PVMX_ENTRY_INTERRUPT_INFO;
+
+typedef union _VMX_EXIT_INTERRUPT_INFO
+{
+	UINT32 Value;
+
+	struct
+	{
+		UINT32 Vector : 8;
+		UINT32 Type : 3;
+		UINT32 DeliverErrorCode : 1;
+		UINT32 NmiUnblocking : 1;
+		UINT32 Reserved1 : 18;
+		UINT32 Valid : 1;
+	};
+} VMX_EXIT_INTERRUPT_INFO, *PVMX_EXIT_INTERRUPT_INFO;
 
 typedef struct _VMX_INVVPID_DESCRIPTOR
 {
