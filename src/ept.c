@@ -120,6 +120,8 @@ Routine Description:
 	return STATUS_SUCCESS;
 }
 
+#define EPT_LARGE_PAGE_SIZE (MB(2))
+
 VMM_API
 NTSTATUS
 EptSubvertLargePage(
@@ -133,17 +135,16 @@ Routine Description:
 	Takes a Super PDE `Pde` and converts it into a normal PDPTE, mapping all necessary pages.
 --*/
 {
-	static const sSize = MB(2);
-
 	if (!Pde->LargePage)
 		return STATUS_INVALID_PARAMETER;
 
 	Pde->LargePage = FALSE;
+	Pde->MemoryType = 0;
 
 	PEPT_PTE Pt = NULL;
 	if (!NT_SUCCESS(MmAllocateHostPageTable(&Pt)))
 	{
-		ImpDebugPrint("Couldn't allocate EPT PD for '%llx' subversion...\n", GuestPhysAddr);
+		ImpLog("Couldn't allocate EPT PD for '%llx' subversion...\n", GuestPhysAddr);
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
@@ -154,7 +155,7 @@ Routine Description:
 	MEMORY_TYPE RegionType = MtrrGetRegionType(PhysAddr);
 
 	SIZE_T SizeSubverted = 0;
-	while (SizeSubverted < sSize)
+	while (SizeSubverted < EPT_LARGE_PAGE_SIZE)
 	{
 		EPT_GPA Gpa = {
 			.Value = GuestPhysAddr + SizeSubverted
@@ -166,8 +167,8 @@ Routine Description:
 
 		EptApplyPermissions(Pte, Permissions);
 
-		Pte->PageFrameNumber = PAGE_FRAME_NUMBER(Gpa.Value);
-		// Technically, doing PhysAddr + SizeSubverted is just pedantic because mapping a large PDE requires that it was within one MTRR region
+		Pte->PageFrameNumber = PAGE_FRAME_NUMBER(PhysAddr + SizeSubverted);
+		// Doing PhysAddr + SizeSubverted is just pedantic because mapping a large PDE requires that it was within one MTRR region
 		Pte->MemoryType = RegionType;
 
 		SizeSubverted += PAGE_SIZE;
@@ -211,6 +212,8 @@ Routine Description:
 	return STATUS_SUCCESS;
 }
 
+#define EPT_SUPER_PAGE_SIZE (GB(1))
+
 VMM_API
 NTSTATUS
 EptSubvertSuperPage(
@@ -225,17 +228,16 @@ Routine Description:
 	the super page as large pages, and if that fails then it uses regular 4KB pages
 --*/
 {
-	static const sSize = GB(1);
-
 	if (!Pdpte->LargePage)
 		return STATUS_INVALID_PARAMETER;
 
 	Pdpte->LargePage = FALSE;
+	Pdpte->MemoryType = 0;
 	
 	PEPT_PTE Pd = NULL;
 	if (!NT_SUCCESS(MmAllocateHostPageTable(&Pd)))
 	{
-		ImpDebugPrint("Couldn't allocate EPT PD for '%llx' subversion...\n", GuestPhysAddr);
+		ImpLog("Couldn't allocate EPT PD for '%llx' subversion...\n", GuestPhysAddr);
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
@@ -246,7 +248,7 @@ Routine Description:
 	MEMORY_TYPE RegionType = MtrrGetRegionType(PhysAddr);
 
 	SIZE_T SizeSubverted = 0;
-	while (SizeSubverted < sSize)
+	while (SizeSubverted < EPT_SUPER_PAGE_SIZE)
 	{
 		EPT_GPA Gpa = {
 			.Value = GuestPhysAddr + SizeSubverted
@@ -263,7 +265,7 @@ Routine Description:
 					Pde,
 					GuestPhysAddr + SizeSubverted,
 					PhysAddr + SizeSubverted,
-					sSize - SizeSubverted,
+					EPT_SUPER_PAGE_SIZE - SizeSubverted,
 					Permissions)
 				))
 			{
@@ -275,7 +277,7 @@ Routine Description:
 				PEPT_PTE Pt = NULL;
 				if (!NT_SUCCESS(MmAllocateHostPageTable(&Pt)))
 				{
-					ImpDebugPrint("Couldn't allocate EPT PT for '%llx' subversion...\n", PhysAddr + SizeSubverted);
+					ImpLog("Couldn't allocate EPT PT for '%llx' subversion...\n", PhysAddr + SizeSubverted);
 					return STATUS_INSUFFICIENT_RESOURCES;
 				}
 
@@ -299,7 +301,7 @@ Routine Description:
 
 		EptApplyPermissions(Pte, Permissions);
 
-		Pte->PageFrameNumber = PAGE_FRAME_NUMBER(Gpa.Value);
+		Pte->PageFrameNumber = PAGE_FRAME_NUMBER(PhysAddr + SizeSubverted);
 		Pte->MemoryType = RegionType;
 
 		SizeSubverted += PAGE_SIZE;
@@ -338,7 +340,7 @@ Routine Description:
 			PEPT_PTE Pdpt = NULL;
 			if (!NT_SUCCESS(MmAllocateHostPageTable(&Pdpt)))
 			{
-				ImpDebugPrint("Couldn't allocate EPT PDPT for '%llx'...\n", PhysAddr + SizeMapped);
+				ImpLog("Couldn't allocate EPT PDPT for '%llx'...\n", PhysAddr + SizeMapped);
 				return STATUS_INSUFFICIENT_RESOURCES;
 			}
 
@@ -374,7 +376,7 @@ Routine Description:
 				PEPT_PTE Pd = NULL;
 				if (!NT_SUCCESS(MmAllocateHostPageTable(&Pd)))
 				{
-					ImpDebugPrint("Couldn't allocate EPT PD for '%llx'...\n", PhysAddr + SizeMapped);
+					ImpLog("Couldn't allocate EPT PD for '%llx'...\n", PhysAddr + SizeMapped);
 					return STATUS_INSUFFICIENT_RESOURCES;
 				}
 
@@ -391,9 +393,9 @@ Routine Description:
 		{
 			if (Pdpte->LargePage)
 			{
-				if (!NT_SUCCESS(EptSubvertSuperPage(Pdpte, (GuestPhysAddr + SizeMapped) & ~0x3FFFFFFF, (PhysAddr + SizeMapped) & ~0x3FFFFFFF, Permissions)))
+				if (!NT_SUCCESS(EptSubvertSuperPage(Pdpte, (GuestPhysAddr + SizeMapped) & ~0x3FFFFFFF, (PhysAddr + SizeMapped) & ~0x3FFFFFFF, EPT_PAGE_RWX)))
 				{
-					ImpDebugPrint("Failed to subvert PDPTE containing '%llx'...n");
+					ImpLog("Failed to subvert PDPTE containing '%llx'...n");
 					return STATUS_INSUFFICIENT_RESOURCES;
 				}
 			}
@@ -422,7 +424,7 @@ Routine Description:
 				PEPT_PTE Pt = NULL;
 				if (!NT_SUCCESS(MmAllocateHostPageTable(&Pt)))
 				{
-					ImpDebugPrint("Couldn't allocate EPT PD for '%llx'...\n", PhysAddr + SizeMapped);
+					ImpLog("Couldn't allocate EPT PD for '%llx'...\n", PhysAddr + SizeMapped);
 					return STATUS_INSUFFICIENT_RESOURCES;
 				}
 
@@ -439,9 +441,9 @@ Routine Description:
 		{
 			if (Pde->LargePage)
 			{
-				if (!NT_SUCCESS(EptSubvertLargePage(Pde, (GuestPhysAddr + SizeMapped) & ~0x1FFFFF, (PhysAddr + SizeMapped) & ~0x1FFFFF, Permissions)))
+				if (!NT_SUCCESS(EptSubvertLargePage(Pde, (GuestPhysAddr + SizeMapped) & ~0x1FFFFF, (PhysAddr + SizeMapped) & ~0x1FFFFF, EPT_PAGE_RWX)))
 				{
-					ImpDebugPrint("Failed to subvert PDE containing '%llx'...n");
+					ImpLog("Failed to subvert PDE containing '%llx'...n");
 					return STATUS_INSUFFICIENT_RESOURCES;
 				}
 			}
@@ -454,8 +456,8 @@ Routine Description:
 
 		EptApplyPermissions(Pte, Permissions);
 
-		Pte->PageFrameNumber = PAGE_FRAME_NUMBER(Gpa.Value);
-		Pte->MemoryType = MtrrGetRegionType(Gpa.Value);
+		Pte->PageFrameNumber = PAGE_FRAME_NUMBER(PhysAddr + SizeMapped);
+		Pte->MemoryType = MtrrGetRegionType(PhysAddr + SizeMapped);
 
 		SizeMapped += PAGE_SIZE;
 	}
@@ -539,7 +541,7 @@ EptCheckSupport(VOID)
 
 NTSTATUS
 EptInitialise(
-	_Inout_ PEPT_INFORMATION EptInformation
+	_Inout_ PEPT_INFORMATION Ept
 )
 /*++
 Routine Description:
@@ -557,15 +559,15 @@ Routine Description:
 	if (!NT_SUCCESS(Status))
 		return Status;
 
-	EptInformation->SystemPml4 = Pml4;
+	Ept->Pml4 = Pml4;
 
-	if (!NT_SUCCESS(MmAllocateHostPageTable(&EptInformation->DummyPage)))
+	if (!NT_SUCCESS(MmAllocateHostPageTable(&Ept->DummyPage)))
 		return STATUS_INSUFFICIENT_RESOURCES;
 
 	// Watermark the dummy page to avoid page combining
-	EptInformation->DummyPage->Watermark = 'IMPV' ^ (ULONG)__rdtsc();
+	Ept->DummyPage->Watermark = 'IMPV' ^ (ULONG)__rdtsc();
 
-	EptInformation->DummyPagePhysAddr = MmGetLastAllocatedPageTable()->TablePhysAddr;
+	Ept->DummyPagePhysAddr = MmGetLastAllocatedPageTable()->TablePhysAddr;
 
 	return Status;
 }
