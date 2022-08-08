@@ -1,9 +1,6 @@
 #include "improvisor.h"
 #include "vmm.h"
 
-// Define for WINDBG usage & hot loading & unloading
-#define _DEBUG
-
 BOOLEAN gIsHypervisorRunning;
 
 VOID
@@ -12,18 +9,18 @@ DriverUnload(
 )
 {
     if (gIsHypervisorRunning)
-        VmmShutdownHypervisor(NULL);
+        VmmShutdownHypervisor();
 }
 
 NTSTATUS 
 DriverEntry(
     IN PDRIVER_OBJECT DriverObject,
-    IN PUNICODE_STRING RegistryPath
+    IN PUNICODE_STRING SharedObjectName
 )
 {
     NTSTATUS Status = STATUS_SUCCESS;
 
-    UNREFERENCED_PARAMETER(RegistryPath);
+    UNREFERENCED_PARAMETER(SharedObjectName);
 
 #ifdef _DEBUG 
     // Set our driver unload routine so we can unload the driver for debugging
@@ -31,8 +28,13 @@ DriverEntry(
 #endif
 
     Status = VmmStartHypervisor();
-    if (NT_SUCCESS(Status))
-        gIsHypervisorRunning = TRUE;
+    if (!NT_SUCCESS(Status))
+    {
+        ImpDebugPrint("Failed to launch VMM...(%X)\n", Status);
+        return Status;
+    }
+
+    gIsHypervisorRunning = TRUE;
 
     return Status;
 }
