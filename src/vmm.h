@@ -21,8 +21,8 @@ typedef struct _VMM_CONTEXT
 	PVCPU VcpuTable;
 	BOOLEAN UseUnrestrictedGuests;
 	BOOLEAN UseTscSpoofing;
-	MM_INFORMATION MmInformation;
-	EPT_INFORMATION EptInformation;
+	MM_INFORMATION Mm;
+	EPT_INFORMATION Ept;
 } VMM_CONTEXT, *PVMM_CONTEXT;
 
 NTSTATUS 

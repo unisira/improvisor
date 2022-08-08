@@ -1,5 +1,6 @@
 #include "vmm.h"
 #include "vmcall.h"
+#include "detour.h"
 
 VMM_RDATA const X86_SEGMENT_SELECTOR gVmmCsSelector = {
 	.Table = SEGMENT_SELECTOR_TABLE_GDT,
@@ -69,6 +70,13 @@ Routine Description:
 		return Status;
 	}
 
+	Status = EhInitialise();
+	if (!NT_SUCCESS(Status))
+	{
+		ImpDebugPrint("Failed to initialise detours...\n");
+		return Status;
+	}
+
 	Status = VmmEnsureFeatureSupport();
 	if (!NT_SUCCESS(Status))
 	{
@@ -101,7 +109,7 @@ Routine Description:
 		goto panic;
 	}
 
-	const volatile VCPU_SPAWN_PARAMS Params = {
+	volatile VCPU_SPAWN_PARAMS Params = {
 		.VmmContext = VmmContext,
 		.ActiveVcpuCount = 0,
 		.FailedCoreMask = 0,
@@ -126,12 +134,12 @@ Routine Description:
 	if (Result != HRESULT_SUCCESS)
 		ImpDebugPrint("VmGetLogRecords returned %x...\n", Result);
 
-	ImpDebugPrint("Log #1: %s.\n", Log);
+	ImpDebugPrint("Log #1: %s", Log);
 
 	Status = VmmPostLaunchInitialisation();
 	if (!NT_SUCCESS(Status))
 	{
-		ImpDebugPrint("Failed to spawn VCPU on cores (%x)... (%x)", Params.FailedCoreMask, Status);
+		ImpDebugPrint("VMM post-launch initialisation failed (%X)...\n", Status);
 		VmmShutdownHypervisor();
 		goto panic;
 	}
@@ -196,14 +204,14 @@ Routine Description:
 	// TODO: Complete this
 	NTSTATUS Status = STATUS_SUCCESS;
 
-	Status = MmInitialise(&VmmContext->MmInformation);
+	Status = MmInitialise(&VmmContext->Mm);
 	if (!NT_SUCCESS(Status))
 	{
 		ImpDebugPrint("Failed to initialise memory manager... (%X)\n", Status);
 		return Status;
 	}
 
-	Status = EptInitialise(&VmmContext->EptInformation);
+	Status = EptInitialise(&VmmContext->Ept);
 	if (!NT_SUCCESS(Status))
 	{
 		ImpDebugPrint("Failed to initialise EPT... (%X)\n", Status);
@@ -236,6 +244,18 @@ Routine Description:
 }
 
 VSC_API
+UINT64
+EhTargetFunction(VOID)
+{
+	return 0x12345;
+}
+
+UINT64
+EhCallbackFunction(VOID)
+{
+	return 0xB00B5;
+}
+
 NTSTATUS
 VmmPostLaunchInitialisation(VOID)
 /*++
@@ -243,6 +263,8 @@ Routine Description:
 	This function does all VMM initialisation after it has launched, this includes things like detours.
 --*/
 {
+	NTSTATUS Status = STATUS_SUCCESS;
+
 	// TODO: Here we should use hypercalls to perform initialisation of anything not VMM related...
 	//
 	// Hide Imp* allocation records using HYPERCALL_EPT_MAP_PAGE
@@ -251,6 +273,19 @@ Routine Description:
 	//
 	// Install basic detours using EhInstallDetour
 	//
+
+#ifdef _DEBUG
+	ImpDebugPrint("EhTargetFunction returned %llX...\n", EhTargetFunction());
+
+	Status = EhRegisterHook(FNV1A_HASH("Test"), EhTargetFunction, EhCallbackFunction);
+	if (!NT_SUCCESS(Status))
+	{
+		ImpDebugPrint("Failed to register test hook... (%X)\n", Status);
+		return Status;
+	}
+	
+	ImpDebugPrint("EhTargetFunction returned %llX...\n", EhTargetFunction());
+#endif
 
 	return STATUS_SUCCESS;
 }
@@ -263,7 +298,7 @@ Routine Description:
 	individually
  */
 {
-	const volatile VCPU_SHUTDOWN_PARAMS Params = {
+	volatile VCPU_SHUTDOWN_PARAMS Params = {
 		.Status = STATUS_SUCCESS,
 		.FailedCoreMask = 0,
 		.VmmContext = NULL
