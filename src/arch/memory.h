@@ -20,7 +20,7 @@
 	((T*)RVA_PTR(Addr, Offs))
 
 #define RVA(Addr, Offs) \
-	(RVA_PTR_T(UINT64, Addr, Offs))
+	((UINT64)RVA_PTR(Addr, Offs))
 
 typedef union _X86_LA48
 {
