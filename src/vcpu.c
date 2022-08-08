@@ -445,7 +445,7 @@ Routine Description:
 	VcpuSetControl(Vcpu, VMX_CTL_CR3_LOAD_EXITING, FALSE);
 	VcpuSetControl(Vcpu, VMX_CTL_CR3_STORE_EXITING, FALSE);
 
-	VTscInitialise(&Vcpu->TscInfo);
+	VTscInitialise(&Vcpu->Tsc);
 
 	return STATUS_SUCCESS;
 }
@@ -465,8 +465,8 @@ Routine Description:
 	X86_PSEUDO_DESCRIPTOR Gdtr;
 	__sgdt(&Gdtr);
 
-#if 1
-	ImpDebugPrint("[%02d] GDTR Base: 0x%llX, Limit: 0x%llX", Vcpu->Id, Gdtr.BaseAddress, Gdtr.Limit);
+#if 0
+	ImpDebugPrint("[%02d] GDTR Base: 0x%llX, Limit: 0x%llX\n", Vcpu->Id, Gdtr.BaseAddress, Gdtr.Limit);
 
 	for (SIZE_T i = 0; i < Gdtr.Limit / sizeof(X86_SEGMENT_DESCRIPTOR); i++)
 	{
@@ -746,7 +746,7 @@ Routine Description:
 	EPT_POINTER EptPointer = {
 		.MemoryType = EPT_MEMORY_WRITEBACK,
 		.PageWalkLength = 3,
-		.PML4PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(Vcpu->Vmm->EptInformation.SystemPml4))
+		.PML4PageFrameNumber = PAGE_FRAME_NUMBER(ImpGetPhysicalAddress(Vcpu->Vmm->Ept.Pml4))
 	};
 
 	VmxWrite(CONTROL_EPT_POINTER, EptPointer.Value);
@@ -755,7 +755,7 @@ Routine Description:
 	VmxWrite(CONTROL_VIRTUAL_PROCESSOR_ID, 1);
 
 	EXCEPTION_BITMAP ExceptionBitmap = {
-		.Value = 0
+		.BreakpointException = TRUE
 	};
 
 	VmxWrite(CONTROL_EXCEPTION_BITMAP, ExceptionBitmap.Value);
@@ -782,7 +782,7 @@ Routine Description:
 	VmxWrite(GUEST_CR3, __readcr3());
 
 #ifndef IMPV_USE_WINDOWS_CPU_STRUCTURES
-	VmxWrite(HOST_CR3, Vcpu->Vmm->MmInformation.Cr3.Value);
+	VmxWrite(HOST_CR3, Vcpu->Vmm->Mm.Cr3.Value);
 #else
 	VmxWrite(HOST_CR3, Vcpu->SystemDirectoryBase);
 #endif
@@ -1049,8 +1049,8 @@ Routine Description:
 	ImpDebugPrint("Log #1: %.\n", Log);
 #endif
 
-	//VTscEstimateVmExitLatency(&Vcpu->TscInfo);
-	//VTscEstimateVmEntryLatency(&Vcpu->TscInfo);
+	//VTscEstimateVmExitLatency(&Vcpu->Tsc);
+	//VTscEstimateVmEntryLatency(&Vcpu->Tsc);
 
 	// TODO: Run VTSC tests and hook tests here
 
@@ -1351,14 +1351,14 @@ Routine Description:
 	This function enables TSC spoofing for the next while
 --*/
 {
-	Vcpu->TscInfo.SpoofEnabled = TRUE;
+	Vcpu->Tsc.SpoofEnabled = TRUE;
 
 	VcpuSetControl(Vcpu, VMX_CTL_SAVE_VMX_PREEMPTION_VALUE, TRUE);
 	VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
 	VcpuSetControl(Vcpu, VMX_CTL_RDTSC_EXITING, TRUE);
 
 	// Write the TSC watchdog quantum
-	VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, VTSC_WATCHDOG_QUANTUM + Vcpu->TscInfo.VmEntryLatency);
+	VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, VTSC_WATCHDOG_QUANTUM + Vcpu->Tsc.VmEntryLatency);
 }
 
 VMM_API
@@ -1370,9 +1370,9 @@ VcpuGetTscEventLatency(
 {
 	switch (Type) 
 	{
-	case TSC_EVENT_CPUID: return Vcpu->TscInfo.CpuidLatency;
-	case TSC_EVENT_RDTSC: return Vcpu->TscInfo.RdtscLatency;
-	case TSC_EVENT_RDTSCP: return Vcpu->TscInfo.RdtscpLatency;
+	case TSC_EVENT_CPUID: return Vcpu->Tsc.CpuidLatency;
+	case TSC_EVENT_RDTSC: return Vcpu->Tsc.RdtscLatency;
+	case TSC_EVENT_RDTSCP: return Vcpu->Tsc.RdtscpLatency;
 	default: return 0;
 	}
 }
@@ -1387,7 +1387,7 @@ VcpuUpdateLastTscEventEntry(
 	// TODO: Also spoof TSC values during EPT violations, some anti-cheats monitor those 
 	
 	// Try find a previous event to base our value off
-	PTSC_EVENT_ENTRY PrevEvent = &Vcpu->TscInfo.PrevEvent; 
+	PTSC_EVENT_ENTRY PrevEvent = &Vcpu->Tsc.PrevEvent; 
 	if (PrevEvent->Valid)
 	{
 		// Calculate the time since the last event during this thread
@@ -1406,7 +1406,7 @@ VcpuUpdateLastTscEventEntry(
 	{
 		// No preceeding records, approximate the value of the TSC before exiting using the stored MSR
 		UINT64 Timestamp = 
-			VcpuGetVmExitStoreValue(IA32_TIME_STAMP_COUNTER) - Vcpu->TscInfo.VmExitLatency;
+			VcpuGetVmExitStoreValue(IA32_TIME_STAMP_COUNTER) - Vcpu->Tsc.VmExitLatency;
 
 		PrevEvent->Valid = TRUE;
 		PrevEvent->Type = Type;
@@ -1456,7 +1456,7 @@ Routine Description:
 
 	if (Vcpu->Vmm->UseTscSpoofing)
 	{
-		if (!Vcpu->TscInfo.SpoofEnabled)
+		if (!Vcpu->Tsc.SpoofEnabled)
 			VcpuEnableTscSpoofing(Vcpu);
 
 		VcpuUpdateLastTscEventEntry(Vcpu, TSC_EVENT_CPUID);
@@ -2006,7 +2006,7 @@ Routine Description:
 	VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
 
 	// Check if we are measuring VM-exit latency
-	if (GuestState->Rbx == 0x1FF2C88911424416 && Vcpu->TscInfo.VmExitLatency == 0)
+	if (GuestState->Rbx == 0x1FF2C88911424416 && Vcpu->Tsc.VmExitLatency == 0)
 	{
 		LARGE_INTEGER PreTsc = {
 			.LowPart = GuestState->Rax,
@@ -2018,7 +2018,7 @@ Routine Description:
 		return VMM_EVENT_CONTINUE;
 	}
 
-	if (GuestState->Rbx == 0xF2C889114244161F && Vcpu->TscInfo.VmEntryLatency == 0)
+	if (GuestState->Rbx == 0xF2C889114244161F && Vcpu->Tsc.VmEntryLatency == 0)
 	{
 		VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, TRUE);
 
@@ -2063,11 +2063,11 @@ VcpuHandleRdtsc(
 		.QuadPart = __rdtsc()
 	};
 
-	if (Vcpu->TscInfo.SpoofEnabled)
+	if (Vcpu->Tsc.SpoofEnabled)
 	{
 		VcpuUpdateLastTscEventEntry(Vcpu, TSC_EVENT_RDTSC);
 
-		PTSC_EVENT_ENTRY PrevEvent = &Vcpu->TscInfo.PrevEvent;
+		PTSC_EVENT_ENTRY PrevEvent = &Vcpu->Tsc.PrevEvent;
 		Tsc.QuadPart = PrevEvent->Timestamp + PrevEvent->Latency; 
 	}
 
@@ -2102,11 +2102,11 @@ VcpuHandleRdtscp(
 		.QuadPart = __rdtscp(&GuestState->Rcx)
 	};
 
-	if (Vcpu->TscInfo.SpoofEnabled)
+	if (Vcpu->Tsc.SpoofEnabled)
 	{
 		VcpuUpdateLastTscEventEntry(Vcpu, TSC_EVENT_RDTSCP);
 
-		PTSC_EVENT_ENTRY PrevEvent = &Vcpu->TscInfo.PrevEvent;
+		PTSC_EVENT_ENTRY PrevEvent = &Vcpu->Tsc.PrevEvent;
 		Tsc.QuadPart = PrevEvent->Timestamp + PrevEvent->Latency; 
 	}
 
@@ -2123,12 +2123,10 @@ VcpuHandleTimerExpire(
 	_Inout_ PGUEST_STATE GuestState
 )
 {
-	ImpDebugPrint("[%02X] VMX preemption timer expired...\n", Vcpu->Id);
-
 	// TODO: Disable VMX preemption timer and TSC spoofing
-	if (Vcpu->TscInfo.SpoofEnabled)
+	if (Vcpu->Tsc.SpoofEnabled)
 	{
-		Vcpu->TscInfo.PrevEvent.Valid = FALSE;
+		Vcpu->Tsc.PrevEvent.Valid = FALSE;
 
 		VcpuSetControl(Vcpu, VMX_CTL_SAVE_VMX_PREEMPTION_VALUE, FALSE);
 		VcpuSetControl(Vcpu, VMX_CTL_VMX_PREEMPTION_TIMER, FALSE);
@@ -2136,7 +2134,7 @@ VcpuHandleTimerExpire(
 
 		VmxWrite(GUEST_VMX_PREEMPTION_TIMER_VALUE, 0);
 
-		Vcpu->TscInfo.SpoofEnabled = FALSE;
+		Vcpu->Tsc.SpoofEnabled = FALSE;
 	}
 
 	return VMM_EVENT_CONTINUE;
@@ -2212,7 +2210,16 @@ VcpuHandleExceptionNmi(
 	_Inout_ PGUEST_STATE GuestState
 )
 {
-	return VMM_EVENT_ABORT;
+	if (EhHandleBreakpoint(Vcpu))
+		return VMM_EVENT_RETRY;
+
+	VMX_EXIT_INTERRUPT_INFO IntrInfo = {
+		.Value = VmxRead(VM_EXIT_INTERRUPT_INFO)
+	};
+
+	VmxInjectEvent(IntrInfo.Vector, IntrInfo.Type, VmxRead(VM_EXIT_INTERRUPT_ERROR_CODE));
+
+	return VMM_EVENT_INTERRUPT;
 }
 
 VMM_API
@@ -2262,14 +2269,14 @@ VcpuHandleEptViolation(
 		.Value = VmxRead(VM_EXIT_QUALIFICATION)
 	};
 
-	//if (EhHandleEptViolation(Vcpu))
-	//    return VMM_EVENT_CONTINUE;
+	if (EhHandleEptViolation(Vcpu))
+		return VMM_EVENT_RETRY;
 
 	UINT64 AttemptedAddress = VmxRead(GUEST_PHYSICAL_ADDRESS);
 
 	if (!NT_SUCCESS(
 		EptMapMemoryRange(
-			Vcpu->Vmm->EptInformation.SystemPml4,
+			Vcpu->Vmm->Ept.Pml4,
 			AttemptedAddress,
 			AttemptedAddress,
 			PAGE_SIZE,
@@ -2299,8 +2306,7 @@ VcpuHandleEptMisconfig(
 )
 {
 	// TODO: Panic
-	ImpDebugPrint("[%02X] EPT MISCONFIG...\n", Vcpu->Id);
-	__debugbreak();
+	ImpLog("[%02X] EPT misconfig, aborting...\n", Vcpu->Id);
 
 	return VMM_EVENT_ABORT;
 }
@@ -2412,7 +2418,7 @@ VcpuHandleMTFExit(
 		{
 		case MTF_EVENT_MEASURE_VMENTRY:
 		{
-			GuestState->Rax = VTSC_WATCHDOG_QUANTUM - VmxRead(GUEST_VMX_PREEMPTION_TIMER_VALUE) - Vcpu->TscInfo.VmExitLatency;
+			GuestState->Rax = VTSC_WATCHDOG_QUANTUM - VmxRead(GUEST_VMX_PREEMPTION_TIMER_VALUE) - Vcpu->Tsc.VmExitLatency;
 		} break;
 		case MTF_EVENT_RESET_EPT_PERMISSIONS:
 		{
@@ -2424,7 +2430,7 @@ VcpuHandleMTFExit(
 
 			if (!NT_SUCCESS(
 				EptMapMemoryRange(
-					Vcpu->Vmm->EptInformation.SystemPml4,
+					Vcpu->Vmm->Ept.Pml4,
 					Event.GuestPhysAddr,
 					Event.PhysAddr,
 					PAGE_SIZE,

@@ -238,7 +238,7 @@ typedef struct _VCPU
 	BOOLEAN IsUnrestrictedGuest;
 	CPU_STATE LaunchState;
 	VMX_STATE Vmx;
-	TSC_STATUS TscInfo;
+	TSC_STATUS Tsc;
 	PMTF_EVENT_ENTRY MtfStackHead;
 	ULONG LastHypercallResult;
 	ULONG NumQueuedNMIs;
