@@ -53,9 +53,6 @@ EhEnableDetour(
 );
 
 NTSTATUS
-EhInstallHooks(VOID);
-
-NTSTATUS
 EhInitialise(VOID);
 
 BOOLEAN

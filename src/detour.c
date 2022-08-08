@@ -34,10 +34,15 @@
 static PEH_HOOK_REGISTRATION sHookRegistrationListRaw = NULL;
 
 // The head of the hook registration list
-PEH_HOOK_REGISTRATION gHookRegistrationHead = NULL;
+VMM_DATA PEH_HOOK_REGISTRATION gHookRegistrationHead = NULL;
 
 // The lock for the hook registration list
-SPINLOCK gHookRegistrationLock;
+VMM_DATA SPINLOCK gHookRegistrationLock;
+
+NTSTATUS
+EhInstallDetour(
+	_In_ PEH_HOOK_REGISTRATION Hook
+);
 
 NTSTATUS
 EhReserveHookRecords(
@@ -45,7 +50,7 @@ EhReserveHookRecords(
 )
 {
 	// TODO: write list.c wrappers for these functions
-	sHookRegistrationListRaw = (PEH_HOOK_REGISTRATION)ImpAllocateNpPool(sizeof(EH_HOOK_REGISTRATION) * Count);
+	sHookRegistrationListRaw = (PEH_HOOK_REGISTRATION)ImpAllocateNpPoolEx(sizeof(EH_HOOK_REGISTRATION) * Count, IMP_SHARED_ALLOCATION);
 	if (sHookRegistrationListRaw == NULL)
 		return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -89,7 +94,7 @@ Routine Description:
 
 	SpinUnlock(&gHookRegistrationLock);
 
-	return STATUS_SUCCESS;
+	return EhInstallDetour(Hook);
 }
 
 VOID
@@ -144,7 +149,7 @@ Routine Description:
 
 PMDL
 EhFindMdlByTargetPfn(
-	_In_ PVOID TargetPage
+	_In_ PVOID TargetFunction
 )
 /*++
 Routine Description:
@@ -159,7 +164,7 @@ Routine Description:
 		// Detour must be installed for it to have a target page MDL 
 		if (CurrHook->State == EH_DETOUR_INSTALLED)
 		{
-			if (PAGE_FRAME_NUMBER(CurrHook->TargetFunction) == PAGE_FRAME_NUMBER(TargetPage))
+			if (PAGE_FRAME_NUMBER(CurrHook->TargetFunction) == PAGE_FRAME_NUMBER(TargetFunction))
 				return CurrHook->LockedTargetPage;
 		}
 
@@ -214,7 +219,7 @@ Routine Description:
 {
 	static const UINT64 MINIMUM_OFFSET = 0x01; // 1 Instruction, 0xCC
 
-	Hook->Trampoline = ImpAllocateNpPool(PAGE_SIZE);
+	Hook->Trampoline = ImpAllocateNpPool(15 /* Longest possible X86 instruction */);
 	if (Hook->Trampoline == NULL)
 		return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -226,7 +231,7 @@ Routine Description:
 		if (Step == 0)
 			return STATUS_INVALID_PARAMETER;
 
-		if (VmWriteSystemMemory(RVA_PTR(Hook->Trampoline, SizeCopied), RVA_PTR(Hook->TargetFunction, SizeCopied), Step) != HRESULT_SUCCESS)
+		if (VmWriteSystemMemory(RVA_PTR(Hook->TargetFunction, SizeCopied), RVA_PTR(Hook->Trampoline, SizeCopied), Step) != HRESULT_SUCCESS)
 			return STATUS_INVALID_PARAMETER;
    
 		if (Ld.flags & F_RELATIVE)
@@ -237,6 +242,8 @@ Routine Description:
 
 		SizeCopied += Step;
 	}
+
+	// TODO: 0xCC instruction
 
 	return STATUS_SUCCESS;
 }
@@ -267,34 +274,39 @@ Routine Description:
 	}
 
 	Hook->LockedTargetPage = Mdl;
-	Hook->GuestPhysAddr = ImpGetPhysicalAddress(PAGE_ALIGN(Hook->TargetFunction));
+	Hook->GuestPhysAddr = PAGE_ALIGN(ImpGetPhysicalAddress(Hook->TargetFunction));
 
 	// Allocate and copy over the contents of the page containing Hook->TargetFunction to the shadow page
-	Hook->ShadowPage = ImpAllocateContiguousMemory(PAGE_SIZE);
+	Hook->ShadowPage = ImpAllocateHostContiguousMemory(PAGE_SIZE);
 	if (Hook->ShadowPage == NULL)
 		return STATUS_INSUFFICIENT_RESOURCES;
 
 	Hook->ShadowPhysAddr = ImpGetPhysicalAddress(Hook->ShadowPage);
 
-	if (VmReadSystemMemory(PAGE_ALIGN(Hook->TargetFunction), Hook->ShadowPage, PAGE_SIZE) != HRESULT_SUCCESS)
-		return STATUS_FATAL_APP_EXIT;
+	HYPERCALL_RESULT HResult = VmReadSystemMemory(PAGE_ALIGN(Hook->TargetFunction), Hook->ShadowPage, PAGE_SIZE);
+	if (HResult != HRESULT_SUCCESS)
+	{
+		ImpDebugPrint("VmReadSystemMemory failed with %X...\n", HResult);
+		return STATUS_INVALID_PARAMETER;
+	}
 
 	if (!NT_SUCCESS(EhCreateTrampoline(Hook)))
 		return STATUS_INSTRUCTION_MISALIGNMENT;
-   
+
 	PUCHAR DetourShellcode = ImpAllocateNpPool(Hook->PrologueSize); 
 		
-	for (SIZE_T i = 0; i < Hook->PrologueSize; i++)
-		*(DetourShellcode + i) = 0xCC;
+	// Set the start of the function to INT 3's
+	RtlFillMemory(DetourShellcode, Hook->PrologueSize, 0xCC);
 
-	if (VmWriteSystemMemory(
-			RVA_PTR(Hook->ShadowPage, PAGE_OFFSET(Hook->TargetFunction)), 
-			DetourShellcode, 
-			Hook->PrologueSize) != HRESULT_SUCCESS)
-		return STATUS_FATAL_APP_EXIT;
+	if (VmWriteSystemMemory(DetourShellcode, RVA_PTR(Hook->ShadowPage, PAGE_OFFSET(Hook->TargetFunction)), Hook->PrologueSize) != HRESULT_SUCCESS)
+		return STATUS_INVALID_PARAMETER;
+
+	ImpFreeAllocation(DetourShellcode);
 
 	if (VmEptRemapPages(Hook->GuestPhysAddr, Hook->GuestPhysAddr, PAGE_SIZE, EPT_PAGE_RW) != HRESULT_SUCCESS)
-		return STATUS_FATAL_APP_EXIT;
+		return STATUS_INVALID_PARAMETER;
+
+	Hook->State = EH_DETOUR_INSTALLED;
 
 	return STATUS_SUCCESS;
 }
@@ -315,7 +327,7 @@ Routine Description:
 
 	// Remap the GPA to RWX and make it point to the original function to avoid EPT violations for this hook
 	if (VmEptRemapPages(Hook->GuestPhysAddr, Hook->GuestPhysAddr, PAGE_SIZE, EPT_PAGE_RWX) != HRESULT_SUCCESS)
-		return STATUS_FATAL_APP_EXIT;
+		return;
 }
 
 VOID
@@ -334,7 +346,7 @@ Routine Description:
 
 	// Remap the GPA to RW so X EPT violations occur
 	if (VmEptRemapPages(Hook->GuestPhysAddr, Hook->GuestPhysAddr, PAGE_SIZE, EPT_PAGE_RW) != HRESULT_SUCCESS)
-		return STATUS_FATAL_APP_EXIT;
+		return;
 }
 
 BOOLEAN
@@ -395,34 +407,6 @@ Routine Description:
 }
 
 NTSTATUS
-EhInstallHooks(VOID)
-/*
-Routine Description:
-	This function installs any registered detour that hasn't already been installed
-*/
-{
-	NTSTATUS Status = STATUS_SUCCESS;
-
-	PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
-	while (CurrHook != NULL)
-	{
-		if (CurrHook->State != EH_DETOUR_INSTALLED)
-		{
-			Status = EhInstallDetour(CurrHook);
-			if (!NT_SUCCESS(Status))
-			{
-				ImpLog("Failed to install hook #%llX...\n", CurrHook->Hash);
-				return Status;
-			}
-		}
-
-		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
-	}
-
-	return Status;
-}
-
-NTSTATUS
 EhInitialise(VOID)
 /*++
 Routine Description:
@@ -475,19 +459,20 @@ EhHandleEptViolation(
 	while (CurrHook != NULL)
 	{
 		// Check if the EPT violation was a result of accessing the locked physical address of the detour
-		if (CurrHook->State == EH_DETOUR_INSTALLED && PAGE_FRAME_NUMBER(AttemptedPhysAddr) == PAGE_FRAME_NUMBER(CurrHook->GuestPhysAddr))
+		if (CurrHook->State == EH_DETOUR_INSTALLED && PAGE_ALIGN(AttemptedPhysAddr) == CurrHook->GuestPhysAddr)
 		{
 			if (ExitQual.ExecuteAccessed)
 			{
 				if (!NT_SUCCESS(
 					EptMapMemoryRange(
-						Vcpu->Vmm->EptInformation.SystemPml4,
-						AttemptedPhysAddr,
+						Vcpu->Vmm->Ept.Pml4,
+						CurrHook->GuestPhysAddr,
 						CurrHook->ShadowPhysAddr,
 						PAGE_SIZE,
 						EPT_PAGE_EXECUTE)
 					))
 				{
+					ImpLog("EptMapMemoryRange failed mapping %llX->%llX with EPT_PAGE_EXECUTE\n", AttemptedPhysAddr, CurrHook->ShadowPhysAddr);
 					// TODO: Panic here?
 					return FALSE;
 				}
@@ -496,21 +481,15 @@ EhHandleEptViolation(
 			}
 			else if (ExitQual.ReadAccessed || ExitQual.WriteAccessed)
 			{
-				if (!NT_SUCCESS(
-					EptMapMemoryRange(
-						Vcpu->Vmm->EptInformation.SystemPml4,
-						AttemptedPhysAddr,
-						AttemptedPhysAddr,
-						PAGE_SIZE,
-						EPT_PAGE_RW)
-					))
-				{
-					return FALSE;
-				}
+				EPT_PAGE_PERMISSIONS Perms = EPT_PAGE_RW;
 
+#if 0
 				// EPT Violation occured for reading or writing while executing on the same page, inject MTF event to swap back to EPT_PAGE_EXECUTE 
 				if (PAGE_FRAME_NUMBER(CurrHook->TargetFunction) == PAGE_FRAME_NUMBER(Vcpu->Vmx.GuestRip))
 				{
+					// Page permissions need to be RWX (reading or writing on same page as execution)
+					Perms = EPT_PAGE_RWX;
+
 					MTF_EVENT ResetEptEvent = {
 						.Type = MTF_EVENT_RESET_EPT_PERMISSIONS,
 						.GuestPhysAddr = AttemptedPhysAddr,
@@ -520,12 +499,26 @@ EhHandleEptViolation(
 
 					VcpuPushMTFEventEx(Vcpu, ResetEptEvent);
 				}
+#endif
+
+				if (!NT_SUCCESS(
+					EptMapMemoryRange(
+						Vcpu->Vmm->Ept.Pml4,
+						CurrHook->GuestPhysAddr,
+						CurrHook->GuestPhysAddr,
+						PAGE_SIZE,
+						Perms)
+				))
+				{
+					ImpLog("EptMapMemoryRange failed mapping %llX->%llX with Perms=%x\n", AttemptedPhysAddr, AttemptedPhysAddr, Perms);
+					return FALSE;
+				}
 
 				return TRUE;
 			}
 		}
 
-		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
+		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Blink;
 	}
 
 	return FALSE;
@@ -540,13 +533,23 @@ EhHandleBreakpoint(
 	PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
 	while (CurrHook != NULL)
 	{
-		if (CurrHook->State == EH_DETOUR_INSTALLED && Vcpu->Vmx.GuestRip == (UINT64)CurrHook->TargetFunction)
+		if (CurrHook->State != EH_DETOUR_INSTALLED)
+			goto next;
+
+		if (Vcpu->Vmx.GuestRip == (UINT64)CurrHook->TargetFunction)
 		{
 			VmxWrite(GUEST_RIP, (UINT64)CurrHook->CallbackFunction);
 			return TRUE;
 		}
+		// Handle INT 3 after the prologue instruction(s) in `EH_HOOK_REGISTRATION::Trampoline`
+		else if (Vcpu->Vmx.GuestRip == RVA(CurrHook->Trampoline, CurrHook->PrologueSize))
+		{
+			VmxWrite(GUEST_RIP, RVA(CurrHook->TargetFunction, CurrHook->PrologueSize));
+			return TRUE;
+		}
 
-		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
+	next:
+		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Blink;
 	}
 
 	return FALSE;
