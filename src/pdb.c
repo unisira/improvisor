@@ -397,6 +397,13 @@ PdbSearchFieldList(
 	_In_ FNV1A Member
 );
 
+SIZE_T
+PdbFindMemberOffsetEx(
+	_In_ PPDB_ENTRY Pdb,
+	_In_ FNV1A Structure,
+	_In_ FNV1A Member
+);
+
 NTSTATUS
 PdbReserveEntries(
 	_In_ SIZE_T Count
@@ -627,6 +634,10 @@ Routine Description:
 	O(Log(n)) lookup of complex type indices to type record using the IndexOffsetBuffer and a linear search
 --*/
 {
+	// Not a complex type, return NULL
+	if (Ti.Complex == 0)
+		return NULL;
+
 	PTPI_HEADER Tpi = Pdb->TpiStream;
 
 	PTPI_INDEX_OFFSET_ENTRY IndexOffsetBuffer = RVA_PTR(Pdb->HashStream, Tpi->IndexOffsetBufferOffset);
@@ -687,7 +698,7 @@ Routine Description:
 		// The type index in Field will always point to a LF_FIELDLIST type record
 		return PdbSearchFieldList(Pdb, PdbLookupTypeIndex(Pdb, Lr->Field), Member);
 	else
-		ImpLog("[PDB ERROR] Structure/Class LR with ForwardRef == 0 has no field TI...\n");
+		ImpLog("[PDB #%08X] Structure/Class LR with ForwardRef == 0 has no field TI...\n");
 
 	return -1;
 }
@@ -739,8 +750,11 @@ Routine Description:
 
 				if (TypeLr->Kind == LF_STRUCTURE || TypeLr->Kind == LF_CLASS)
 				{
-					// Try to find `Member` if this type is a structure 
-					SIZE_T Offset = PdbSearchStructure(Pdb, TypeLr, Member);
+					UINT64 Size = 0;
+					// Get the name of the structure after the data size
+					LPCSTR Name = RVA_PTR(Lr->Data, PdbExtractVar(Lr->Data, &Size));
+ 
+					SIZE_T Offset = PdbFindMemberOffsetEx(Pdb, FNV1A_HASH(Name), Member);
 					if (Offset != -1)
 						return CurrOffset + Offset;
 				}
@@ -751,6 +765,12 @@ Routine Description:
 				NameSz++;
 
 			Size += sizeof(TPI_MEMBER_LEAF_RECORD) - sizeof(UINT16) + OffsetSize + NameSz;
+		} break;
+		default:
+		{
+			ImpLog("[PDB #%08X] Unknown LR Kind %i...\n", Pdb->NameHash, Curr->Kind);
+			// Return -1 because we can't handle this
+			return -1;
 		} break;
 		}
 	}
@@ -775,28 +795,19 @@ Routine Description:
 }
 
 SIZE_T
-PdbFindMemberOffset(
-	_In_ FNV1A Pdb,
+PdbFindMemberOffsetEx(
+	_In_ PPDB_ENTRY Pdb,
 	_In_ FNV1A Structure,
 	_In_ FNV1A Member
 )
-/*++
-Routine Description:
-	Searches the TPI stream of `Pdb` for a type named `Structure` and returns the offset of `Member` from within that struct
---*/
 {
-	// TODO: Log all errors
-	PPDB_ENTRY Entry = PdbFindEntry(Pdb);
-	if (Entry == NULL)
-		return 0;
-
-	PTPI_LEAF_RECORD Record = RVA_PTR(Entry->TpiStream, sizeof(TPI_HEADER));
+	PTPI_LEAF_RECORD Record = RVA_PTR(Pdb->TpiStream, sizeof(TPI_HEADER));
 
 	while (Record->Length != 0)
 	{
 		// TODO: Look at LF_*_ST, these also follow the structure type
 		if (Record->Kind != LF_STRUCTURE &&
-			Record->Kind != LF_CLASS )
+			Record->Kind != LF_CLASS)
 			goto next;
 
 		PTPI_STRUCTURE_LEAF_RECORD Lr = Record;
@@ -814,13 +825,34 @@ Routine Description:
 			goto next;
 
 		// If we make it here, this should be our structure
-		return PdbSearchStructure(Pdb, Lr, Member);
+		SIZE_T Offset = PdbSearchStructure(Pdb, Lr, Member);
+		if (Offset != -1)
+			return Offset;
 
 	next:
 		Record = RVA_PTR(Record, Record->Length + sizeof(UINT16));
 	}
 
-	return 0;
+	return -1;
+}
+
+SIZE_T
+PdbFindMemberOffset(
+	_In_ FNV1A Pdb,
+	_In_ FNV1A Structure,
+	_In_ FNV1A Member
+)
+/*++
+Routine Description:
+	Searches the TPI stream of `Pdb` for a type named `Structure` and returns the offset of `Member` from within that struct
+--*/
+{
+	// TODO: Log all errors
+	PPDB_ENTRY Entry = PdbFindEntry(Pdb);
+	if (Entry == NULL)
+		return -1;
+
+	return PdbFindMemberOffsetEx(Entry, Structure, Member);
 }
 
 VOID
