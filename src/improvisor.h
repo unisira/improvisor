@@ -17,6 +17,7 @@
 typedef struct _IMP_LOG_RECORD
 {
 	LIST_ENTRY Links;
+	BOOLEAN Used;
 	CHAR Buffer[512];
 } IMP_LOG_RECORD, * PIMP_LOG_RECORD;
 
@@ -47,6 +48,11 @@ extern PIMP_LOG_RECORD gLogRecordsTail;
 VOID
 ImpLog(
 	_In_ LPCSTR Fmt, ...
+);
+
+NTSTATUS
+ImpAllocateLogRecord(
+	_Out_ PIMP_LOG_RECORD* LogRecord
 );
 
 NTSTATUS

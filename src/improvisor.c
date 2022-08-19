@@ -2,6 +2,7 @@
 #include "util/spinlock.h"
 #include "util/fmt.h"
 #include "section.h"
+#include "vmcall.h"
 
 #define IMPV_LOG_SIZE 512
 #define IMPV_LOG_COUNT 512
@@ -49,20 +50,29 @@ ImpAllocateLogRecord(
 	_Out_ PIMP_LOG_RECORD* LogRecord
 )
 {
-	// TODO: Rewrite this
+	NTSTATUS Status = STATUS_SUCCESS;
 
 	SpinLock(&sLogWriterLock);
 
-	if (gLogRecordsHead->Links.Flink == NULL)
-		return STATUS_INSUFFICIENT_RESOURCES;
+	if (gLogRecordsHead->Used == FALSE)
+	{
+		*LogRecord = gLogRecordsHead;
+		// Mark this record as used
+		(*LogRecord)->Used = TRUE;
 
-	*LogRecord = gLogRecordsHead;
-
-	gLogRecordsHead = gLogRecordsHead->Links.Flink;
+		// Advance to the next entry if there is one
+		if (gLogRecordsHead->Links.Flink != NULL)
+			gLogRecordsHead = gLogRecordsHead->Links.Flink;
+	}
+	else
+	{
+		// If the head is used, we don't have a free entry
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+	}
 
 	SpinUnlock(&sLogWriterLock);
 
-	return STATUS_SUCCESS;
+	return Status;
 }
 
 VMM_API
@@ -75,15 +85,22 @@ Routine Description:
 	Creates a log entry with the contents of `Fmt` formatted with variadic args
 --*/
 {
-	// TODO: Panic on this failing?
-	PIMP_LOG_RECORD Record = NULL;
-	if (!NT_SUCCESS(ImpAllocateLogRecord(&Record)))
-		return;
+	CHAR Buffer[512] = { 0 };
 
 	va_list Arg;
 	va_start(Arg, Fmt);
-	vsprintf_s(Record->Buffer, 512, Fmt, Arg);
+	vsprintf_s(Buffer, 512, Fmt, Arg);
 	va_end(Arg);
+
+#if 0
+	VmAddLogRecord(Buffer);
+#else
+	PIMP_LOG_RECORD Log = NULL;
+	if (!NT_SUCCESS(ImpAllocateLogRecord(&Log)))
+		return;
+
+	RtlCopyMemory(Log->Buffer, Buffer, 512);
+#endif
 }
 
 VMM_API
@@ -92,33 +109,49 @@ ImpRetrieveLogRecord(
 	_Out_ PIMP_LOG_RECORD* Record
 )
 {
+	NTSTATUS Status = STATUS_SUCCESS;
+
 	SpinLock(&sLogWriterLock);
 
 	PIMP_LOG_RECORD Head = gLogRecordsHead;
 	PIMP_LOG_RECORD Tail = gLogRecordsTail;
 
-	*Record = Tail;
+	// If tail is used, return that entry
+	if (Tail->Used == TRUE)
+	{
+		*Record = Tail;
+		// Set the current record to unused
+		(*Record)->Used = FALSE;
 
-	PIMP_LOG_RECORD Next = (PIMP_LOG_RECORD)Tail->Links.Flink;
+		PIMP_LOG_RECORD Next = (PIMP_LOG_RECORD)Tail->Links.Flink;
 
-	// The tail never has a previous link
-	Next->Links.Blink = NULL;
+		// The tail never has a previous link
+		Next->Links.Blink = NULL;
 
-	// The new tail is the entry following the current tail
-	gLogRecordsTail = Next;
-	// The original tail entry becomes the head entry 
-	gLogRecordsHead = Tail;
+		// The new tail is the entry following the current tail
+		gLogRecordsTail = Next;
 
-	// Update the new head entry with the old head entry's forward link
-	Tail->Links.Flink = Head->Links.Flink;
-	// Update the old head entry's forward link to the new head entry
-	Head->Links.Flink = &Tail->Links;
-	// Set the new head entry's backwards link to the old head entry
-	Tail->Links.Blink = &Head->Links;
+		PIMP_LOG_RECORD HeadNext = Head->Links.Flink;
+
+		// Set the next entries backwards link to tail
+		HeadNext->Links.Blink = &Tail->Links;
+
+		// Update the new head entry with the old head entry's forward link
+		Tail->Links.Flink = Head->Links.Flink;
+		// Set the new head entry's backwards link to the old head entry
+		Tail->Links.Blink = &Head->Links;
+		// Update the old head entry's forward link to the new head entry
+		Head->Links.Flink = &Tail->Links;
+	}
+	else
+	{
+		// Tail isn't used, no entry to return
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+	}
 
 	SpinUnlock(&sLogWriterLock);
 
-	return STATUS_SUCCESS;
+	return Status;
 }
 
 VSC_API
@@ -400,7 +433,7 @@ Routine Description:
 	va_list Args;
 	va_start(Args, Str);
 
-	vDbgPrintExWithPrefix("[Improvisor DEBUG]: ", DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, Str, Args);
+	vDbgPrintExWithPrefix("", DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, Str, Args);
 
 	va_end(Args);
 }
