@@ -261,6 +261,19 @@ VcpuSetup(
 	_In_ UINT8 Id
 );
 
+PVCPU
+VcpuGetActiveVcpu(VOID);
+
+BOOLEAN
+VcpuIsGuest64Bit(
+	_In_ PVCPU Vcpu
+);
+
+UCHAR
+VcpuGetGuestCPL(
+	_In_ PVCPU Vcpu
+);
+
 VOID
 VcpuCacheCpuFeatures(
 	_Inout_ PVCPU Vcpu

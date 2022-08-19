@@ -281,12 +281,6 @@ VcpuGetVmExitStoreValue(
 );
 
 VMM_API
-BOOLEAN
-VcpuIs64Bit(
-	_In_ PVCPU Vcpu
-);
-
-VMM_API
 NTSTATUS
 VcpuLoadPDPTRs(
 	_In_ PVCPU Vcpu
@@ -302,6 +296,18 @@ NTSTATUS
 VcpuPrepareHostIDT(
 	_Inout_ PVCPU Vcpu
 );
+
+VMM_API
+PVCPU
+VcpuGetActiveVcpu(VOID)
+/*++
+Routine Description:
+	Gets the current VCPU for this core
+--*/
+{
+	return __current_vcpu();
+}
+
 
 VSC_API
 NTSTATUS
@@ -1162,7 +1168,7 @@ Routine Description:
 
 VMM_API
 BOOLEAN
-VcpuIs64Bit(
+VcpuIsGuest64Bit(
 	_In_ PVCPU Vcpu
 )
 {
@@ -1171,6 +1177,19 @@ VcpuIs64Bit(
 	};
 
 	return Efer.LongModeEnable && Efer.LongModeActive;
+}
+
+VMM_API
+UCHAR
+VcpuGetGuestCPL(
+	_In_ PVCPU Vcpu
+)
+{
+	X86_SEGMENT_ACCESS_RIGHTS CsAr = {
+		.Value = VmxRead(GUEST_CS_ACCESS_RIGHTS)
+	};
+
+	return CsAr.Dpl;
 }
 
 VMM_API
@@ -1219,6 +1238,10 @@ Routine Description:
 	Context->Xmm15 = TrapFrame->Xmm15;
 }
 
+EXTERN_C
+VOID
+__panic(VOID);
+
 VMM_API
 VOID
 VcpuHandleHostException(
@@ -1235,16 +1258,24 @@ Routine Description:
 	{
 	case EXCEPTION_NON_MASKABLE_INTERRUPT:
 	{
+#if 0
 		// Start exiting on NMI interrupt windows
 		VcpuSetControl(Vcpu, VMX_CTL_NMI_WINDOW_EXITING, TRUE);
 		// Queue a new NMI
 		InterlockedIncrement(&Vcpu->NumQueuedNMIs);
+#else
+		VmxInjectEvent(EXCEPTION_NMI, INTERRUPT_TYPE_NMI, 0);
+#endif
 	} break;
 	default:
 	{
+#if 0
 		// Stack walk like the fucking genius you are
 		VCPU_CONTEXT Context = {0};
 		VcpuTrapFrameToContext(TrapFrame, &Context);
+#endif
+
+		__panic();
 	} break;
 	}
 
@@ -1287,20 +1318,23 @@ Routine Description:
 	Vcpu->Vmx.GuestRip = VmxRead(GUEST_RIP); 
 	Vcpu->Vmx.ExitReason.Value = (UINT32)VmxRead(VM_EXIT_REASON);
 
-	PVMX_EXIT_LOG_ENTRY ExitLog = &Vcpu->Vmx.ExitLog[Vcpu->Vmx.ExitCount++ % 256];
-	ExitLog->Reason = Vcpu->Vmx.ExitReason;
-	ExitLog->Rip = Vcpu->Vmx.GuestRip;
-	ExitLog->ExitQualification = VmxRead(VM_EXIT_QUALIFICATION);
+	if (Vcpu->Vmx.ExitReason.BasicExitReason != 18 /* VMCALL */)
+	{
+		PVMX_EXIT_LOG_ENTRY ExitLog = &Vcpu->Vmx.ExitLog[Vcpu->Vmx.ExitCount++ % 256];
+		ExitLog->Reason = Vcpu->Vmx.ExitReason;
+		ExitLog->Rip = Vcpu->Vmx.GuestRip;
+		ExitLog->ExitQualification = VmxRead(VM_EXIT_QUALIFICATION);
 
 #if 0
-	if (Vcpu->Vmx.ExitReason.BasicExitReason != 18 /* VMCALL */)
-		ImpLog("[%02X-#%05d]: VM-exit ID: %i - RIP: %llX - EXIT QUAL: %llX\n",
-			Vcpu->Id,
-			Vcpu->Vmx.ExitCount,
-			ExitLog->Reason.BasicExitReason,
-			ExitLog->Rip,
-			ExitLog->ExitQualification);
+		if (Vcpu->Vmx.ExitReason.BasicExitReason != 18 /* VMCALL */)
+			ImpLog("[%02X-#%03d]: VM-exit ID: %i - RIP: %llX - EXIT QUAL: %llX\n",
+				Vcpu->Id,
+				Vcpu->Vmx.ExitCount,
+				ExitLog->Reason.BasicExitReason,
+				ExitLog->Rip,
+				ExitLog->ExitQualification);
 #endif
+	}
 
 	VMM_EVENT_STATUS Status = sExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState);
 
@@ -1535,8 +1569,8 @@ Routine Description:
 		.Value = VmxRead(GUEST_CR3)
 	};
 
-	MM_PTE Pdptr[4] = {0, 0, 0, 0};
-	Status = MmReadGuestPhys(PAGE_ADDRESS(Cr3.PageDirectoryBase), sizeof(Pdptr), Pdptr);
+	MM_PTE Pdptrs[4] = {0, 0, 0, 0};
+	Status = MmReadGuestPhys(PAGE_ADDRESS(Cr3.PageDirectoryBase), sizeof(Pdptrs), Pdptrs);
 	if (!NT_SUCCESS(Status))
 	{
 		ImpDebugPrint("[%02X] Failed to map CR3 PDPTR '%llX'... (%x)\n", Cr3.PageDirectoryBase, Status);
@@ -1544,18 +1578,18 @@ Routine Description:
 	}
 
 	// Validate PDPTEs
-	for (SIZE_T i = 0; i < sizeof(Pdptr) / sizeof(*Pdptr); i++)
+	for (SIZE_T i = 0; i < sizeof(Pdptrs) / sizeof(*Pdptrs); i++)
 	{
-		MM_PTE Pdpte = Pdptr[i];
+		MM_PTE Pdpte = Pdptrs[i];
 
 		if (Pdpte.Present && Pdpte.Value & PDPTE_RESERVED_BITS)
 			return STATUS_INVALID_PARAMETER;
 	}
 
-	VmxWrite(GUEST_PDPTE_0, Pdptr[0].Value);
-	VmxWrite(GUEST_PDPTE_1, Pdptr[1].Value);
-	VmxWrite(GUEST_PDPTE_2, Pdptr[2].Value);
-	VmxWrite(GUEST_PDPTE_3, Pdptr[3].Value);
+	VmxWrite(GUEST_PDPTE_0, Pdptrs[0].Value);
+	VmxWrite(GUEST_PDPTE_1, Pdptrs[1].Value);
+	VmxWrite(GUEST_PDPTE_2, Pdptrs[2].Value);
+	VmxWrite(GUEST_PDPTE_3, Pdptrs[3].Value);
 
 	return STATUS_SUCCESS;
 }
@@ -2210,14 +2244,24 @@ VcpuHandleExceptionNmi(
 	_Inout_ PGUEST_STATE GuestState
 )
 {
-	if (EhHandleBreakpoint(Vcpu))
-		return VMM_EVENT_RETRY;
+	// TODO: Update architecture state on #DB
 
 	VMX_EXIT_INTERRUPT_INFO IntrInfo = {
 		.Value = VmxRead(VM_EXIT_INTERRUPT_INFO)
 	};
 
-	VmxInjectEvent(IntrInfo.Vector, IntrInfo.Type, VmxRead(VM_EXIT_INTERRUPT_ERROR_CODE));
+	switch (IntrInfo.Vector)
+	{
+	case EXCEPTION_BREAKPOINT:
+	{
+		if (EhHandleBreakpoint(Vcpu))
+			return VMM_EVENT_RETRY;
+	} break;
+	default:
+	{
+		VmxInjectEvent(IntrInfo.Vector, IntrInfo.Type, VmxRead(VM_EXIT_INTERRUPT_ERROR_CODE));
+	} break;
+	}
 
 	return VMM_EVENT_INTERRUPT;
 }
@@ -2287,7 +2331,7 @@ VcpuHandleEptViolation(
 		return VMM_EVENT_ABORT;
 	}
 
-#if 0
+#if 1
 	ImpLog("[%02X-#%03d] %llX: Mapped %llX -> %llX...\n", Vcpu->Id, Vcpu->Vmx.ExitCount, Vcpu->Vmx.GuestRip, AttemptedAddress, AttemptedAddress);
 #endif
 
