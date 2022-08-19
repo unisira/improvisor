@@ -17,13 +17,7 @@ Routine Description:
 	to the lock (should never happen in our case).
 --*/
 {
-	SPINLOCK Contents = *Lock;
-
-	// If the lock is already exclusively held, return false
-	if (Contents != 0)
-		return FALSE;
-
-	return (InterlockedCompareExchange(Lock, 1, 0) == 0);
+	return (*Lock == 0 && InterlockedCompareExchange(Lock, 1, 0) == 0);
 }
 
 VOID
