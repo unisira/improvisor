@@ -3,6 +3,10 @@
 #include "section.h"
 #include "pdb.h"
 
+#include <improvisor.h>
+#include <arch/memory.h>
+#include <pdb/pdb.h>
+
 // Microsoft's MSF header magic
 #define MSF_MAGIC ("Microsoft C/C++ MSF 7.00\r\n\x1A\x44\x53\x00\x00\x00")
 
@@ -647,9 +651,8 @@ Routine Description:
 	SIZE_T Ih = Tpi->IndexOffsetBufferLength / sizeof(TPI_INDEX_OFFSET_ENTRY), Il = 0;
 	while (Ih > Il)
 	{
-		// Search from the middle of the buffer
 		SIZE_T Im = (Ih + Il) / 2;
-		// Get the middle entry of this section
+		// Search from the middle of the buffer
 		Curr = &IndexOffsetBuffer[Im];
 
 		if (Ti.Value < Curr->Ti.Value)
@@ -665,14 +668,14 @@ Routine Description:
 	if (Curr == NULL)
 		return NULL;
 
-	// FIXME: Sometimes the closest entry's TI is greater than `Ti`
+	// NOTE: Sometimes the closest entry's TI is greater than `Ti`
 	while (Curr->Ti.Value > Ti.Value)
 		Curr = Curr - 1;
 
 	SIZE_T i = Ti.Value - Curr->Ti.Value;
 
-	// Move forward `i` times from the closest to our type index
 	PTPI_LEAF_RECORD Lr = RVA_PTR(Tpi, sizeof(TPI_HEADER) + Curr->Offset);
+	// Move forward `i` times from the closest to our type index
 	while (Lr->Length != 0 && i-- != 0)
 		Lr = RVA_PTR(Lr, Lr->Length + sizeof(UINT16));
 

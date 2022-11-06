@@ -88,6 +88,35 @@ typedef union _VMX_EXIT_INTERRUPT_INFO
 	};
 } VMX_EXIT_INTERRUPT_INFO, *PVMX_EXIT_INTERRUPT_INFO;
 
+typedef union _VMX_IDT_VECTORING_INFO
+{
+	UINT32 Value;
+
+	struct
+	{
+		UINT32 Vector : 8;
+		UINT32 Type : 3;
+		UINT32 ErrorCodeValid : 1;
+		UINT32 Reserved1 : 19;
+		UINT32 Valid : 1;
+	};
+} VMX_IDT_VECTORING_INFO, *PVMX_IDT_VECTORING_INFO;
+
+typedef union _VMX_GUEST_INTERRUPTIBILITY_STATE
+{
+	UINT32 Value;
+
+	struct
+	{
+		UINT32 BlockingBySTI : 1;
+		UINT32 BlockingByMovSS : 1;
+		UINT32 BlockingBySMI : 1;
+		UINT32 BlockingByNMI : 1;
+		UINT32 EnclaveInterrupt : 1;
+		UINT32 Reserved : 27;
+	};
+} VMX_GUEST_INTERRUPTIBILITY_STATE, *PVMX_GUEST_INTERRUPTIBILITY_STATE;
+
 typedef struct _VMX_INVVPID_DESCRIPTOR
 {
 	UINT16 Vpid;
@@ -409,6 +438,78 @@ typedef enum _VMCS
 	GUEST_LINEAR_ADDRESS = 0x0000640A
 } VMCS, *PVMCS;
 
+typedef enum _VMX_BASIC_EXIT_REASON
+{
+	EXIT_REASON_EXCEPTION_NMI = 0,    // Exception or non-maskable interrupt (NMI).
+	EXIT_REASON_EXTERNAL_INTERRUPT = 1,    // External interrupt.
+	EXIT_REASON_TRIPLE_FAULT = 2,    // Triple fault.
+	EXIT_REASON_INIT = 3,    // INIT signal.
+	EXIT_REASON_SIPI = 4,    // Start-up IPI (SIPI).
+	EXIT_REASON_IO_SMI = 5,    // I/O system-management interrupt (SMI).
+	EXIT_REASON_OTHER_SMI = 6,    // Other SMI.
+	EXIT_REASON_PENDING_INTERRUPT = 7,    // Interrupt window exiting.
+	EXIT_REASON_NMI_WINDOW = 8,    // NMI window exiting.
+	EXIT_REASON_TASK_SWITCH = 9,    // Task switch.
+	EXIT_REASON_CPUID = 10,   // Guest software attempted to execute CPUID.
+	EXIT_REASON_GETSEC = 11,   // Guest software attempted to execute GETSEC.
+	EXIT_REASON_HLT = 12,   // Guest software attempted to execute HLT.
+	EXIT_REASON_INVD = 13,   // Guest software attempted to execute INVD.
+	EXIT_REASON_INVLPG = 14,   // Guest software attempted to execute INVLPG.
+	EXIT_REASON_RDPMC = 15,   // Guest software attempted to execute RDPMC.
+	EXIT_REASON_RDTSC = 16,   // Guest software attempted to execute RDTSC.
+	EXIT_REASON_RSM = 17,   // Guest software attempted to execute RSM in SMM.
+	EXIT_REASON_VMCALL = 18,   // Guest software executed VMCALL.
+	EXIT_REASON_VMCLEAR = 19,   // Guest software executed VMCLEAR.
+	EXIT_REASON_VMLAUNCH = 20,   // Guest software executed VMLAUNCH.
+	EXIT_REASON_VMPTRLD = 21,   // Guest software executed VMPTRLD.
+	EXIT_REASON_VMPTRST = 22,   // Guest software executed VMPTRST.
+	EXIT_REASON_VMREAD = 23,   // Guest software executed VMREAD.
+	EXIT_REASON_VMRESUME = 24,   // Guest software executed VMRESUME.
+	EXIT_REASON_VMWRITE = 25,   // Guest software executed VMWRITE.
+	EXIT_REASON_VMXOFF = 26,   // Guest software executed VMXOFF.
+	EXIT_REASON_VMXON = 27,   // Guest software executed VMXON.
+	EXIT_REASON_CR_ACCESS = 28,   // Control-register accesses.
+	EXIT_REASON_DR_ACCESS = 29,   // Debug-register accesses.
+	EXIT_REASON_IO_INSTRUCTION = 30,   // I/O instruction.
+	EXIT_REASON_MSR_READ = 31,   // RDMSR. Guest software attempted to execute RDMSR.
+	EXIT_REASON_MSR_WRITE = 32,   // WRMSR. Guest software attempted to execute WRMSR.
+	EXIT_REASON_INVALID_GUEST_STATE = 33,   // VM-entry failure due to invalid guest state.
+	EXIT_REASON_MSR_LOADING = 34,   // VM-entry failure due to MSR loading.
+	EXIT_REASON_RESERVED_35 = 35,   // Reserved
+	EXIT_REASON_MWAIT_INSTRUCTION = 36,   // Guest software executed MWAIT.
+	EXIT_REASON_MTF = 37,   // VM-exit due to monitor trap flag.
+	EXIT_REASON_RESERVED_38 = 38,   // Reserved
+	EXIT_REASON_MONITOR_INSTRUCTION = 39,   // Guest software attempted to execute MONITOR.
+	EXIT_REASON_PAUSE_INSTRUCTION = 40,   // Guest software attempted to execute PAUSE.
+	EXIT_REASON_MACHINE_CHECK = 41,   // VM-entry failure due to machine-check.
+	EXIT_REASON_RESERVED_42 = 42,   // Reserved
+	EXIT_REASON_TPR_BELOW_THRESHOLD = 43,   // TPR below threshold. Guest software executed MOV to CR8.
+	EXIT_REASON_APIC_ACCESS = 44,   // APIC access. Guest software attempted to access memory at a physical address on the APIC-access page.
+	EXIT_REASON_VIRTUALIZED_EIO = 45,   // EOI virtualization was performed for a virtual interrupt whose vector indexed a bit set in the EOIexit bitmap
+	EXIT_REASON_XDTR_ACCESS = 46,   // Guest software attempted to execute LGDT, LIDT, SGDT, or SIDT.
+	EXIT_REASON_TR_ACCESS = 47,   // Guest software attempted to execute LLDT, LTR, SLDT, or STR.
+	EXIT_REASON_EPT_VIOLATION = 48,   // An attempt to access memory with a guest-physical address was disallowed by the configuration of the EPT paging structures.
+	EXIT_REASON_EPT_MISCONFIG = 49,   // An attempt to access memory with a guest-physical address encountered a misconfigured EPT paging-structure entry.
+	EXIT_REASON_INVEPT = 50,   // Guest software attempted to execute INVEPT.
+	EXIT_REASON_RDTSCP = 51,   // Guest software attempted to execute RDTSCP.
+	EXIT_REASON_PREEMPT_TIMER = 52,   // VMX-preemption timer expired. The preemption timer counted down to zero.
+	EXIT_REASON_INVVPID = 53,   // Guest software attempted to execute INVVPID.
+	EXIT_REASON_WBINVD = 54,   // Guest software attempted to execute WBINVD
+	EXIT_REASON_XSETBV = 55,   // Guest software attempted to execute XSETBV.
+	EXIT_REASON_APIC_WRITE = 56,   // Guest completed write to virtual-APIC.
+	EXIT_REASON_RDRAND = 57,   // Guest software attempted to execute RDRAND.
+	EXIT_REASON_INVPCID = 58,   // Guest software attempted to execute INVPCID.
+	EXIT_REASON_VMFUNC = 59,   // Guest software attempted to execute VMFUNC.
+	EXIT_REASON_ENCLS = 60,   // Guest software attempted to execute ENCLS and 'enable ENCLS exiting' VM-execution control was 1
+	EXIT_REASON_RDSEED = 61,   // Guest software attempted to executed RDSEED and exiting was enabled.
+	EXIT_REASON_PML_FULL = 62,   // Page-modification log full
+	EXIT_REASON_XSAVES = 63,   // Guest software attempted to executed XSAVES and exiting was enabled.
+	EXIT_REASON_XRSTORS = 64,   // Guest software attempted to executed XRSTORS and exiting was enabled.
+	EXIT_REASON_RESERVED_65 = 65,
+	EXIT_REASON_SPP = 66, // The processor attempted to determine an access’s sub-page write permission and encountered an SPP miss or an SPP misconfiguration
+	EXIT_REASON_MAX = 67
+} VMX_BASIC_EXIT_REASON, *PVMX_BASIC_EXIT_REASON;
+
 PVMX_REGION
 VmxAllocateRegion(VOID);
 
@@ -446,6 +547,9 @@ VmxIsEventPending(
 	_In_ UINT8 Vector,
 	_In_ UINT8 Type
 );
+
+BOOLEAN
+VmxIsAnyEventPending(VOID);
 
 UINT64
 VmxRead(

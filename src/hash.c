@@ -1,4 +1,4 @@
-#include "hash.h"
+#include <hash.h>
 
 FNV1A 
 FNV1AHashQuanta(

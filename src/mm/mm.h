@@ -3,7 +3,7 @@
 
 #include <ntdef.h>
 
-#include "arch/cr.h"
+#include <arch/cr.h>
 
 typedef struct _MM_INFORMATION
 {
@@ -32,19 +32,6 @@ typedef union _MM_PTE
 	};
 } MM_PTE, *PMM_PTE;
 
-typedef struct _MM_VPTE
-{
-	LIST_ENTRY Links;
-	// Pointer to the PTE being used to map `MappedAddr`
-	PMM_PTE Pte;
-	// The address this VPTE is being used to map
-	PVOID MappedVirtAddr;
-	// The physical address of the memory being mapped by `Pte`
-	UINT64 MappedPhysAddr;
-	// Address the VPTE is mapped to
-	PVOID MappedAddr;
-} MM_VPTE, *PMM_VPTE;
-
 typedef struct _MM_RESERVED_PT
 {
 	LIST_ENTRY Links;
@@ -65,24 +52,28 @@ MmAllocateHostPageTable(
 	_Out_ PVOID* Table
 );
 
-PMM_RESERVED_PT
-MmGetLastAllocatedPageTable(VOID);
-
-NTSTATUS
-MmAllocateVpte(
-	_Out_ PMM_VPTE* pVpte
+PMM_PTE
+MmReadHostPageTableEntry(
+	_In_ UINT64 TablePfn,
+	_In_ SIZE_T Index
 );
 
-VOID
-MmFreeVpte(
-	_Inout_ PMM_VPTE Vpte
-);
-
-VOID
-MmMapGuestPhys(
-	_Inout_ PMM_VPTE Vpte,
+PMM_PTE
+MmGetHostPageTableVirtAddr(
 	_In_ UINT64 PhysAddr
 );
+
+NTSTATUS
+MmWinTranslateAddrVerbose(
+	_In_ PVOID Address,
+	_Out_ PMM_PTE pPml4e,
+	_Out_ PMM_PTE pPdpte,
+	_Out_ PMM_PTE pPde,
+	_Out_ PMM_PTE pPte
+);
+
+PMM_RESERVED_PT
+MmGetLastAllocatedPageTable(VOID);
 
 NTSTATUS
 MmWriteGuestPhys(
@@ -96,13 +87,6 @@ MmReadGuestPhys(
 	_In_ UINT64 PhysAddr,
 	_In_ SIZE_T Size,
 	_In_ PVOID Buffer
-);
-
-NTSTATUS
-MmMapGuestVirt(
-	_Inout_ PMM_VPTE Vpte,
-	_In_ UINT64 TargetCr3,
-	_In_ UINT64 VirtAddr
 );
 
 NTSTATUS
@@ -125,6 +109,11 @@ UINT64
 MmResolveGuestVirtAddr(
 	_In_ UINT64 TargetCr3,
 	_In_ UINT64 PhysAddr
+);
+
+NTSTATUS
+MmPrepareVmmImageData(
+	PVOID ImageBase
 );
 
 #endif

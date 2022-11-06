@@ -1,6 +1,8 @@
 #ifndef IMP_SPINLOCK_H
 #define IMP_SPINLOCK_H
 
+#include <ntdef.h>
+
 typedef volatile LONG SPINLOCK;
 typedef SPINLOCK* PSPINLOCK;
 

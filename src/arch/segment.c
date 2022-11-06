@@ -1,6 +1,6 @@
-#include "../improvisor.h"
-#include "../intrin.h"
-#include "segment.h"
+#include <improvisor.h>
+#include <arch/segment.h>
+#include <arch/cpu.h>
 
 PX86_SEGMENT_DESCRIPTOR
 LookupSegmentDescriptor(

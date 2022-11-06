@@ -1,10 +1,9 @@
-#include "improvisor.h"
-#include "arch/interrupt.h"
-#include "arch/cpuid.h"
-#include "arch/msr.h"
-#include "arch/cr.h"
-#include "section.h"
-#include "vmx.h"
+#include <improvisor.h>
+#include <arch/interrupt.h>
+#include <arch/cpuid.h>
+#include <arch/msr.h>
+#include <arch/cr.h>
+#include <vmx.h>
 
 VOID
 __invvpid(
@@ -241,6 +240,21 @@ Routine Description:
 		return TRUE;
 
 	return FALSE;
+}
+
+VMM_API
+BOOLEAN
+VmxIsAnyEventPending(VOID)
+/*++
+Routine Description:
+	Checks if the active VMCS has any injected event pending
+--*/
+{
+	VMX_ENTRY_INTERRUPT_INFO Interrupt = {
+		.Value = VmxRead(CONTROL_VMENTRY_INTERRUPT_INFO)
+	};
+
+	return Interrupt.Valid;
 }
 
 VMM_API

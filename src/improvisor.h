@@ -1,11 +1,13 @@
 #ifndef IMP_IMPROVISOR_H
 #define IMP_IMPROVISOR_H
 
+#include <ntifs.h>
 #include <ntddk.h>
 #include <ntdef.h>
 #include <wdm.h>
 #include <stdarg.h>
 #include <intrin.h>
+#include <section.h>
 
 #define POOL_TAG 'IMPV'
 

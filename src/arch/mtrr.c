@@ -1,10 +1,8 @@
-#include "improvisor.h"
-#include "arch/memory.h"
-#include "arch/mtrr.h"
-#include "arch/msr.h"
-#include "section.h"
-#include "intrin.h"
-#include "mtrr.h"
+#include <improvisor.h>
+#include <arch/memory.h>
+#include <arch/mtrr.h>
+#include <arch/msr.h>
+#include <arch/cpu.h>
 
 typedef struct _MTRR_STATIC_REGION
 {

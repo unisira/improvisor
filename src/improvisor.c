@@ -1,8 +1,6 @@
-#include "improvisor.h"
-#include "util/spinlock.h"
-#include "util/fmt.h"
-#include "section.h"
-#include "vmcall.h"
+#include <improvisor.h>
+#include <spinlock.h>
+#include <fmt.h>
 
 #define IMPV_LOG_SIZE 512
 #define IMPV_LOG_COUNT 512
@@ -92,15 +90,11 @@ Routine Description:
 	vsprintf_s(Buffer, 512, Fmt, Arg);
 	va_end(Arg);
 
-#if 0
-	VmAddLogRecord(Buffer);
-#else
 	PIMP_LOG_RECORD Log = NULL;
 	if (!NT_SUCCESS(ImpAllocateLogRecord(&Log)))
 		return;
 
 	RtlCopyMemory(Log->Buffer, Buffer, 512);
-#endif
 }
 
 VMM_API

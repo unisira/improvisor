@@ -55,3 +55,13 @@ PeGetSectionHeaders(
 	// Sections are contiguous, return a pointer to the first one
 	return IMAGE_FIRST_SECTION(NTHeaders);
 }
+
+PVOID
+PeImageDirectoryEntryToData(
+	_In_ PVOID BaseAddress,
+	_In_ UINT32 Index,
+	_Out_ PSIZE_T Size
+)
+{
+
+}

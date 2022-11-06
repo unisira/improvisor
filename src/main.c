@@ -1,11 +1,11 @@
-#include "improvisor.h"
-#include "vmcall.h"
-#include "vmm.h"
+#include <improvisor.h>
+#include <vcpu/vmcall.h>
+#include <vmm.h>
 
 BOOLEAN gIsHypervisorRunning;
 
 VOID
-LogThreadEntry(VOID)
+LogThreadEntry(PVOID A)
 {
     CHAR Log[512] = { 0 };
     
@@ -15,7 +15,7 @@ LogThreadEntry(VOID)
         .QuadPart = -500000
     };
 
-#if 1
+#if 0
     while (TRUE)
     {
 #if 1
@@ -77,7 +77,9 @@ DriverEntry(
         NULL,
         NULL,
         (PKSTART_ROUTINE)LogThreadEntry,
-        NULL);
+        NULL
+    );
+
     if (!NT_SUCCESS(Status))
     {
         ImpDebugPrint("Failed to start log thread... (%X)\n", Status);
@@ -92,6 +94,26 @@ DriverEntry(
     }
 
     gIsHypervisorRunning = TRUE;
+
+    // Hook PsSetLoadImageNotifyRoutine
+    // Check for Capcom.sys [LDR_PARAMS::DriverName]
+    // Cleanup Capcom.sys
+    // CmCleanPDDBCache
+    // CmCleanCiDllData
+    // CmCleanUnloadedDrivers
+
+    // TODO: 
+    // Finish some important VM-exit handlers
+    // Finish unloading - use a random CPUID leaf to detect hypervisor presence
+    // Unload and free all resources, also set up the LDR config stuff
+    // Virtualise interrupts and exceptions properly
+    // Virtualise CR reads/writes (should be correct but check)
+    // Virtualise all exiting instructions
+    // 
+    // C++ Rewrite has been postponed:
+    // - It is an overengineered mess.
+    // - Arrays are impossible to write nicely
+    // C++ Rewrite will be the best thing ever
 
     return Status;
 }

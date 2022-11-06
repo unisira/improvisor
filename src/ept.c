@@ -1,14 +1,11 @@
-#include "improvisor.h"
-#include "util/macro.h"
-#include "arch/memory.h"
-#include "arch/mtrr.h"
-#include "arch/msr.h"
-#include "section.h"
-#include "intrin.h"
-#include "mtrr.h"
-#include "ept.h"
-#include "vmx.h"
-#include "mm.h"
+#include <improvisor.h>
+#include <arch/memory.h>
+#include <arch/mtrr.h>
+#include <arch/msr.h>
+#include <arch/cpu.h>
+#include <mm/mm.h>
+#include <ept.h>
+#include <vmx.h>
 
 // Mask for when bits 12-29 need to be masked off for final translations
 #define EPT_PTE_PHYSADDR_MASK XBITRANGE(12, 29)
@@ -173,7 +170,7 @@ Routine Description:
 
 		SizeSubverted += PAGE_SIZE;
 	}
-
+	
 	return STATUS_SUCCESS;
 }
 

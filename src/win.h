@@ -2,8 +2,7 @@
 #define IMP_WIN_H
 
 #include <ntdef.h>
-
-#include "util/hash.h"
+#include <hash.h>
 
 NTSTATUS
 WinInitialise(VOID);

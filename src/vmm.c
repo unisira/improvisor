@@ -1,18 +1,6 @@
-#include "vmm.h"
-#include "vmcall.h"
-#include "detour.h"
-
-VMM_RDATA const X86_SEGMENT_SELECTOR gVmmCsSelector = {
-	.Table = SEGMENT_SELECTOR_TABLE_GDT,
-	.Index = 2,
-	.Rpl = 0
-};
-
-VMM_RDATA const X86_SEGMENT_SELECTOR gVmmTssSelector = {
-	.Table = SEGMENT_SELECTOR_TABLE_GDT,
-	.Index = 8,
-	.Rpl = 0
-};
+#include <vcpu/vmcall.h>
+#include <detour.h>
+#include <vmm.h>
 
 NTSTATUS
 VmmEnsureFeatureSupport(
@@ -47,7 +35,9 @@ VmmFreeResources(
 
 VSC_API
 NTSTATUS 
-VmmStartHypervisor(VOID)
+VmmStartHypervisor(
+	_In_ PUNICODE_STRING SharedObjectName
+)
 /*++
 Routine Description:
 	Starts the hypervisor. On failure, this function will clean up any resources allocated up until the
@@ -124,17 +114,7 @@ Routine Description:
 		goto panic;
 	}
 
-	ImpDebugPrint("Successfully launched hypervisor on %d cores...\n", Params.ActiveVcpuCount);
-
-	ImpLog("This is a test log, Number 1: %i\n", 1);
-
-	CHAR Log[512] = { 0 };
-
-	HYPERCALL_RESULT Result = VmGetLogRecords(Log, 1);
-	if (Result != HRESULT_SUCCESS)
-		ImpDebugPrint("VmGetLogRecords returned %x...\n", Result);
-
-	ImpDebugPrint("Log #1: %s", Log);
+	ImpLog("Successfully launched hypervisor on %d cores...\n", Params.ActiveVcpuCount);
 
 	Status = VmmPostLaunchInitialisation();
 	if (!NT_SUCCESS(Status))
@@ -143,6 +123,12 @@ Routine Description:
 		VmmShutdownHypervisor();
 		goto panic;
 	}
+
+#if 0
+	PIMP_LOG_RECORD Log = NULL;
+	while (NT_SUCCESS(ImpRetrieveLogRecord(&Log)))
+		ImpDebugPrint("%s", Log->Buffer);
+#endif
 
 	return STATUS_SUCCESS;
 
@@ -219,8 +205,12 @@ Routine Description:
 	}
 
 	VmmContext->UseUnrestrictedGuests = FALSE;
-	VmmContext->UseTscSpoofing = VmxCheckPreemptionTimerSupport();
 
+#if 0
+	VmmContext->UseTscSpoofing = VmxCheckPreemptionTimerSupport();
+#else
+	VmmContext->UseTscSpoofing = FALSE;
+#endif
 	return Status;
 }
 

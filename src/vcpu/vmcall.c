@@ -1,10 +1,11 @@
-#include "arch/interrupt.h"
-#include "arch/memory.h"
-#include "section.h"
-#include "vmcall.h"
-#include "vmx.h"
-#include "vmm.h"
-#include "mm.h"
+#include <improvisor.h>
+#include <arch/interrupt.h>
+#include <arch/memory.h>
+#include <vcpu/vmcall.h>
+#include <mm/vpte.h>
+#include <mm/mm.h>
+#include <vmm.h>
+#include <vmx.h>
 
 // Information relevant to caching, reading or writing virtual addresses in an address space
 typedef union _HYPERCALL_VIRT_EX 
@@ -60,6 +61,8 @@ typedef enum _HYPERCALL_ID
 	HYPERCALL_VIRT_SIGSCAN,
 	// Convert a physical address into a virtual address in a specific address space
 	HYPERCALL_PHYS_TO_VIRT,
+	// Lookup a process by name using a FNV1a hash, returns a handle to the process which can be used for reading/writing
+	HYPERCALL_FIND_PROCESS,
 	// Shutdown the current VCPU and free its resources
 	HYPERCALL_SHUTDOWN_VCPU,
 	// Returns the value of the system CR3 in RAX
@@ -70,6 +73,10 @@ typedef enum _HYPERCALL_ID
 	HYPERCALL_CACHE_PDB_BUFFER,
 	// Hide all host resource allocations from guest physical memory
 	HYPERCALL_HIDE_HOST_RESOURCES,
+	// Create a hidden translation to a given physical address
+	HYPERCALL_MAP_HIDDEN_MEMORY,
+	// Add a log record to the VMM
+	HYPERCALL_ADD_LOG_RECORD,
 	// Retrieve log records from VMM
 	HYPERCALL_GET_LOG_RECORDS
 } HYPERCALL_ID, PHYPERCALL_ID;
@@ -107,6 +114,14 @@ VmAbortHypercall(
 {
 	Hypercall->Result = Status;
 	return VMM_EVENT_CONTINUE;
+}
+
+VMM_EVENT_STATUS
+VmGetProcessCr3(
+	_In_ HYPERCALL_VIRT_EX VirtEx
+)
+{
+
 }
 
 VMM_EVENT_STATUS
@@ -185,7 +200,7 @@ VmHandleHypercall(
 			SIZE_T SizeToRead = VirtEx.Size - SizeRead > MaxReadable ? MaxReadable : VirtEx.Size - SizeRead;
 			
 			if (!NT_SUCCESS(MmReadGuestVirt(Cr3, GuestState->Rdx + SizeRead, SizeToRead, (PCHAR)Vpte->MappedVirtAddr + SizeRead)))
-				return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+				return VmAbortHypercall(Hypercall, HRESULT_INVALID_SIZE);
 			
 			SizeRead += SizeToRead;
 		}
@@ -264,6 +279,10 @@ VmHandleHypercall(
 			if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rcx, sizeof(UINT64), Result)))
 				return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
 	} break;
+	case HYPERCALL_FIND_PROCESS:
+	{
+		PVOID Process = NULL;
+	} break;
 	case HYPERCALL_SHUTDOWN_VCPU:
 	{
 		Vcpu->Mode = VCPU_MODE_SHUTDOWN;
@@ -286,7 +305,7 @@ VmHandleHypercall(
 		// Target (RCX) and Buffer (RDX) are used as GPA and PA respectively
 		if (!NT_SUCCESS(
 			EptMapMemoryRange(
-				Vcpu->Vmm->EptInformation.SystemPml4,
+				Vcpu->Vmm->Ept.Pml4,
 				GuestState->Rcx,
 				GuestState->Rdx,
 				RemapEx.Size,
@@ -312,9 +331,9 @@ VmHandleHypercall(
 
 			if (!NT_SUCCESS(
 				EptMapMemoryRange(
-					Vcpu->Vmm->EptInformation.SystemPml4,
+					Vcpu->Vmm->Ept.Pml4,
 					CurrRecord->PhysAddr,
-					Vcpu->Vmm->EptInformation.DummyPagePhysAddr,
+					Vcpu->Vmm->Ept.DummyPagePhysAddr,
 					CurrRecord->Size,
 					EPT_PAGE_RW)
 				))
@@ -326,6 +345,18 @@ VmHandleHypercall(
 
 		EptInvalidateCache();
 	} break;
+	case HYPERCALL_ADD_LOG_RECORD:
+	{
+		if (GuestState->Rcx == 0)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+
+		PIMP_LOG_RECORD Log = NULL;
+		if (!NT_SUCCESS(ImpAllocateLogRecord(&Log)))
+			return VmAbortHypercall(Hypercall, HRESULT_LOG_RECORD_OVERFLOW);
+
+		if (!NT_SUCCESS(MmReadGuestVirt(GuestCr3, GuestState->Rcx, IMP_LOG_SIZE, Log->Buffer)))
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+	}
 	case HYPERCALL_GET_LOG_RECORDS:
 	{
 		if (GuestState->Rcx == 0)
@@ -396,11 +427,9 @@ VmWriteSystemMemory(
 		.Size = Size
 	};
 
-	Hypercall = __vmcall(Hypercall, VirtEx.Value, Dst, Src);
+	Hypercall = __vmcall(Hypercall, VirtEx.Value, Src, Dst);
 
 	return Hypercall.Result;
-
-	return HRESULT_SUCCESS;
 }
 
 HYPERCALL_RESULT
@@ -461,6 +490,21 @@ VmGetLogRecords(
 	};
 
 	Hypercall = __vmcall(Hypercall, LogEx.Value, Dst, NULL);
+
+	return Hypercall.Result;
+}
+
+HYPERCALL_RESULT
+VmAddLogRecord(
+	_In_ PVOID Src
+)
+{
+	HYPERCALL_INFO Hypercall = {
+		.Id = HYPERCALL_ADD_LOG_RECORD,
+		.Result = HRESULT_SUCCESS
+	};
+
+	Hypercall = __vmcall(Hypercall, 0, Src, NULL);
 
 	return Hypercall.Result;
 }

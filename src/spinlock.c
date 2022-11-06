@@ -1,7 +1,5 @@
-#include <immintrin.h>
-
-#include "../improvisor.h"
-#include "spinlock.h"
+#include <improvisor.h>
+#include <spinlock.h>
 
 // TODO: Copy Windows Ex functions
 

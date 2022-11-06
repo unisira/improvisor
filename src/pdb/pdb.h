@@ -1,10 +1,9 @@
 #ifndef IMP_PDB_H
 #define IMP_PDB_H
 
-#include "util/hash.h"
-
 #include <ntdef.h>
 #include <wdm.h>
+#include <hash.h>
 
 NTSTATUS
 PdbReserveEntries(

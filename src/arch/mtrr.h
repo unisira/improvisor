@@ -1,5 +1,5 @@
-#ifndef IMP_ARCH_MTRR_H
-#define IMP_ARCH_MTRR_H
+#ifndef IMP_MTRR_H
+#define IMP_MTRR_H
 
 #include <ntdef.h>
 
@@ -16,7 +16,7 @@ typedef union _IA32_MTRR_CAPABILITIES_MSR
 		UINT64 SmrrInterfaceSupport : 1;
 		UINT64 Reserved2 : 52;
 	};
-} IA32_MTRR_CAPABILITIES_MSR, *PIA32_MTRR_CAPABILITIES_MSR;
+} IA32_MTRR_CAPABILITIES_MSR, * PIA32_MTRR_CAPABILITIES_MSR;
 
 typedef union _IA32_MTRR_DEFAULT_TYPE_MSR
 {
@@ -30,7 +30,7 @@ typedef union _IA32_MTRR_DEFAULT_TYPE_MSR
 		UINT64 EnableMtrr : 1;
 		UINT64 Reserved2 : 52;
 	};
-} IA32_MTRR_DEFAULT_TYPE_MSR, *PIA32_MTRR_DEFAULT_TYPE_MSR;
+} IA32_MTRR_DEFAULT_TYPE_MSR, * PIA32_MTRR_DEFAULT_TYPE_MSR;
 
 typedef union _IA32_MTRR_PHYSBASE_N_MSR
 {
@@ -43,7 +43,7 @@ typedef union _IA32_MTRR_PHYSBASE_N_MSR
 		UINT64 Base : 36;
 		UINT64 Reserved2 : 16;
 	};
-} IA32_MTRR_PHYSBASE_N_MSR, *PIA32_MTRR_PHYSBASE_N_MSR;
+} IA32_MTRR_PHYSBASE_N_MSR, * PIA32_MTRR_PHYSBASE_N_MSR;
 
 typedef union _IA32_MTRR_PHYSMASK_N_MSR
 {
@@ -56,7 +56,7 @@ typedef union _IA32_MTRR_PHYSMASK_N_MSR
 		UINT64 Mask : 36;
 		UINT64 Reserved2 : 16;
 	};
-} IA32_MTRR_PHYSMASK_N_MSR, *PIA32_MTRR_PHYSMASK_N_MSR;
+} IA32_MTRR_PHYSMASK_N_MSR, * PIA32_MTRR_PHYSMASK_N_MSR;
 
 typedef union _IA32_MTRR_FIXED_RANGE_MSR
 {
@@ -66,7 +66,7 @@ typedef union _IA32_MTRR_FIXED_RANGE_MSR
 	{
 		UINT8 Types[8];
 	};
-} IA32_MTRR_FIXED_RANGE_MSR, *PIA32_MTRR_FIXED_RANGE_MSR;
+} IA32_MTRR_FIXED_RANGE_MSR, * PIA32_MTRR_FIXED_RANGE_MSR;
 
 typedef enum _MEMORY_TYPE
 {
@@ -79,5 +79,28 @@ typedef enum _MEMORY_TYPE
 
 	MT_INVALID = 0xFF
 } MEMORY_TYPE;
+
+UINT64
+MtrrGetRegionSize(
+	_In_ UINT64 PhysAddr
+);
+
+UINT64
+MtrrGetRegionBase(
+	_In_ UINT64 PhysAddr
+);
+
+MEMORY_TYPE
+MtrrGetRegionType(
+	_In_ UINT64 PhysAddr
+);
+
+UINT64
+MtrrGetRegionEnd(
+	_In_ UINT64 PhysAddr
+);
+
+NTSTATUS
+MtrrInitialise(VOID);
 
 #endif

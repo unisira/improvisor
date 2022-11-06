@@ -1,4 +1,4 @@
-#include "cpuid.h"
+#include <arch/cpuid.h>
 
 BOOLEAN
 ArchCheckFeatureFlag(

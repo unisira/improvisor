@@ -3,12 +3,18 @@
 
 #include <ntdef.h>
 
+// The value of the VMX preemption timer used as a watchdog for TSC virtualisation
+#define VTSC_WATCHDOG_QUANTUM 4000
+
 typedef enum _TSC_EVENT_TYPE
 {
 	TSC_EVENT_CPUID,
 	TSC_EVENT_RDTSC,
 	TSC_EVENT_RDTSCP,
-	TSC_EVENT_
+	TSC_EVENT_INVLPG,
+	TSC_EVENT_VMCALL,
+	TSC_EVENT_XCR,
+	TSC_EVENT_EPT
 } TSC_EVENT_TYPE;
 
 typedef struct _TSC_EVENT_ENTRY

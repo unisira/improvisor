@@ -1,14 +1,10 @@
-#include "improvisor.h"
-#include "arch/memory.h"
-#include "util/spinlock.h"
-#include "util/macro.h"
-#include "util/hash.h"
-#include "section.h"
-#include "detour.h"
-#include "vmcall.h"
-#include "ldasm.h"
-#include "ept.h"
-#include "vmm.h"
+#include <improvisor.h>
+#include <arch/memory.h>
+#include <vcpu/vmcall.h>
+#include <spinlock.h>
+#include <detour.h>
+#include <ldasm.h>
+#include <vmm.h>
 
 // PLAN:
 //
@@ -477,6 +473,10 @@ EhHandleEptViolation(
 					return FALSE;
 				}
 
+#ifdef _DEBUG
+				ImpLog("[Detour #%08X] Swapped to shadow page %llX\n", CurrHook->Hash, CurrHook->ShadowPhysAddr);
+#endif
+
 				return TRUE;
 			}
 			else if (ExitQual.ReadAccessed || ExitQual.WriteAccessed)
@@ -513,6 +513,10 @@ EhHandleEptViolation(
 					ImpLog("EptMapMemoryRange failed mapping %llX->%llX with Perms=%x\n", AttemptedPhysAddr, AttemptedPhysAddr, Perms);
 					return FALSE;
 				}
+
+#ifdef _DEBUG
+				ImpLog("[Detour #%08X] Swapped to RW page %llX\n", CurrHook->Hash, CurrHook->GuestPhysAddr);
+#endif
 
 				return TRUE;
 			}

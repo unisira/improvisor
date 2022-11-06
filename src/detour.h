@@ -1,8 +1,7 @@
 #ifndef IMP_DETOUR_H
 #define IMP_DETOUR_H
 
-#include "util/hash.h"
-#include "vcpu.h"
+#include <hash.h>
 
 #include <ntdef.h>
 #include <wdm.h>

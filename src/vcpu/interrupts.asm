@@ -124,10 +124,28 @@ __vmm_generic_intr_handler endp
 ; Define __vmm_intr_handler_X for each exception
 ; These stubs will push some vector & error code onto the stack then jump to __vmm_generic_intr_handler
 
+__panic_stub proc
+	int 3
+__panic_stub endp
+
+__panic proc
+	; Write GUEST_RIP to __panic_stub
+	mov rax, 0681Eh
+	lea rcx, __panic_stub
+	vmwrite rax, rcx
+	; Write GUEST_RSP to current RSP
+	mov rax, 0681Ch
+	lea rcx, [rsp]
+	vmwrite rax, rcx
+	; VM resume to guest execution to examine stack
+	vmresume
+__panic endp
+
 VMM_INTR_HANDLER macro vector: req, name: req
 name proc
 	push 0
 	push vector
+
 	jmp __vmm_generic_intr_handler
 name endp
 endm

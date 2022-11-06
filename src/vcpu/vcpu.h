@@ -1,13 +1,13 @@
 #ifndef IMP_VCPU_H
 #define IMP_VCPU_H
 
-#include "improvisor.h"
-#include "arch/interrupt.h"
-#include "arch/segment.h"
-#include "vmx.h"
-#include "cpu.h"
-#include "mm.h"
-#include "vtsc.h"
+#include <improvisor.h>
+#include <arch/interrupt.h>
+#include <arch/segment.h>
+#include <arch/cpu.h>
+#include <vcpu/tsc.h>
+#include <mm/mm.h>
+#include <vmx.h>
 
 // Emulation was successful, continue execution
 #define VMM_EVENT_CONTINUE (0x00000000)
@@ -94,54 +94,6 @@ typedef struct _VCPU_CONTEXT
 	M128 Xmm14;
 	M128 Xmm15;
 } VCPU_CONTEXT, *PVCPU_CONTEXT;
-#pragma pack(pop)
-
-#pragma pack(push, 1)
-typedef struct _VCPU_TRAP_FRAME
-{
-	// Register State
-	UINT64 Rax;
-	UINT64 Rbx;
-	UINT64 Rcx;
-	UINT64 Rdx;
-	UINT64 Rsi;
-	UINT64 Rdi;
-	UINT64 R8;
-	UINT64 R9;
-	UINT64 R10;
-	UINT64 R11;
-	UINT64 R12;
-	UINT64 R13;
-	UINT64 R14;
-	UINT64 R15;
-	M128 Xmm0;
-	M128 Xmm1;
-	M128 Xmm2;
-	M128 Xmm3;
-	M128 Xmm4;
-	M128 Xmm5;
-	M128 Xmm6;
-	M128 Xmm7;
-	M128 Xmm8;
-	M128 Xmm9;
-	M128 Xmm10;
-	M128 Xmm11;
-	M128 Xmm12;
-	M128 Xmm13;
-	M128 Xmm14;
-	M128 Xmm15;
-
-	// Interrupt Vector
-	UINT64 Vector;
-
-	// Machine Trap Frame
-	UINT64 Error;
-	UINT64 Rip;
-	UINT64 Cs;
-	UINT64 RFlags;
-	UINT64 Rsp;
-	UINT64 Ss;
-} VCPU_TRAP_FRAME, *PVCPU_TRAP_FRAME;
 #pragma pack(pop)
 
 // Base of other VCPU delegates so Status can be generically accessed
@@ -242,6 +194,7 @@ typedef struct _VCPU
 	PMTF_EVENT_ENTRY MtfStackHead;
 	ULONG LastHypercallResult;
 	ULONG NumQueuedNMIs;
+	BOOLEAN NMIsBlocked;
 	struct _VMM_CONTEXT* Vmm; 
 } VCPU, *PVCPU;
 
@@ -253,7 +206,9 @@ typedef enum _MSR_ACCESS
 
 typedef ULONG VMM_EVENT_STATUS;
 
-typedef VMM_EVENT_STATUS VMEXIT_HANDLER(_Inout_ PVCPU, _Inout_ PGUEST_STATE);
+EXTERN_C
+PVCPU
+__current_vcpu(VOID);
 
 NTSTATUS 
 VcpuSetup(
@@ -320,9 +275,70 @@ VcpuPopMTFEvent(
 );
 
 VOID
-VcpuHandleHostException(
+VcpuSetControl(
+	_Inout_ PVCPU Vcpu,
+	_In_ VMX_CONTROL Control,
+	_In_ BOOLEAN State
+);
+
+BOOLEAN
+VcpuIsControlSupported(
+	_Inout_ PVCPU Vcpu,
+	_In_ VMX_CONTROL Control
+);
+
+VOID
+VcpuCommitVmxState(
+	_Inout_ PVCPU Vcpu
+);
+
+VOID
+VcpuToggleExitOnMsr(
+	_Inout_ PVCPU Vcpu,
+	_In_ UINT32 Msr,
+	_In_ MSR_ACCESS Access
+);
+
+VOID
+VcpuDestroy(
+	_Inout_ PVCPU Vcpu
+);
+
+NTSTATUS
+VcpuPostSpawnInitialisation(
+	_Inout_ PVCPU Vcpu
+);
+
+UINT64
+VcpuGetVmExitStoreValue(
+	_In_ UINT32 Index
+);
+
+NTSTATUS
+VcpuLoadPDPTRs(
+	_In_ PVCPU Vcpu
+);
+
+VOID
+VcpuRecoverNMIBlocking(
+	_In_ PVCPU Vcpu
+);
+
+VOID
+VcpuEnableTscSpoofing(
+	_Inout_ PVCPU Vcpu
+);
+
+UINT64
+VcpuGetTscEventLatency(
 	_In_ PVCPU Vcpu,
-	_In_ PVCPU_TRAP_FRAME TrapFrame
+	_In_ TSC_EVENT_TYPE Type
+);
+
+VOID
+VcpuUpdateLastTscEventEntry(
+	_Inout_ PVCPU Vcpu,
+	_In_ TSC_EVENT_TYPE Type
 );
 
 #endif

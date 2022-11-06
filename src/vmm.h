@@ -4,13 +4,12 @@
 #include <wdm.h>
 #include <intrin.h>
 
-#include "arch/interrupt.h"
-#include "arch/segment.h"
-#include "section.h"
-#include "vcpu.h"
-#include "vtsc.h"
-#include "ept.h"
-#include "mm.h"
+#include <arch/interrupt.h>
+#include <arch/segment.h>
+#include <vcpu/vcpu.h>
+#include <vcpu/tsc.h>
+#include <mm/mm.h>
+#include <ept.h>
 
 extern const X86_SEGMENT_SELECTOR gVmmCsSelector;
 extern const X86_SEGMENT_SELECTOR gVmmTssSelector;

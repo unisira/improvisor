@@ -1,5 +1,5 @@
-#include "improvisor.h"
-#include "vtsc.h"
+#include <improvisor.h>
+#include <vcpu/tsc.h>
 
 EXTERN_C
 UINT64
@@ -20,8 +20,6 @@ __vtsc_estimate_rdtsc_latency(VOID);
 EXTERN_C
 UINT64
 __vtsc_estimate_rdtscp_latency(VOID);
-
-static PTSC_EVENT_ENTRY sTscEventsRaw = NULL;
 
 VOID
 VTscEstimateVmExitLatency(
@@ -65,6 +63,8 @@ VTscGetEventLatencies(
 	_Inout_ PTSC_STATUS TscStatus
 )
 {
+	// TODO: Emulate other events (vmcall, EPT etc.)
+
 	static const SIZE_T sAttemptCount = 100;
 
 	UINT64 Total = 0;
