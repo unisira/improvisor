@@ -2,8 +2,9 @@
 #include <arch/memory.h>
 #include <pdb/pdb.h>
 #include <ldr.h>
+#include <win.h>
 
-VMM_DATA PLDR_LAUNCH_PARAMS gLdrLaunchInfo;
+VMM_DATA LDR_LAUNCH_PARAMS gLdrLaunchParameters;
 
 typedef struct _LDR_PDB_PACKET {
 	// Is this PDB packet valid?
@@ -23,10 +24,10 @@ typedef struct _LDR_SHARED_SECTION_FORMAT {
 	LDR_LAUNCH_PARAMS LdrParams;
 	// The current PDB packet
 	LDR_PDB_PACKET PdbPacket;
-	// An event for signalling whenever one PDB has been consumed, and the next can be sent
-	KEVENT PdbFinished;
-	// An event which we poll to check if a PDB has been sent
-	KEVENT PdbReady;
+	// A handle to an event for signalling whenever one PDB has been consumed, and the next can be sent
+	UNICODE_STRING PdbFinished;
+	// The name for an event which we poll to check if a PDB has been sent
+	UNICODE_STRING PdbReady;
 } LDR_SHARED_SECTION_FORMAT, *PLDR_SHARED_SECTION_FORMAT;
 
 PIMAGE_SECTION_HEADER
@@ -116,6 +117,59 @@ Routine Description:
 
 VSC_API
 NTSTATUS
+LdrOpenPdbEvents(
+	_In_ PLDR_SHARED_SECTION_FORMAT Section,
+	_Out_ PRKEVENT PdbReady,
+	_Out_ PRKEVENT PdbFinished
+)
+/*++
+Routine Description:
+	Gets a pointer to the two routine events used for parsing PDB's by name
+--*/
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+
+	// Open the PdbReady and PdbFinished events
+	Status = ObReferenceObjectByName(
+		&Section->PdbReady,
+		OBJ_CASE_INSENSITIVE,
+		NULL,
+		FILE_ALL_ACCESS,
+		ExEventObjectType,
+		KernelMode,
+		NULL,
+		PdbReady
+	);
+
+	if (!NT_SUCCESS(Status))
+	{
+		ImpDebugPrint("Failed to reference the PdbReady event '%wZ'\n", Section->PdbReady);
+		return Status;
+	}
+
+	// Open the PdbReady and PdbFinished events
+	Status = ObReferenceObjectByName(
+		&Section->PdbFinished,
+		OBJ_CASE_INSENSITIVE,
+		NULL,
+		FILE_ALL_ACCESS,
+		ExEventObjectType,
+		KernelMode,
+		NULL,
+		PdbFinished
+	);
+
+	if (!NT_SUCCESS(Status))
+	{
+		ImpDebugPrint("Failed to reference the PdbFinished event '%wZ'\n", Section->PdbFinished);
+		return Status;
+	}
+
+	return Status;
+}
+
+VSC_API
+NTSTATUS
 LdrConsumePdbInformation(
 	_In_ PLDR_SHARED_SECTION_FORMAT Section
 )
@@ -127,9 +181,15 @@ Routine Description:
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 
+	PRKEVENT PdbReady = NULL, PdbFinished = NULL;
+	// Open the PdbReady and PdbFinished events
+	Status = LdrOpenPdbEvents(Section, PdbReady, PdbFinished);
+	if (!NT_SUCCESS(Status))
+		return Status;
+
 	// Wait until a PDB is ready to be parsed
 	Status = KeWaitForSingleObject(
-		&Section->PdbReady,
+		PdbReady,
 		Suspended,
 		KernelMode,
 		FALSE,
@@ -154,10 +214,10 @@ Routine Description:
 		}
 		
 		// We have finished parsing this PDB, let the client know
-		KeSetEvent(&Section->PdbFinished, IO_NO_INCREMENT, FALSE);
+		KeSetEvent(&PdbFinished, IO_NO_INCREMENT, FALSE);
 
 		Status = KeWaitForSingleObject(
-			&Section->PdbReady,
+			PdbReady,
 			Suspended,
 			KernelMode,
 			FALSE,
@@ -182,11 +242,71 @@ LdrInitialise(
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 
-	// MAP SECTION INTO MEMORY
-	// FAIL IF NO SECTION IS PRESENT
-	// USE THE SECTION TO COMMUNICATE WITH THE CLIENT
-	// DO THE FOLLOWING:
-	// 
-	// When loading PDB's, there is essentially no need to actually dynamically request PDB's, we can just hardcode the client to send them
-	// However, some dynamic communication could be necessary, still need to think what the hypervisor needs to do
+	OBJECT_ATTRIBUTES ObjectAttributes;
+
+	// Setup opject attributes for the shared section
+	InitializeObjectAttributes(
+		&ObjectAttributes,
+		&SharedSectionName,
+		OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+		NULL,
+		NULL
+	);
+
+	HANDLE SharedSectionHandle = NULL;
+	// Open the shared section with read write access
+	Status = ZwOpenSection(&SharedSectionHandle, SECTION_MAP_READ | SECTION_MAP_WRITE, &ObjectAttributes);
+	if (!NT_SUCCESS(Status))
+	{
+		ImpDebugPrint("Failed to open the shared section '%wZ'\n", SharedSectionName);
+		return Status;
+	}
+
+	// The shared section address
+	PLDR_SHARED_SECTION_FORMAT SharedSection = NULL;
+
+	SIZE_T ViewSize = sizeof(LDR_SHARED_SECTION_FORMAT);
+	// Map the section into the current process
+	Status = ZwMapViewOfSection(
+		SharedSection,
+		NtCurrentProcess(),
+		&SharedSection,
+		0,
+		0,
+		NULL,
+		&ViewSize,
+		ViewUnmap,
+		0,
+		PAGE_EXECUTE_READWRITE
+	);
+
+	if (!NT_SUCCESS(Status))
+	{
+		ImpDebugPrint("Failed to map the shared section '%wZ'\n", SharedSectionName);
+		return Status;
+	}
+
+	// Store launch parameters for hypervisor initialisation
+	gLdrLaunchParameters = SharedSection->LdrParams;
+
+	// Store any PDB's the client tells us to
+	Status = LdrConsumePdbInformation(SharedSection);
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	// Unmap the shared section
+	Status = ZwUnmapViewOfSection(ZwCurrentProcess(), SharedSection);
+	if (!NT_SUCCESS(Status))
+	{
+		ImpDebugPrint("Failed to unmap the shared section '%wZ'\n", SharedSectionName);
+		return Status;
+	}
+		
+	// Section mapped, close the handle to this section
+	Status = ZwClose(SharedSection);
+	if (!NT_SUCCESS(Status))
+	{
+		ImpDebugPrint("Failed to close the handle for the shared section '%wZ'\n", SharedSectionName);
+		return Status;
+	}
 }
