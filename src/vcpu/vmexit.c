@@ -887,8 +887,8 @@ VcpuHandleRdtscp(
 	{
 		VcpuUpdateLastTscEventEntry(Vcpu, TSC_EVENT_RDTSCP);
 
-		PTSC_EVENT_ENTRY PrevEvent = &Vcpu->Tsc.PrevEvent;
-		Tsc.QuadPart = PrevEvent->Timestamp + PrevEvent->Latency;
+		// Set the TSC to the previous event's timestamp and its estimated latency
+		Tsc.QuadPart = Vcpu->Tsc.PrevEvent.Timestamp + Vcpu->Tsc.PrevEvent.Latency;
 	}
 
 	GuestState->Rdx = Tsc.HighPart;
@@ -1374,7 +1374,7 @@ VcpuHandleMTFExit(
 					Event.Permissions)
 			))
 			{
-				ImpLog("[%02X] Failed to remap page permissions for %llx->%llx...\n", Event.GuestPhysAddr, Event.PhysAddr);
+				ImpLog("[%02X] Failed to remap page permissions for %llx->%llx...\n", Vcpu->Id, Event.GuestPhysAddr, Event.PhysAddr);
 				return VMM_EVENT_ABORT;
 			}
 
