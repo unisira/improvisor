@@ -69,8 +69,6 @@ typedef enum _HYPERCALL_ID
 	HYPERCALL_GET_SYSTEM_CR3,
 	// Remap a GPA to a virtual address passed
 	HYPERCALL_EPT_REMAP_PAGES,
-	// Send a PDB to be cached and used by the hypervisor
-	HYPERCALL_CACHE_PDB_BUFFER,
 	// Hide all host resource allocations from guest physical memory
 	HYPERCALL_HIDE_HOST_RESOURCES,
 	// Create a hidden translation to a given physical address
@@ -121,7 +119,8 @@ VmGetProcessCr3(
 	_In_ HYPERCALL_VIRT_EX VirtEx
 )
 {
-
+	// TODO: Implement me
+	return VMM_EVENT_CONTINUE;
 }
 
 VMM_EVENT_STATUS
@@ -314,10 +313,6 @@ VmHandleHypercall(
 			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
 
 		EptInvalidateCache();
-	} break;
-	case HYPERCALL_CACHE_PDB_BUFFER:
-	{
-		// TODO: Finish this, add signature parsing function & scanner 
 	} break;
 	case HYPERCALL_HIDE_HOST_RESOURCES:
 	{
