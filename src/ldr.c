@@ -119,8 +119,8 @@ VSC_API
 NTSTATUS
 LdrOpenPdbEvents(
 	_In_ PLDR_SHARED_SECTION_FORMAT Section,
-	_Out_ PRKEVENT PdbReady,
-	_Out_ PRKEVENT PdbFinished
+	_Out_ PRKEVENT* PdbReady,
+	_Out_ PRKEVENT* PdbFinished
 )
 /*++
 Routine Description:
@@ -183,7 +183,7 @@ Routine Description:
 
 	PRKEVENT PdbReady = NULL, PdbFinished = NULL;
 	// Open the PdbReady and PdbFinished events
-	Status = LdrOpenPdbEvents(Section, PdbReady, PdbFinished);
+	Status = LdrOpenPdbEvents(Section, &PdbReady, &PdbFinished);
 	if (!NT_SUCCESS(Status))
 		return Status;
 
@@ -214,7 +214,7 @@ Routine Description:
 		}
 		
 		// We have finished parsing this PDB, let the client know
-		KeSetEvent(&PdbFinished, IO_NO_INCREMENT, FALSE);
+		KeSetEvent(PdbFinished, IO_NO_INCREMENT, FALSE);
 
 		Status = KeWaitForSingleObject(
 			PdbReady,
@@ -268,7 +268,7 @@ LdrInitialise(
 	SIZE_T ViewSize = sizeof(LDR_SHARED_SECTION_FORMAT);
 	// Map the section into the current process
 	Status = ZwMapViewOfSection(
-		SharedSection,
+		SharedSectionHandle,
 		NtCurrentProcess(),
 		&SharedSection,
 		0,
