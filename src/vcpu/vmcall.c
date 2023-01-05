@@ -166,10 +166,10 @@ VmHandleHypercall(
 	case HYPERCALL_READ_VIRT:
 	{
 		if (GuestState->Rdx == 0)
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 		
 		if (GuestState->Rcx == 0)
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_SOURCE_ADDR);
 
 		HYPERCALL_VIRT_EX VirtEx = {
 			.Value = GuestState->Rbx
@@ -193,7 +193,7 @@ VmHandleHypercall(
 			const SIZE_T MaxReadable = PAGE_SIZE - max(PAGE_OFFSET(GuestState->Rcx + SizeRead), PAGE_OFFSET(GuestState->Rdx + SizeRead));
 
 			if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx + SizeRead)))
-				return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+				return VmAbortHypercall(Hypercall, HRESULT_INVALID_SOURCE_ADDR);
 
 			SIZE_T SizeToRead = VirtEx.Size - SizeRead > MaxReadable ? MaxReadable : VirtEx.Size - SizeRead;
 			
@@ -208,10 +208,10 @@ VmHandleHypercall(
 	case HYPERCALL_WRITE_VIRT: 
 	{
 		if (GuestState->Rdx == 0)
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 		
 		if (GuestState->Rcx == 0)
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_SOURCE_ADDR);
 
 		HYPERCALL_VIRT_EX VirtEx = {
 			.Value = GuestState->Rbx
@@ -235,12 +235,12 @@ VmHandleHypercall(
 			const SIZE_T MaxWriteable = PAGE_SIZE - max(PAGE_OFFSET(GuestState->Rcx + SizeWritten), PAGE_OFFSET(GuestState->Rdx + SizeWritten));
 
 			if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx + SizeWritten)))
-				return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+				return VmAbortHypercall(Hypercall, HRESULT_INVALID_SOURCE_ADDR);
 		
 			SIZE_T SizeToWrite = VirtEx.Size - SizeWritten > MaxWriteable ? MaxWriteable : VirtEx.Size - SizeWritten;
 			
 			if (!NT_SUCCESS(MmWriteGuestVirt(Cr3, GuestState->Rdx + SizeWritten, SizeToWrite, RVA_PTR(Vpte->MappedVirtAddr, SizeWritten))))
-				return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+				return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 
 			SizeWritten += SizeToWrite;
 		}
@@ -253,7 +253,7 @@ VmHandleHypercall(
 			return VmAbortHypercall(Hypercall, HRESULT_INVALID_SIGSCAN_BUFFER);
 
 		if (GuestState->Rdx == 0)
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 
 		HYPERCALL_VIRT_EX VirtEx = {
 			.Value = GuestState->Rbx
@@ -305,15 +305,15 @@ VmHandleHypercall(
 
 		// Write the result to the target variable
 		if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(UINT64), SigScan->Address + SizeScanned)))
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 	} break;
 	case HYPERCALL_PHYS_TO_VIRT:
 	{
 		if (GuestState->Rcx == 0)
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_SOURCE_ADDR);
 
 		if (GuestState->Rdx == 0)
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 
 		HYPERCALL_VIRT_EX VirtEx = {
 			.Value = GuestState->Rbx
@@ -326,12 +326,12 @@ VmHandleHypercall(
 		if (VmGetCachedCr3(Vcpu, VirtEx, &Cr3) != VMM_EVENT_CONTINUE)
 			return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
 
-		UINT64 Result = MmResolveGuestVirtAddr(Cr3, GuestState->Rdx);
+		UINT64 Result = MmResolveGuestVirtAddr(Cr3, GuestState->Rcx);
 		if (Result == -1)
-			Hypercall->Result = HRESULT_INVALID_TARGET_ADDR;
+			Hypercall->Result = HRESULT_INVALID_SOURCE_ADDR;
 		else
-			if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rcx, sizeof(UINT64), Result)))
-				return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+			if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(UINT64), Result)))
+				return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 	} break;
 	case HYPERCALL_FIND_PROCESS:
 	{
@@ -344,7 +344,7 @@ VmHandleHypercall(
 		// Write the current VCPU to GuestState->Rdx, the VCPU table are mapped as host memory,
 		// but by the time this function returns VcpuLeaveVmx will have disabled EPT
 		if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(PVCPU), Vcpu)))
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 	} break;
 	case HYPERCALL_GET_SYSTEM_CR3:
 	{
@@ -387,7 +387,7 @@ VmHandleHypercall(
 					CurrRecord->Size,
 					EPT_PAGE_RW)
 				))
-				return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+				return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 
 		skip:
 			CurrRecord = (PIMP_ALLOC_RECORD)CurrRecord->Records.Blink;
@@ -398,19 +398,19 @@ VmHandleHypercall(
 	case HYPERCALL_ADD_LOG_RECORD:
 	{
 		if (GuestState->Rcx == 0)
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_SOURCE_ADDR);
 
 		PIMP_LOG_RECORD Log = NULL;
 		if (!NT_SUCCESS(ImpAllocateLogRecord(&Log)))
 			return VmAbortHypercall(Hypercall, HRESULT_LOG_RECORD_OVERFLOW);
 
 		if (!NT_SUCCESS(MmReadGuestVirt(GuestCr3, GuestState->Rcx, IMP_LOG_SIZE, Log->Buffer)))
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_SOURCE_ADDR);
 	}
 	case HYPERCALL_GET_LOG_RECORDS:
 	{
 		if (GuestState->Rcx == 0)
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_SOURCE_ADDR);
 
 		HYPERCALL_GET_LOGS_EX LogEx = {
 			.Value = GuestState->Rbx
@@ -424,7 +424,7 @@ VmHandleHypercall(
 				return VmAbortHypercall(Hypercall, HRESULT_LOG_RECORD_OVERFLOW);
 
 			if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rcx + IMP_LOG_SIZE * Count, IMP_LOG_SIZE, CurrLog->Buffer)))
-				return VmAbortHypercall(Hypercall, HRESULT_INVALID_BUFFER_ADDR);
+				return VmAbortHypercall(Hypercall, HRESULT_INVALID_SOURCE_ADDR);
 
 			Count++;
 		}

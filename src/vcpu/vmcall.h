@@ -11,11 +11,11 @@
 // Unknown hypercall ID
 #define HRESULT_UNKNOWN_HCID (HRESULT_MARKER | 0x101) 
 // Invalid target address (RDX) value
-#define HRESULT_INVALID_TARGET_ADDR (HRESULT_MARKER | 0x102)
+#define HRESULT_INVALID_DESTINATION_ADDR (HRESULT_MARKER | 0x102)
 // Invalid size of virtual read
 #define HRESULT_INVALID_SIZE (HRESULT_MARKER | 0x103)
 // Invalid buffer address (RCX) value
-#define HRESULT_INVALID_BUFFER_ADDR (HRESULT_MARKER | 0x104)
+#define HRESULT_INVALID_SOURCE_ADDR (HRESULT_MARKER | 0x104)
 // Insufficient resources to complete the requested task
 #define HRESULT_INSUFFICIENT_RESOURCES (HRESULT_MARKER | 0x105)
 // The extended hypercall info (RBX) value was invalid 
