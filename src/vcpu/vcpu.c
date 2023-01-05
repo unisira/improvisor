@@ -38,7 +38,6 @@
 
 //#define IMPV_USE_WINDOWS_CPU_STRUCTURES
 
-#define VCPU_NMI_IST_STACK 3
 // Amount of entries in the MTF event stack
 #define MTF_EVENT_MAX_COUNT 16
 
