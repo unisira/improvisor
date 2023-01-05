@@ -35,7 +35,7 @@ typedef struct _LDR_LAUNCH_PARAMS
 	HANDLE ClientID;
 } LDR_LAUNCH_PARAMS, *PLDR_LAUNCH_PARAMS;
 
-extern PLDR_LAUNCH_PARAMS gLdrLaunchInfo;
+extern LDR_LAUNCH_PARAMS gLdrLaunchParams;
 
 PIMAGE_SECTION_HEADER
 LdrGetSectionByName(

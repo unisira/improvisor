@@ -4,7 +4,7 @@
 #include <ldr.h>
 #include <win.h>
 
-VMM_DATA LDR_LAUNCH_PARAMS gLdrLaunchParameters;
+VMM_DATA LDR_LAUNCH_PARAMS gLdrLaunchParams;
 
 typedef struct _LDR_PDB_PACKET {
 	// Is this PDB packet valid?
@@ -37,9 +37,9 @@ LdrGetSectionByName(
 {
 	PIMAGE_SECTION_HEADER Header = NULL;
 
-	for (SIZE_T i = 0; i < gLdrLaunchInfo->SectionCount; i++)
+	for (SIZE_T i = 0; i < gLdrLaunchParams.SectionCount; i++)
 	{
-		PIMAGE_SECTION_HEADER Section = &gLdrLaunchInfo->Sections[i];
+		PIMAGE_SECTION_HEADER Section = &gLdrLaunchParams.Sections[i];
 	}
 }
 
@@ -49,12 +49,12 @@ LdrImageDirectoryEntryToData(
 	_Out_ PSIZE_T Size
 )
 {
-	PIMAGE_DATA_DIRECTORY Dir = &gLdrLaunchInfo->Headers->OptionalHeader.DataDirectory[Index];
+	PIMAGE_DATA_DIRECTORY Dir = &gLdrLaunchParams.Headers->OptionalHeader.DataDirectory[Index];
 
 	if (Size != NULL)
 		*Size = Dir->Size;
 
-	return RVA_PTR(gLdrLaunchInfo->ImageBase, Dir->VirtualAddress);
+	return RVA_PTR(gLdrLaunchParams.ImageBase, Dir->VirtualAddress);
 }
 
 VSC_API
@@ -71,7 +71,7 @@ Routine Description:
 
 	PEPROCESS ClientProcess = NULL;
 	// Get the EPROCESS for our client
-	Status = PsLookupProcessByProcessId(gLdrLaunchInfo->ClientID, &ClientProcess);
+	Status = PsLookupProcessByProcessId(gLdrLaunchParams.ClientID, &ClientProcess);
 	if (!NT_SUCCESS(Status))
 	{
 		ImpLog("LdrConsumePdbBinary: PsLookupProcessByProcessId failed for client process ID...\n");
@@ -96,6 +96,12 @@ Routine Description:
 		FALSE, 
 		HighPagePriority
 	);
+
+	if (PdbBuffer == NULL)
+	{
+		ImpLog("LdrConsumePdbBinary: Failed to map and lock pages (%llX -> %llX) for %s...\n", Pdbp->PdbBase, Pdbp->PdbBase + Pdbp->PdbSize, Pdbp->FileName);
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
 
 	Status = PdbParseFile(FNV1A_HASH(Pdbp->FileName), Pdbp->ImageBase, PdbBuffer);
 	if (!NT_SUCCESS(Status))
@@ -287,7 +293,7 @@ LdrInitialise(
 	}
 
 	// Store launch parameters for hypervisor initialisation
-	gLdrLaunchParameters = SharedSection->LdrParams;
+	gLdrLaunchParams = SharedSection->LdrParams;
 
 	// Store any PDB's the client tells us to
 	Status = LdrConsumePdbInformation(SharedSection);
