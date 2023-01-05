@@ -10,11 +10,11 @@ typedef struct _MM_VPTE
 	LIST_ENTRY Links;
 	// Pointer to the PTE being used to map `MappedAddr`
 	PMM_PTE Pte;
-	// The address this VPTE is being used to map
+	// The virtual address that this VPTE is mapped to in the host address space
 	PVOID MappedVirtAddr;
 	// The physical address of the memory being mapped by `Pte`
 	UINT64 MappedPhysAddr;
-	// Address the VPTE is mapped to
+	// Address the VPTE is mapped to inside the target process' address space
 	PVOID MappedAddr;
 } MM_VPTE, * PMM_VPTE;
 
