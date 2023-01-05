@@ -270,10 +270,6 @@ VmHandleHypercall(
 		if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
 			return VmAbortHypercall(Hypercall, HRESULT_INSUFFICIENT_RESOURCES);
 
-		PMM_VPTE Vpte = NULL;
-		if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
-			return VmAbortHypercall(Hypercall, HRESULT_INSUFFICIENT_RESOURCES);
-
 		// Map the signature scan buffer, we do this instead of copying it using MmReadGuestVirt as HYPERCALL_SIGSCAN_BUFFER is a variable-length struct
 		if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx)))
 			return VmAbortHypercall(Hypercall, HRESULT_INVALID_SIGSCAN_BUFFER);
