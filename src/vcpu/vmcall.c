@@ -19,16 +19,15 @@ typedef union _HYPERCALL_VIRT_EX
 	};
 } HYPERCALL_VIRT_EX, *PHYPERCALL_VIRT_EX;
 
-typedef union _HYERPCALL_SIGSCAN_EX
+typedef union _HYPERCALL_SIGSCAN_BUFFER
 {
-	UINT64 Value;
-
-	struct
-	{
-		UINT64 Cr3 : 16;
-		UINT64 Size : 32;
-	};
-} HYPERCALL_SIGSCAN_EX, *PHYPERCALL_SIGSCAN_EX;
+	// The virtual address to start the scan from
+	UINT64 Address;
+	// The size of the pattern
+	SIZE_T PatternSize;
+	// Variable length array containing the pattern
+	UCHAR Pattern[1];
+} HYPERCALL_SIGSCAN_BUFFER, *PHYPERCALL_SIGSCAN_BUFFER;
 
 typedef union _HYPERCALL_REMAP_PAGES_EX
 {
@@ -198,7 +197,7 @@ VmHandleHypercall(
 
 			SIZE_T SizeToRead = VirtEx.Size - SizeRead > MaxReadable ? MaxReadable : VirtEx.Size - SizeRead;
 			
-			if (!NT_SUCCESS(MmReadGuestVirt(Cr3, GuestState->Rdx + SizeRead, SizeToRead, (PCHAR)Vpte->MappedVirtAddr + SizeRead)))
+			if (!NT_SUCCESS(MmReadGuestVirt(Cr3, GuestState->Rdx + SizeRead, SizeToRead, RVA_PTR(Vpte->MappedVirtAddr, SizeRead))))
 				return VmAbortHypercall(Hypercall, HRESULT_INVALID_SIZE);
 			
 			SizeRead += SizeToRead;
@@ -240,7 +239,7 @@ VmHandleHypercall(
 		
 			SIZE_T SizeToWrite = VirtEx.Size - SizeWritten > MaxWriteable ? MaxWriteable : VirtEx.Size - SizeWritten;
 			
-			if (!NT_SUCCESS(MmWriteGuestVirt(Cr3, GuestState->Rdx + SizeWritten, SizeToWrite, (PCHAR)Vpte->MappedVirtAddr + SizeWritten)))
+			if (!NT_SUCCESS(MmWriteGuestVirt(Cr3, GuestState->Rdx + SizeWritten, SizeToWrite, RVA_PTR(Vpte->MappedVirtAddr, SizeWritten))))
 				return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
 
 			SizeWritten += SizeToWrite;
@@ -250,7 +249,67 @@ VmHandleHypercall(
 	} break;
 	case HYPERCALL_VIRT_SIGSCAN: 
 	{
-		// TODO: Finish this, add signature parsing function & scanner 
+		if (GuestState->Rcx == 0)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_SIGSCAN_BUFFER);
+
+		if (GuestState->Rdx == 0)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+
+		HYPERCALL_VIRT_EX VirtEx = {
+			.Value = GuestState->Rbx
+		};
+
+		if (VirtEx.Cr3 == 0 || VirtEx.Size == 0)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
+
+		UINT64 Cr3;
+		if (VmGetCachedCr3(Vcpu, VirtEx, &Cr3) != VMM_EVENT_CONTINUE)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_EXT_INFO);
+
+		PMM_VPTE Vpte = NULL;
+		if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
+			return VmAbortHypercall(Hypercall, HRESULT_INSUFFICIENT_RESOURCES);
+
+		PMM_VPTE Vpte = NULL;
+		if (!NT_SUCCESS(MmAllocateVpte(&Vpte)))
+			return VmAbortHypercall(Hypercall, HRESULT_INSUFFICIENT_RESOURCES);
+
+		// Map the signature scan buffer, we do this instead of copying it using MmReadGuestVirt as HYPERCALL_SIGSCAN_BUFFER is a variable-length struct
+		if (!NT_SUCCESS(MmMapGuestVirt(Vpte, GuestCr3, GuestState->Rcx)))
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_SIGSCAN_BUFFER);
+
+		PHYPERCALL_SIGSCAN_BUFFER SigScan = Vpte->MappedVirtAddr;
+
+		SIZE_T SizeScanned = 0;
+		while (SizeScanned < VirtEx.Size - SigScan->PatternSize)
+		{
+			// Temporary data holding the bytes currently being checked against our pattern
+			// NOTE: This limites the pattern length to 128 or whatever size this array becomes
+			UCHAR Data[128] = { 0 };
+
+			// Read `HYPERCALL_SIGSCAN_BUFFER::PatternSize` bytes
+			if (!NT_SUCCESS(MmReadGuestVirt(Cr3, SigScan->Address + SizeScanned, SigScan->PatternSize, Data)))
+				return VmAbortHypercall(Hypercall, HRESULT_INVALID_SIZE);
+
+			SIZE_T i = 0;
+			for (i; i < SigScan->PatternSize; i++)
+			{
+				// If the current byte doesn't match and the current pattern byte isn't a wildcard, check the next address in the space
+				if (Data[i] != SigScan->Pattern[i] && SigScan->Pattern[i] != 0xCC)
+					break;
+			}
+
+			// If `i` == `HYPERCALL_SIGSCAN_BUFFER::PatternSize`, then we achieved a full match
+			if (i == SigScan->PatternSize)
+				break;
+			else
+				// Advance to the next byte and try again
+				SizeScanned += 1;
+		}
+
+		// Write the result to the target variable
+		if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(UINT64), SigScan->Address + SizeScanned)))
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
 	} break;
 	case HYPERCALL_PHYS_TO_VIRT:
 	{
@@ -310,7 +369,7 @@ VmHandleHypercall(
 				RemapEx.Size,
 				RemapEx.Permissions)
 			))
-			return VmAbortHypercall(Hypercall, HRESULT_INVALID_TARGET_ADDR);
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_GUEST_PHYSADDR);
 
 		EptInvalidateCache();
 	} break;
