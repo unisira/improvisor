@@ -24,6 +24,10 @@
 #define HRESULT_LOG_RECORD_OVERFLOW (HRESULT_MARKER | 0x107)
 // The given process handle was invalid
 #define HRESULT_INVALID_PROCESS_HANDLE (HRESULT_MARKER | 0x108)
+// An invalid signature scan buffer was supplied
+#define HRESULT_INVALID_SIGSCAN_BUFFER (HRESULT_MARKER | 0x109)
+// An invalid guest physical address was supplied
+#define HRESULT_INVALID_GUEST_PHYSADDR (HRESULT_MARKER | 0x10A)
 
 typedef ULONG HYPERCALL_RESULT; 
 
