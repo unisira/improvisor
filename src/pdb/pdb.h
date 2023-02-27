@@ -5,12 +5,18 @@
 #include <wdm.h>
 #include <hash.h>
 
+typedef struct _PDB_SYMBOL_RESULT
+{
+	UINT32 Segment;
+	UINT32 Offset;
+} PDB_SYMBOL_RESULT, *PPDB_SYMBOL_RESULT;
+
 NTSTATUS
 PdbReserveEntries(
 	_In_ SIZE_T Count
 );
 
-PVOID
+PDB_SYMBOL_RESULT
 PdbFindSymbol(
 	_In_ FNV1A Pdb,
 	_In_ FNV1A Name,
