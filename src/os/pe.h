@@ -3,6 +3,7 @@
 
 #include <ntdef.h>
 #include <ntimage.h>
+#include <pdb/pdb.h>
 
 PIMAGE_NT_HEADERS
 PeGetNTHeaders(
@@ -20,6 +21,12 @@ PeImageDirectoryEntryToData(
 	_In_ PVOID BaseAddress,
 	_In_ UINT32 Index,
 	_Out_ PSIZE_T Size
+);
+
+PVOID
+PePdbSymbolResultToAddress(
+	_In_ PVOID BaseAddress,
+	_In_ PPDB_SYMBOL_RESULT Res
 );
 
 #endif
