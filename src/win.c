@@ -30,6 +30,12 @@ WinInitialise(VOID)
 	// TODO: Run KPCR tests
 }
 
+PVOID
+WinGetGuestGs(VOID)
+{
+	return VcpuGetGuestCPL(VcpuGetActiveVcpu()) == WIN_KERNEL_CPL ? VmxRead(GUEST_GS_BASE) : __readmsr(IA32_KERNEL_GS_BASE);
+}
+
 VMM_API
 PVOID
 WinGetCurrentThread(VOID)
@@ -47,12 +53,8 @@ WinGetCurrentThread(VOID)
 
 	PVCPU Vcpu = VcpuGetActiveVcpu();
 
-	PVOID Gs = VcpuGetGuestCPL(Vcpu) == WIN_KERNEL_CPL ? 
-		VmxRead(GUEST_GS_BASE) : 
-		__readmsr(IA32_KERNEL_GS_BASE);
-
 	PVOID Thread = NULL;
-	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA_PTR(Gs, sThreadOffset), sizeof(PVOID), &Thread)))
+	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA_PTR(WinGetGs(), sThreadOffset), sizeof(PVOID), &Thread)))
 		return NULL;
 
 	return Thread;
