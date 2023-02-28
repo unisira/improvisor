@@ -40,21 +40,12 @@ VMM_API
 PVOID
 WinGetCurrentThread(VOID)
 {
-	VMM_DATA static SIZE_T sThreadOffset = -1;
-	
-	if (sThreadOffset == -1)
-	{
-		sThreadOffset = PdbFindMemberOffset(
-			FNV1A_HASH("ntkrnlmp.pdb"),
-			FNV1A_HASH("_KPCR"),
-			FNV1A_HASH("CurrentThread")
-		);
-	}
+	PDB_CACHE_MEMBER_OFFSET("ntkrnlmp.pdb", _KPCR, CurrentThread)
 
 	PVCPU Vcpu = VcpuGetActiveVcpu();
 
 	PVOID Thread = NULL;
-	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA_PTR(WinGetGs(), sThreadOffset), sizeof(PVOID), &Thread)))
+	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA_PTR(WinGetGs(), sCurrentThreadOffset), sizeof(PVOID), &Thread)))
 		return NULL;
 
 	return Thread;
@@ -64,16 +55,7 @@ VMM_API
 PVOID
 WinGetCurrentProcess(VOID)
 {
-	VMM_DATA static SIZE_T sProcessOffset = -1;
-	
-	if (sProcessOffset == -1)
-	{
-		sProcessOffset = PdbFindMemberOffset(
-			FNV1A_HASH("ntkrnlmp.pdb"),
-			FNV1A_HASH("_KTHREAD"),
-			FNV1A_HASH("Process")
-		);
-	}
+	PDB_CACHE_MEMBER_OFFSET("ntkrnlmp.pdb", _KTHREAD, Process)
 
 	PVCPU Vcpu = VcpuGetActiveVcpu();
 
@@ -90,24 +72,15 @@ WinGetNextProcess(
 	_In_ PVOID Process
 )
 {
-	VMM_DATA static SIZE_T sProcessLinksOffset = -1;
-
-	if (sProcessLinksOffset == -1)
-	{
-		sProcessLinksOffset = PdbFindMemberOffset(
-			FNV1A_HASH("ntkrnlmp.pdb"),
-			FNV1A_HASH("_EPROCESS"),
-			FNV1A_HASH("ActiveProcessLinks")
-		);
-	}
+	PDB_CACHE_MEMBER_OFFSET("ntkrnlmp.pdb", _EPROCESS, ActiveProcessLinks)
 
 	PVCPU Vcpu = VcpuGetActiveVcpu();
 
 	LIST_ENTRY Links = { 0 };
-	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA(Process, sProcessLinksOffset), sizeof(LIST_ENTRY), &Links)))
+	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA(Process, sActiveProcessLinksOffset), sizeof(LIST_ENTRY), &Links)))
 		return NULL;
 
-	return RVA(Links.Flink, -sProcessLinksOffset);
+	return RVA(Links.Flink, -sActiveProcessLinksOffset);
 }
 
 VMM_API
@@ -116,24 +89,15 @@ WinGetPrevProcess(
 	_In_ PVOID Process
 )
 {
-	VMM_DATA static SIZE_T sProcessLinksOffset = -1;
-
-	if (sProcessLinksOffset == -1)
-	{
-		sProcessLinksOffset = PdbFindMemberOffset(
-			FNV1A_HASH("ntkrnlmp.pdb"),
-			FNV1A_HASH("_EPROCESS"),
-			FNV1A_HASH("ActiveProcessLinks")
-		);
-	}
+	PDB_CACHE_MEMBER_OFFSET("ntkrnlmp.pdb", _EPROCESS, ActiveProcessLinks)
 
 	PVCPU Vcpu = VcpuGetActiveVcpu();
 
 	LIST_ENTRY Links = { 0 };
-	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA(Process, sProcessLinksOffset), sizeof(LIST_ENTRY), &Links)))
+	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA(Process, sActiveProcessLinksOffset), sizeof(LIST_ENTRY), &Links)))
 		return NULL;
 
-	return RVA(Links.Blink, -sProcessLinksOffset);
+	return RVA(Links.Blink, -sActiveProcessLinksOffset);
 }
 
 VMM_API
@@ -142,22 +106,13 @@ WinFindProcess(
 	_In_ FNV1A ProcessName
 )
 {
-	VMM_DATA static SIZE_T sNameOffset = -1;
-
-	if (sNameOffset == -1)
-	{
-		sNameOffset = PdbFindMemberOffset(
-			FNV1A_HASH("ntkrnlmp.pdb"),
-			FNV1A_HASH("_EPROCESS"),
-			FNV1A_HASH("ImageFileName")
-		);
-	}
+	PDB_CACHE_MEMBER_OFFSET("ntkrnlmp.pdb", _EPROCESS, ImageFileName)
 
 	PVOID CurrProcess = WinGetCurrentProcess();
 	
 	while (TRUE)
 	{
-		if (FNV1A_HASH(RVA_PTR(CurrProcess, sNameOffset)) == ProcessName)
+		if (FNV1A_HASH(RVA_PTR(CurrProcess, sImageFileNameOffset)) == ProcessName)
 			return CurrProcess;
 
 		// Advance to the next active process entry
