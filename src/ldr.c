@@ -4,6 +4,9 @@
 #include <ldr.h>
 #include <win.h>
 
+#define PDB_READY_EVENT_NAME (L"\\GX3A1RB5KTAOEVGYG85QTN3NFAFBK6I")
+#define PDB_FINISHED_EVENT_NAME (L"\\YGJBOJ6YVPQ1XVA7WI2JRJY8E2UE5N1")
+
 VMM_DATA LDR_LAUNCH_PARAMS gLdrLaunchParams;
 
 typedef struct _LDR_PDB_PACKET {
@@ -11,8 +14,6 @@ typedef struct _LDR_PDB_PACKET {
 	BOOLEAN Valid;
 	// Name of the PDB file on disk
 	CHAR FileName[64];
-	// The base address of the executable associated with this PDB
-	ULONG_PTR ImageBase;
 	// The address of the buffer containing the PDB's contents
 	ULONG_PTR PdbBase;
 	// The size of the PDB buffer
@@ -24,10 +25,6 @@ typedef struct _LDR_SHARED_SECTION_FORMAT {
 	LDR_LAUNCH_PARAMS LdrParams;
 	// The current PDB packet
 	LDR_PDB_PACKET PdbPacket;
-	// A handle to an event for signalling whenever one PDB has been consumed, and the next can be sent
-	UNICODE_STRING PdbFinished;
-	// The name for an event which we poll to check if a PDB has been sent
-	UNICODE_STRING PdbReady;
 } LDR_SHARED_SECTION_FORMAT, *PLDR_SHARED_SECTION_FORMAT;
 
 PIMAGE_SECTION_HEADER
@@ -41,20 +38,6 @@ LdrGetSectionByName(
 	{
 		PIMAGE_SECTION_HEADER Section = &gLdrLaunchParams.Sections[i];
 	}
-}
-
-PVOID
-LdrImageDirectoryEntryToData(
-	_In_ UINT32 Index,
-	_Out_ PSIZE_T Size
-)
-{
-	PIMAGE_DATA_DIRECTORY Dir = &gLdrLaunchParams.Headers->OptionalHeader.DataDirectory[Index];
-
-	if (Size != NULL)
-		*Size = Dir->Size;
-
-	return RVA_PTR(gLdrLaunchParams.ImageBase, Dir->VirtualAddress);
 }
 
 VSC_API
@@ -103,7 +86,7 @@ Routine Description:
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
-	Status = PdbParseFile(FNV1A_HASH(Pdbp->FileName), Pdbp->ImageBase, PdbBuffer);
+	Status = PdbParseFile(FNV1A_HASH(Pdbp->FileName), PdbBuffer);
 	if (!NT_SUCCESS(Status))
 	{
 		ImpLog("LdrConsumePdbBinary: PdbParseFile failed to parse %s...\n", Pdbp->FileName);
@@ -124,7 +107,6 @@ Routine Description:
 VSC_API
 NTSTATUS
 LdrOpenPdbEvents(
-	_In_ PLDR_SHARED_SECTION_FORMAT Section,
 	_Out_ PRKEVENT* PdbReady,
 	_Out_ PRKEVENT* PdbFinished
 )
@@ -135,9 +117,13 @@ Routine Description:
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 
+	UNICODE_STRING PdbReadyUs, PdbFinishedUs;
+	RtlInitUnicodeString(&PdbReadyUs, PDB_READY_EVENT_NAME);
+	RtlInitUnicodeString(&PdbFinishedUs, PDB_FINISHED_EVENT_NAME);
+
 	// Open the PdbReady and PdbFinished events
 	Status = ObReferenceObjectByName(
-		&Section->PdbReady,
+		&PdbReadyUs,
 		OBJ_CASE_INSENSITIVE,
 		NULL,
 		EVENT_ALL_ACCESS,
@@ -149,13 +135,13 @@ Routine Description:
 
 	if (!NT_SUCCESS(Status))
 	{
-		ImpDebugPrint("Failed to reference the PdbReady event '%wZ'\n", Section->PdbReady);
+		ImpDebugPrint("Failed to reference the PdbReady event\n");
 		return Status;
 	}
 
 	// Open the PdbReady and PdbFinished events
 	Status = ObReferenceObjectByName(
-		&Section->PdbFinished,
+		&PdbFinishedUs,
 		OBJ_CASE_INSENSITIVE,
 		NULL,
 		EVENT_ALL_ACCESS,
@@ -167,7 +153,7 @@ Routine Description:
 
 	if (!NT_SUCCESS(Status))
 	{
-		ImpDebugPrint("Failed to reference the PdbFinished event '%wZ'\n", Section->PdbFinished);
+		ImpDebugPrint("Failed to reference the PdbFinished event\n");
 		return Status;
 	}
 
@@ -189,7 +175,7 @@ Routine Description:
 
 	PRKEVENT PdbReady = NULL, PdbFinished = NULL;
 	// Open the PdbReady and PdbFinished events
-	Status = LdrOpenPdbEvents(Section, &PdbReady, &PdbFinished);
+	Status = LdrOpenPdbEvents(&PdbReady, &PdbFinished);
 	if (!NT_SUCCESS(Status))
 		return Status;
 
@@ -236,6 +222,9 @@ Routine Description:
 			return Status;
 		}
 	}
+
+	ObDereferenceObject(PdbReady);
+	ObDereferenceObject(PdbFinished);
 
 	return Status;
 }
