@@ -12,8 +12,6 @@ typedef struct _PDB_ENTRY
 	LIST_ENTRY Links;
 	// Hash of the name of the PDB file
 	UINT64 NameHash;
-	// The base address of the image associated with the PDB
-	PVOID ImageBase;
 	// The TPI stream (index 2)
 	PVOID TpiStream;
 	// The DBI stream (index 3)
@@ -1227,7 +1225,6 @@ Routine Description:
 		return STATUS_INSUFFICIENT_RESOURCES;
 
 	Entry->NameHash = Name;
-	Entry->ImageBase = ImageBase;
 	
 	// Parse the MSF headers and store important streams
 	PdbParseMSF(Entry, Pdb);
