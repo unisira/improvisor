@@ -11,6 +11,18 @@ typedef struct _PDB_SYMBOL_RESULT
 	UINT32 Offset;
 } PDB_SYMBOL_RESULT, *PPDB_SYMBOL_RESULT;
 
+#define PDB_CACHE_MEMBER_OFFSET(Pdb, Structure, Member) \
+	VMM_DATA static SIZE_T s##Member##Offset = -1;		\
+														\
+	if (s##Member##Offset == -1)						\
+	{													\
+		s##Member##Offset = PdbFindMemberOffset(		\
+			FNV1A_HASH(Pdb),							\
+			FNV1A_HASH(#Structure),						\
+			FNV1A_HASH(#Member)							\
+		);												\
+	}													
+
 NTSTATUS
 PdbReserveEntries(
 	_In_ SIZE_T Count
@@ -33,7 +45,6 @@ PdbFindMemberOffset(
 NTSTATUS
 PdbParseFile(
 	_In_ FNV1A Name,
-	_In_ PVOID ImageBase,
 	_In_ PVOID Pdb
 );
 
