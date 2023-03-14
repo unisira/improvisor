@@ -55,18 +55,21 @@ Routine Description:
 	This function takes a VPTE entry from the head of the list.
 --*/
 {
+	NTSTATUS Status = STATUS_SUCCESS;
+	
 	SpinLock(&sVirtualPTEListLock);
 
 	if (gVirtualPTEHead->Links.Flink == NULL)
-		return STATUS_INSUFFICIENT_RESOURCES;
+		Status = STATUS_INSUFFICIENT_RESOURCES; goto exit;
 
 	*pVpte = gVirtualPTEHead;
 
 	gVirtualPTEHead = (PMM_VPTE)gVirtualPTEHead->Links.Flink;
 
+exit:
 	SpinUnlock(&sVirtualPTEListLock);
 
-	return STATUS_SUCCESS;
+	return Status;
 }
 
 VMM_API
