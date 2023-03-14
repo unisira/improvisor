@@ -511,6 +511,13 @@ Routine Description:
 	// Control flow is restored here upon successful virtualisation of the CPU
 	if (Vcpu->Mode == VCPU_MODE_LAUNCHED)
 	{
+		// Check if this CPU core is currently virtualised.
+		if (!__vcpu_is_virtualised())
+		{
+			ImpDebugPrint("VCPU #%d's mode indicates launched but CPUID check failed...\n", Vcpu->Id);
+			return;
+		}
+
 		InterlockedIncrement(&Params->ActiveVcpuCount);
 		ImpDebugPrint("VCPU #%d is now running...\n", Vcpu->Id);
 
@@ -550,7 +557,9 @@ Routine Description:
 	This function returns the VMM context pointer in VCPU::Vmm to VmmShutdownHypervisor so it can free VMM resources
 --*/
 {
-	// TODO: Use exiting instruction with funny numba to detect hypervisor presence
+	// Check if this CPU core is currently virtualised
+	if (!__vcpu_is_virtualised())
+		return;
 
 	PVCPU Vcpu = NULL;
 	if (VmShutdownVcpu(&Vcpu) != HRESULT_SUCCESS)
@@ -581,6 +590,20 @@ Routine Description:
 	encountered a panic. It restores guest register and non-register state from the current VMCS and terminates VMX operation.
 --*/
 {
+	// Disable all interrupts (should be already disabled?)
+	__disable();
+
+	// Restore control registers
+	__writecr0(VmxRead(GUEST_CR0));
+	__writecr4(VmxRead(GUEST_CR4));
+
+	// Disable VMX operation
+	__vmx_off();
+
+	CpuState->RFlags = VmxRead(GUEST_RFLAGS);
+	CpuState->Rip = VmxRead(GUEST_RIP);
+	CpuState->Rsp = VmxRead(GUEST_RSP);
+
 	__cpu_restore_state(CpuState);
 }
 
@@ -803,7 +826,7 @@ VcpuUpdateLastTscEventEntry(
 	_In_ TSC_EVENT_TYPE Type
 )
 {
-	// TODO: Also spoof TSC values during EPT violations, some anti-cheats monitor those 
+	// TODO: Also spoof TSC values during EPT violations, some anti-cheats/malware monitor those 
 	
 	// Try find a previous event to base our value off
 	PTSC_EVENT_ENTRY PrevEvent = &Vcpu->Tsc.PrevEvent; 

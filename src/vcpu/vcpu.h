@@ -210,6 +210,10 @@ EXTERN_C
 PVCPU
 __current_vcpu(VOID);
 
+EXTERN_C
+BOOLEAN
+__vcpu_is_virtualised(VOID);
+
 NTSTATUS 
 VcpuSetup(
 	_Inout_ PVCPU Vcpu,
