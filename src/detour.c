@@ -126,6 +126,8 @@ Routine Description:
 	This function provides a simple way of searching for a hook registration by using a hashed string
 --*/
 {
+	PEH_HOOK_REGISTRATION Res = NULL;
+	
 	SpinLock(&gHookRegistrationLock);
 
 	PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
@@ -133,14 +135,14 @@ Routine Description:
 	{
 		// Detour must be installed for it to have a target page MDL 
 		if (CurrHook->Hash == Hash)
-			return CurrHook;
+			Res = CurrHook;
 
 		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
 	}
 
 	SpinUnlock(&gHookRegistrationLock);
 
-	return NULL;
+	return Res;
 }
 
 PMDL
@@ -152,6 +154,8 @@ Routine Description:
 	This function looks for a hook which resides on the same PFN and returns that so it can be used 
 --*/
 {
+	PMDL Mdl = NULL;
+	
 	SpinLock(&gHookRegistrationLock);
 
 	PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
@@ -161,7 +165,7 @@ Routine Description:
 		if (CurrHook->State == EH_DETOUR_INSTALLED)
 		{
 			if (PAGE_FRAME_NUMBER(CurrHook->TargetFunction) == PAGE_FRAME_NUMBER(TargetFunction))
-				return CurrHook->LockedTargetPage;
+				Mdl = CurrHook->LockedTargetPage;
 		}
 
 		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
@@ -169,7 +173,7 @@ Routine Description:
 
 	SpinUnlock(&gHookRegistrationLock);
 
-	return NULL;
+	return Mdl;
 }
 
 BOOLEAN
@@ -354,20 +358,22 @@ Routine Description:
 	This function checks if Hook->LockedTargetPage is referenced in any of the registered hooks
 --*/
 {
+	BOOLEAN Result = FALSE;
+	
 	SpinLock(&gHookRegistrationLock);
 
 	PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
 	while (CurrHook != NULL)
 	{
 		if (CurrHook->LockedTargetPage == Hook->LockedTargetPage)
-			return TRUE; 
+			Result = TRUE;
 
 		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
 	}
 
 	SpinUnlock(&gHookRegistrationLock);
 
-	return FALSE;
+	return Result;
 }
 
 VOID
@@ -383,7 +389,7 @@ Routine Description:
 
 	if (Hook->State != EH_DETOUR_INSTALLED &&
 		Hook->State != EH_DETOUR_DISABLED)
-		return;
+		goto exit;
 
 	// TODO: Remap EPT to original page and free execution page and trampoline
 
@@ -399,6 +405,7 @@ Routine Description:
 
 	// TODO: Free PEH_HOOK_REGISTRATION
 
+exit:
 	SpinUnlock(&gHookRegistrationLock);
 }
 
@@ -483,7 +490,7 @@ EhHandleEptViolation(
 			{
 				EPT_PAGE_PERMISSIONS Perms = EPT_PAGE_RW;
 
-#if 0
+#if 0 // I don't think this works currently, fuck knows why
 				// EPT Violation occured for reading or writing while executing on the same page, inject MTF event to swap back to EPT_PAGE_EXECUTE 
 				if (PAGE_FRAME_NUMBER(CurrHook->TargetFunction) == PAGE_FRAME_NUMBER(Vcpu->Vmx.GuestRip))
 				{
