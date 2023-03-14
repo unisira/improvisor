@@ -2,6 +2,9 @@
 #include <spinlock.h>
 #include <fmt.h>
 
+// Testing:
+#include <ll.h>
+
 #define IMPV_LOG_SIZE 512
 #define IMPV_LOG_COUNT 512
 
@@ -13,7 +16,7 @@ VMM_DATA PIMP_LOG_RECORD gLogRecordsTail = NULL;
 // The raw buffer containing the host allocation records
 VMM_DATA static PIMP_ALLOC_RECORD sImpAllocRecordsRaw = NULL;
 // Raw buffer containing all log records
-VMM_DATA static PIMP_LOG_RECORD sImpLogRecordsRaw = NULL;
+VMM_DATA static PIMP_LOG_RECORD sLogRecordsRaw = NULL;
 
 VMM_DATA static SPINLOCK sLogWriterLock;
 
@@ -23,16 +26,16 @@ ImpReserveLogRecords(
 	_In_ SIZE_T Count
 )
 {
-	sImpLogRecordsRaw = ImpAllocateHostNpPool(sizeof(IMP_LOG_RECORD) * Count);
-	if (sImpLogRecordsRaw == NULL)
+	sLogRecordsRaw = ImpAllocateHostNpPool(sizeof(IMP_LOG_RECORD) * Count);
+	if (sLogRecordsRaw == NULL)
 		return STATUS_INSUFFICIENT_RESOURCES;
 
 	// Set the head and tail to be the first entry
-	gLogRecordsHead = gLogRecordsTail = sImpLogRecordsRaw;
+	gLogRecordsHead = gLogRecordsTail = sLogRecordsRaw;
 
 	for (SIZE_T i = 0; i < Count; i++)
 	{
-		PIMP_LOG_RECORD CurrLogRecord = sImpLogRecordsRaw + i;
+		PIMP_LOG_RECORD CurrLogRecord = sLogRecordsRaw + i;
 
 		// Set up Flink and Blink
 		CurrLogRecord->Links.Flink = i < Count - 1	? &(CurrLogRecord + 1)->Links : NULL;

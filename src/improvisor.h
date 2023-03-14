@@ -21,7 +21,7 @@ typedef struct _IMP_LOG_RECORD
 	LIST_ENTRY Links;
 	BOOLEAN Used;
 	CHAR Buffer[512];
-} IMP_LOG_RECORD, * PIMP_LOG_RECORD;
+} IMP_LOG_RECORD, *PIMP_LOG_RECORD;
 
 typedef struct _IMP_ALLOC_RECORD
 {
@@ -47,19 +47,19 @@ extern PIMP_ALLOC_RECORD gHostAllocationsHead;
 extern PIMP_LOG_RECORD gLogRecordsHead;
 extern PIMP_LOG_RECORD gLogRecordsTail;
 
-VOID
+VOID 
 ImpLog(
 	_In_ LPCSTR Fmt, ...
 );
 
 NTSTATUS
 ImpAllocateLogRecord(
-	_Out_ PIMP_LOG_RECORD* LogRecord
+	_Out_ PIMP_LOG_RECORD *LogRecord
 );
 
 NTSTATUS
 ImpRetrieveLogRecord(
-	_Out_ PIMP_LOG_RECORD* Record
+	_Out_ PIMP_LOG_RECORD *Record
 );
 
 NTSTATUS
@@ -111,7 +111,7 @@ ImpAllocateNpPoolEx(
 	_In_ UINT64 Flags
 );
 
-VOID
+VOID 
 ImpFreeAllocation(
 	_In_ PVOID Memory
 );
