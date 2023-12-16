@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "improvisor.h": "c",
+        "stdarg.h": "c"
+    }
+}
