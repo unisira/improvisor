@@ -251,7 +251,7 @@ VcpuShutdownPerCpu(
 VOID
 VcpuShutdownVmx(
 	_Inout_ PVCPU Vcpu,
-	_Inout_ PCPU_STATE GuestState
+	_Inout_ PCPU_STATE CpuState
 );
 
 VOID

@@ -383,19 +383,18 @@ Routine Description:
 		VmxInjectEvent(EXCEPTION_NMI, INTERRUPT_TYPE_NMI, 0);
 #endif
 	} break;
+	case 0xE1:
+	{
+		// Defer Windows IPI interrupts to the guest in case we are attempting to shutdown
+		VmxInjectEvent(0xE1, INTERRUPT_TYPE_EXTERNAL_INTERRUPT, 0);
+	} break;
 	default:
 	{
-#if 0
-		// Stack walk like the fucking genius you are
-		VCPU_CONTEXT Context = { 0 };
-		VcpuTrapFrameToContext(TrapFrame, &Context);
-#endif
-
 #if 1
+		// ImpLog("Unhandled host exception: ID=%i - RIP=%llX...\n", TrapFrame->Vector, TrapFrame->Rip);
+
 		// TODO: Need to write code to panic here, fully shutdown return to guest execution
 		// Possibly pass a panic handler? What if the mechanism to call it is destroyed?
-		//
-		// Debugging the hypervisor needs to be easier
 
 		// Interrupt the guest OS with the stack location this interrupt occured at
 		return FALSE;
@@ -404,4 +403,29 @@ Routine Description:
 	}
 
 	return TRUE;
+}
+
+DECLSPEC_NORETURN
+VOID
+VcpuPanic(
+	_In_ PVOID InterruptAddress,
+	_In_ PVCPU_TRAP_FRAME TrapFrame
+)
+/*++
+Routine Description:
+	Called whenever `VcpuHandleHostException` returns FALSE. 
+	
+	NOTE: `TrapFrame` is a pointer on the host's stack so in release builds this is unusable.
+--*/
+{
+	ImpDebugPrint("----------------------- [ Unhandled host exception, dumping context: ] -----------------------\n");
+	ImpDebugPrint("Vector: %i\tError: %i\tRIP:%016llX\tSeg CS: %-16X\n", TrapFrame->Vector, TrapFrame->Error, TrapFrame->Rip, TrapFrame->Cs);
+	ImpDebugPrint("Poitner: %016llX\n", TrapFrame);
+	ImpDebugPrint("Recorded RIP: %016llX\n", InterruptAddress);
+	ImpDebugPrint("RAX == %016llX\n", TrapFrame->Rax);
+
+	__enable();
+
+	// Could this possibly fail due to interrupts being masked off?
+	DbgBreakPoint();
 }

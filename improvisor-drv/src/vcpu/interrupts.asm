@@ -1,4 +1,5 @@
 EXTERN VcpuHandleHostException: PROC
+EXTERN VcpuPanic: Proc
 
 VCPU_TRAP_FRAME STRUCT
 _Rax QWORD ?
@@ -85,7 +86,7 @@ __vmm_generic_intr_handler proc
 	call VcpuHandleHostException
 	add rsp, 28h							; Get rid of shadow stack space
 
-	test rax, rax							; RAX == 0?
+	test al, al								; VcpuHandleHostException returned 0?
 	jne no_emu								; If not, don't send interrupt to guest OS
 
 	add rsp, SIZEOF VCPU_TRAP_FRAME
@@ -99,6 +100,11 @@ __vmm_generic_intr_handler proc
 	mov 	rax, 0681Ch
 	mov 	rcx, [rsp].VCPU_MACHINE_FRAME._Rsp
 	vmwrite	rax, rcx
+	; Move RIP into RCX so `__panic_stub` will push it onto the stack
+	mov		rcx, [rsp].VCPU_MACHINE_FRAME._Rip
+	; Move the top of `VCPU_TRAP_FRAME` into Rdx
+	lea 	rdx, [rsp - SIZEOF VCPU_TRAP_FRAME]
+	lea		rdx, [rdx - 08h]
 	; VM resume to guest execution to examine interrupt info
 	vmresume	
 
@@ -145,23 +151,16 @@ __vmm_generic_intr_handler endp
 ; These stubs will push some vector & error code onto the stack then jump to __vmm_generic_intr_handler
 
 __panic_stub proc
-	int 3
+	; Push the instruction pointer, this makes the debugger think a call has occured and this is 
+	; a new stack frame.
+	; push	rcx
+	; Execute the panic handler
+	jmp		VcpuPanic
+	; VcpuPanic shouldn't return but send an NMI incase
+	; interrupts are masked off for some reason?
+	; int		2h
 __panic_stub endp
 
-__panic proc
-	; Preserve stack pointer
-	mov 	rdx, rcx
-	; Write GUEST_RIP to __panic_stub
-	mov 	rax, 0681Eh
-	lea 	rcx, __panic_stub
-	vmwrite	rax, rcx
-	; Write GUEST_RSP to current RSP
-	mov 	rax, 0681Ch
-	mov 	rcx, rdx
-	vmwrite	rax, rcx
-	; VM resume to guest execution to examine stack
-	vmresume
-__panic endp
 
 VMM_INTR_HANDLER macro vector: req, name: req
 name proc

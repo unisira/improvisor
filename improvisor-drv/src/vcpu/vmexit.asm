@@ -125,25 +125,9 @@ __vmexit_entry PROC
 	call VcpuHandleExit						; Call the VM-exit handler
 	add rsp, 28h							; Remove shadow stack space
 
-	test rax, rax							; Test if RAX == 0
-	jne no_abort                            ; TODO: Check for KVA shadowing
-	add rsp, SIZEOF GUEST_STATE				; Get rid of GUEST_STATE data
-	sub rsp, SIZEOF CPU_STATE				; Allocate CPU_STATE
-	lea rcx, [rsp]							; RCX = &CPU_STATE
-	call __cpu_save_state
-	mov rdx, rcx							; Set second parameter as the CPU_STATE
-	mov rcx, fs:[0]							; Load the address of the current VCPU into RCX
-	sub rsp, 28h							
-	call VcpuShutdownVmx					; Shutdown VMX and restore guest register state
-	int 3									; VcpuShutdownVmx doesn't return							
-
-no_abort:
-	ldmxcsr [rsp].GUEST_STATE._MxCsr		; Restore register state
-	mov rax, [rsp].GUEST_STATE._Rip	
-	mov [rsp+SIZEOF GUEST_STATE], rax
-	mov rax, [rsp].GUEST_STATE._Cr8
-	mov cr8, rax
-	mov rax, [rsp].GUEST_STATE._Rax			
+	ldmxcsr [rsp].GUEST_STATE._MxCsr		; Restore register state except RAX
+	mov rbx, [rsp].GUEST_STATE._Cr8
+	mov cr8, rbx
 	mov rbx, [rsp].GUEST_STATE._Rbx
 	mov rcx, [rsp].GUEST_STATE._Rcx
 	mov rdx, [rsp].GUEST_STATE._Rdx
@@ -173,6 +157,29 @@ no_abort:
 	movups xmm13, [rsp].GUEST_STATE._Xmm13
 	movups xmm14, [rsp].GUEST_STATE._Xmm14
 	movups xmm15, [rsp].GUEST_STATE._Xmm15
+
+	test al, al								; Test if VcpuHandleExit returned FALSE
+	jne no_abort         
+	
+	mov rax, rsp							; Preserve pointer to GUEST_STATE                  
+	sub rsp, SIZEOF CPU_STATE				; Allocate CPU_STATE
+	and rsp, 0FFFFFFFFFFFFFFF0h				; Align stack to 16-bytes
+	mov rcx, rsp							; RCX = &CPU_STATE
+	call __cpu_save_state
+	mov rcx, [rax].GUEST_STATE._Rax
+	mov [rsp].CPU_STATE._Rax, rcx
+	mov rcx, [rax].GUEST_STATE._Rcx			; Restore RCX from the guest state, tainted by call to __cpu_save_state
+	mov [rsp].CPU_STATE._Rcx, rcx
+	lea rdx, [rsp]							; Set second parameter as the CPU_STATE
+	mov rcx, fs:[0]							; Load the address of the current VCPU into RCX
+	sub rsp, 28h
+	call VcpuShutdownVmx					; Shutdown VMX and restore guest register state
+	int 3									; VcpuShutdownVmx doesn't return							
+
+no_abort:
+	mov rax, [rsp].GUEST_STATE._Rip			; Restore RIP and RAX 
+	mov [rsp+SIZEOF GUEST_STATE], rax
+	mov rax, [rsp].GUEST_STATE._Rax
 	add rsp, SIZEOF GUEST_STATE				; Cleanup stack
 	ret										
 __vmexit_entry ENDP

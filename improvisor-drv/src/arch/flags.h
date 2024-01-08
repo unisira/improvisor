@@ -3,6 +3,8 @@
 
 #include <ntdef.h>
 
+#define RFLAGS_IF (1ULL << 9)
+
 typedef union _X86_RFLAGS
 {
 	UINT64 Value;

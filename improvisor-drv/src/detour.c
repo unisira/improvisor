@@ -6,6 +6,7 @@
 #include <macro.h>
 #include <ldasm.h>
 #include <vmm.h>
+#include <ll.h>
 
 // PLAN:
 //
@@ -28,17 +29,11 @@
 // For each hook in the hook registration list without EH_DETOUR_INSTALLED:
 //      EPT VMCALL to remap physaddr of `Target` to physaddr of `ExecutionPage`
 
-static PEH_HOOK_REGISTRATION sHookRegistrationListRaw = NULL;
-
-// The head of the hook registration list
-VMM_DATA PEH_HOOK_REGISTRATION gHookRegistrationHead = NULL;
-
-// The lock for the hook registration list
-VMM_DATA SPINLOCK gHookRegistrationLock;
+VMM_DATA LINKED_LIST_POOL sDetourPool;
 
 NTSTATUS
 EhInstallDetour(
-	_In_ PEH_HOOK_REGISTRATION Hook
+	_In_ PEH_DETOUR_REGISTRATION Hook
 );
 
 NTSTATUS
@@ -46,26 +41,11 @@ EhReserveHookRecords(
 	_In_ SIZE_T Count
 )
 {
-	// TODO: write list.c wrappers for these functions
-	sHookRegistrationListRaw = (PEH_HOOK_REGISTRATION)ImpAllocateNpPoolEx(sizeof(EH_HOOK_REGISTRATION) * Count, IMP_SHARED_ALLOCATION);
-	if (sHookRegistrationListRaw == NULL)
-		return STATUS_INSUFFICIENT_RESOURCES;
-
-	gHookRegistrationHead = sHookRegistrationListRaw;
-
-	for (SIZE_T i = 0; i < Count; i++)
-	{
-		PEH_HOOK_REGISTRATION CurrHook = sHookRegistrationListRaw + i;
-
-		CurrHook->Links.Flink = i < Count - 1 ? &(CurrHook + 1)->Links : NULL;
-		CurrHook->Links.Blink = i > 0		  ? &(CurrHook - 1)->Links : NULL;
-	}
-
-	return STATUS_SUCCESS;
+	return LL_CREATE_POOL(&sDetourPool, EH_DETOUR_REGISTRATION, Count);
 }
 
 NTSTATUS
-EhRegisterHook(
+EhRegisterDetour(
 	_In_ FNV1A Hash,
 	_In_ PVOID Target,
 	_In_ PVOID Callback
@@ -75,36 +55,22 @@ Routine Description:
 	This function registers a hook in the list and records the target function and callback routines.
 --*/
 {
-	NTSTATUS Status = STATUS_SUCCESS;
+	PEH_DETOUR_REGISTRATION Detour = LlAllocate(&sDetourPool);
+	// If `Detour` is null, there are no remaining free entries
+	if (Detour == NULL)
+		return STATUS_INSUFFICIENT_RESOURCES;
 
-	SpinLock(&gHookRegistrationLock);
+	Detour->Hash = Hash;
+	Detour->State = EH_DETOUR_REGISTERED;
+	Detour->TargetFunction = Target;
+	Detour->CallbackFunction = Callback;
 
-	// TODO: We have to waste 1, in EhReserveHookRecords increment Count by one
-	PEH_HOOK_REGISTRATION Hook = gHookRegistrationHead;
-	if (Hook->Links.Flink != NULL)
-	{
-		Hook->Hash = Hash;
-		Hook->State = EH_DETOUR_REGISTERED;
-		Hook->TargetFunction = Target;
-		Hook->CallbackFunction = Callback;
-
-		gHookRegistrationHead = (PEH_HOOK_REGISTRATION)Hook->Links.Flink;
-	}
-	else
-		Status = STATUS_INSUFFICIENT_RESOURCES;
-
-	SpinUnlock(&gHookRegistrationLock);
-
-	// If everything is successful at this point, attempt to install the hook
-	if (NT_SUCCESS(Status))
-		Status = EhInstallDetour(Hook);
-
-	return Status;
+	return EhInstallDetour(Detour);
 }
 
 VOID
-EhUnregisterHook(
-	_In_ PEH_HOOK_REGISTRATION Hook
+EhUnregisterDetour(
+	_In_ PEH_DETOUR_REGISTRATION Detour
 )
 /*++
 Routine Description:
@@ -112,22 +78,26 @@ Routine Description:
 	already be 'uninitialised', meaning its MDL has been free'd if needs be etc.
 --*/
 {
-	SpinLock(&gHookRegistrationLock); 
-
-	PEH_HOOK_REGISTRATION HeadEntry = gHookRegistrationHead;
-
-	Hook->Hash = 0;
-	Hook->LockedTargetPage = 0;
-
-	// TODO: Free from list and free resources if needs be
-
-	SpinUnlock(&gHookRegistrationLock);
-
-	return;
+	LlFree(&sDetourPool, &Detour->Links);
 }
 
-PEH_HOOK_REGISTRATION
-EhFindHookByHash(
+// Small context type for searching for detours based on their hash
+typedef struct _EH_DETOUR_HASH_SEARCH
+{
+	FNV1A TargetHash;
+} EH_DETOUR_HASH_SEARCH, *PEH_DETOUR_HASH_SEARCH;
+
+BOOLEAN
+EhpFindDetourByHashPredicate(
+	_In_ PEH_DETOUR_REGISTRATION Reg,
+	_In_ PEH_DETOUR_HASH_SEARCH Context
+)
+{
+	return Reg->Hash == Context->TargetHash;
+}
+
+PEH_DETOUR_REGISTRATION
+EhFindDetourByHash(
 	_In_ FNV1A Hash
 )
 /*++
@@ -135,23 +105,26 @@ Routine Description:
 	This function provides a simple way of searching for a hook registration by using a hashed string
 --*/
 {
-	PEH_HOOK_REGISTRATION Res = NULL;
-	
-	SpinLock(&gHookRegistrationLock);
+	EH_DETOUR_HASH_SEARCH Context = {
+		.TargetHash = Hash
+	};
 
-	PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
-	while (CurrHook != NULL)
-	{
-		// Detour must be installed for it to have a target page MDL 
-		if (CurrHook->Hash == Hash)
-			Res = CurrHook;
+	return LlFind(&sDetourPool, EhpFindDetourByHashPredicate, &Context);
+}
 
-		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
-	}
+// Small context type for searching for detours based on their target function's PFN
+typedef struct _EH_DETOUR_PFN_SEARCH
+{
+	PVOID TargetFunction;
+} EH_DETOUR_PFN_SEARCH, *PEH_DETOUR_PFN_SEARCH;
 
-	SpinUnlock(&gHookRegistrationLock);
-
-	return Res;
+BOOLEAN
+EhpFindDetourByPfnPredicate(
+	_In_ PEH_DETOUR_REGISTRATION Reg,
+	_In_ PEH_DETOUR_PFN_SEARCH Context
+)
+{
+	return PAGE_FRAME_NUMBER(Reg->TargetFunction) == PAGE_FRAME_NUMBER(Context->TargetFunction);
 }
 
 PMDL
@@ -163,26 +136,11 @@ Routine Description:
 	This function looks for a hook which resides on the same PFN and returns that so it can be used 
 --*/
 {
-	PMDL Mdl = NULL;
-	
-	SpinLock(&gHookRegistrationLock);
+	EH_DETOUR_PFN_SEARCH Context = {
+		.TargetFunction = TargetFunction
+	};
 
-	PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
-	while (CurrHook != NULL)
-	{
-		// Detour must be installed for it to have a target page MDL 
-		if (CurrHook->State == EH_DETOUR_INSTALLED)
-		{
-			if (PAGE_FRAME_NUMBER(CurrHook->TargetFunction) == PAGE_FRAME_NUMBER(TargetFunction))
-				Mdl = CurrHook->LockedTargetPage;
-		}
-
-		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
-	}
-
-	SpinUnlock(&gHookRegistrationLock);
-
-	return Mdl;
+	return LlFind(&sDetourPool, EhpFindDetourByPfnPredicate, &Context);
 }
 
 BOOLEAN
@@ -218,11 +176,11 @@ Routine Description:
 
 NTSTATUS
 EhCreateTrampoline(
-	_In_ PEH_HOOK_REGISTRATION Hook
+	_In_ PEH_DETOUR_REGISTRATION Hook
 )
 /*++
 Routine Description:
-	This function creates a stub containing the first instruction of Hook->TargetFunction and a JMP instruction
+	This function creates a stub containing the first instruction of Hook->TargetFunction and a 0xCC instruction
 	to the second instruction of TargetFunction, which can be called to call the original function of the hook
 --*/
 {
@@ -252,14 +210,14 @@ Routine Description:
 		SizeCopied += Step;
 	}
 
-	// TODO: 0xCC instruction
+	// TODO: 0xCC instruction to switch RIP to the rest of the original function
 
 	return STATUS_SUCCESS;
 }
 
 NTSTATUS
 EhInstallDetour(
-	_In_ PEH_HOOK_REGISTRATION Hook
+	_In_ PEH_DETOUR_REGISTRATION Hook
 )
 /*++
 Routine Description:
@@ -283,7 +241,7 @@ Routine Description:
 	}
 
 	Hook->LockedTargetPage = Mdl;
-	Hook->GuestPhysAddr = PAGE_ALIGN(ImpGetPhysicalAddress(Hook->TargetFunction));
+	Hook->GuestPhysAddr = (UINT64)PAGE_ALIGN(ImpGetPhysicalAddress(Hook->TargetFunction));
 
 	// Allocate and copy over the contents of the page containing Hook->TargetFunction to the shadow page
 	Hook->ShadowPage = ImpAllocateHostContiguousMemory(PAGE_SIZE);
@@ -322,7 +280,7 @@ Routine Description:
 
 VOID
 EhDisableDetour(
-	_In_ PEH_HOOK_REGISTRATION Hook
+	_In_ PEH_DETOUR_REGISTRATION Hook
 )
 /*++
 Routine Description:
@@ -341,7 +299,7 @@ Routine Description:
 
 VOID
 EhEnableDetour(
-	_In_ PEH_HOOK_REGISTRATION Hook
+	_In_ PEH_DETOUR_REGISTRATION Hook
 )
 /*++
 Routine Description:
@@ -358,49 +316,56 @@ Routine Description:
 		return;
 }
 
+// Small context type for searching for detours based on their target function's MDL
+typedef struct _EH_DETOUR_MDL_SEARCH
+{
+	PMDL TargetMDL;
+} EH_DETOUR_MDL_SEARCH, *PEH_DETOUR_MDL_SEARCH;
+
+BOOLEAN
+EhpFindDetourByMdlPredicate(
+	_In_ PEH_DETOUR_REGISTRATION Reg,
+	_In_ PEH_DETOUR_MDL_SEARCH Context
+)
+{
+	return Reg->LockedTargetPage == Context->TargetMDL;
+}
+
 BOOLEAN
 EhIsTargetPageReferenced(
-	_In_ PEH_HOOK_REGISTRATION Hook
+	_In_ PEH_DETOUR_REGISTRATION Hook
 )
 /*++
 Routine Description:
 	This function checks if Hook->LockedTargetPage is referenced in any of the registered hooks
 --*/
 {
-	BOOLEAN Result = FALSE;
-	
-	SpinLock(&gHookRegistrationLock);
+	EH_DETOUR_MDL_SEARCH Context = {
+		.TargetMDL = Hook->LockedTargetPage
+	};
 
-	PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
-	while (CurrHook != NULL)
-	{
-		if (CurrHook->LockedTargetPage == Hook->LockedTargetPage)
-			Result = TRUE;
-
-		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Flink;
-	}
-
-	SpinUnlock(&gHookRegistrationLock);
-
-	return Result;
+	return LlFind(&sDetourPool, EhpFindDetourByMdlPredicate, &Context) != NULL;
 }
 
 VOID
 EhDestroyDetour(
-	_In_ PEH_HOOK_REGISTRATION Hook
+	_In_ PEH_DETOUR_REGISTRATION Hook
 )
 /*++
 Routine Description:
 	This function frees all resources used by a detour and reverts its changes
 --*/
 {
-	SpinLock(&gHookRegistrationLock);
-
 	if (Hook->State != EH_DETOUR_INSTALLED &&
 		Hook->State != EH_DETOUR_DISABLED)
-		goto exit;
+		return;
 
-	// TODO: Remap EPT to original page and free execution page and trampoline
+	// Remap the original GPA with RWX so EPT violations no longer occur upon execution
+	if (VmEptRemapPages(Hook->GuestPhysAddr, Hook->GuestPhysAddr, PAGE_SIZE, EPT_PAGE_RWX) != HRESULT_SUCCESS)
+		return;
+
+	// The hook is now permanently removed, set its state to invalid
+	Hook->State = EH_DETOUR_INVALID;
 
 	// Check if the target page MDL is referenced anywhere else, if not unlock and free it
 	if (!EhIsTargetPageReferenced(Hook))
@@ -408,14 +373,10 @@ Routine Description:
 		// Unlock the target function's page
 		MmUnlockPages(Hook->LockedTargetPage);
 		IoFreeMdl(Hook->LockedTargetPage);
-
-		Hook->LockedTargetPage = NULL;
 	}
 
-	// TODO: Free PEH_HOOK_REGISTRATION
-
-exit:
-	SpinUnlock(&gHookRegistrationLock);
+	// NOTE: Should we clear the rest of the members of `Hook` before freeing?
+	LlFree(&sDetourPool, &Hook->Links);
 }
 
 NTSTATUS
@@ -480,11 +441,15 @@ EhHandleEptViolation(
 	// execution of the read instruction. When handling this MTF exit, swap the execution of the affected page back to
 	// execute only, this means when executing the instruction, it shouldn't cause an EPT violation
 
-	PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
-	while (CurrHook != NULL)
+	if (LlIsEmpty(&sDetourPool))
+		return FALSE;
+
+	PLIST_ENTRY CurrLink = sDetourPool.Used.Flink;
+	while (CurrLink != &sDetourPool.Used)
 	{
+		PEH_DETOUR_REGISTRATION CurrHook = CONTAINING_RECORD(CurrLink, EH_DETOUR_REGISTRATION, Links);
 		// Check if the EPT violation was a result of accessing the locked physical address of the detour
-		if (CurrHook->State == EH_DETOUR_INSTALLED && PAGE_ALIGN(AttemptedPhysAddr) == CurrHook->GuestPhysAddr)
+		if (CurrHook->State == EH_DETOUR_INSTALLED && (UINT64)PAGE_ALIGN(AttemptedPhysAddr) == CurrHook->GuestPhysAddr)
 		{
 			if (ExitQual.ExecuteAccessed)
 			{
@@ -501,10 +466,6 @@ EhHandleEptViolation(
 					// TODO: Panic here?
 					return FALSE;
 				}
-
-#ifdef _DEBUG
-				ImpLog("[Detour #%08X] Swapped to shadow page %llX\n", CurrHook->Hash, CurrHook->ShadowPhysAddr);
-#endif
 
 				return TRUE;
 			}
@@ -551,7 +512,34 @@ EhHandleEptViolation(
 			}
 		}
 
-		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Blink;
+		CurrLink = CurrLink->Flink;
+	}
+
+	return FALSE;
+}
+
+typedef struct _EH_DETOUR_BREAKPOINT_SEARCH
+{
+	UINT64 GuestRip;
+} EH_DETOUR_BREAKPOINT_SEARCH, *PEH_DETOUR_BREAKPOINT_SEARCH;
+
+VMM_API
+BOOLEAN
+EhpHandleBreakpointPredicate(
+	_In_ PEH_DETOUR_REGISTRATION Reg,
+	_In_ PEH_DETOUR_BREAKPOINT_SEARCH Context
+)
+{
+	if (Context->GuestRip == (UINT64)Reg->TargetFunction)
+	{
+		VmxWrite(GUEST_RIP, (UINT64)Reg->TargetFunction);
+		return TRUE;
+	}
+	// Handle INT 3 after the prologue instruction(s) in `EH_DETOUR_REGISTRATION::Trampoline`
+	else if (Context->GuestRip == RVA(Reg->Trampoline, Reg->PrologueSize))
+	{
+		VmxWrite(GUEST_RIP, RVA(Reg->TargetFunction, Reg->PrologueSize));
+		return TRUE;
 	}
 
 	return FALSE;
@@ -562,10 +550,19 @@ BOOLEAN
 EhHandleBreakpoint(
 	_In_ PVCPU Vcpu
 )
+/*++
+Routine Description:
+	This function checks if Hook->LockedTargetPage is referenced in any of the registered hooks
+--*/
 {
-	PEH_HOOK_REGISTRATION CurrHook = gHookRegistrationHead;
-	while (CurrHook != NULL)
+	if (LlIsEmpty(&sDetourPool))
+		return FALSE;
+	
+	PLIST_ENTRY Link = sDetourPool.Used.Flink;
+	while (Link != &sDetourPool.Used)
 	{
+		PEH_DETOUR_REGISTRATION CurrHook = CONTAINING_RECORD(Link, EH_DETOUR_REGISTRATION, Links);
+
 		if (CurrHook->State != EH_DETOUR_INSTALLED)
 			goto next;
 
@@ -582,7 +579,7 @@ EhHandleBreakpoint(
 		}
 
 	next:
-		CurrHook = (PEH_HOOK_REGISTRATION)CurrHook->Links.Blink;
+		Link = Link->Flink;
 	}
 
 	return FALSE;

@@ -6,6 +6,7 @@
 #include <vcpu/vcpu.h>
 #include <vcpu/vmexit.h>
 #include <vcpu/vmcall.h>
+#include <pdb/pdb.h>
 #include <mm/mm.h>
 #include <mm/vpte.h>
 #include <detour.h>
@@ -163,7 +164,7 @@ Routine Description:
 		ExitLog->Rip = Vcpu->Vmx.GuestRip;
 		ExitLog->ExitQualification = VmxRead(VM_EXIT_QUALIFICATION);
 
-#if 1 // TODO: Fix bug with this function causing crashes if called too frequently
+#if 0
 		ImpLog("[%02X-#%03d]: VM-exit - Type: %i - RIP: %llX - EXIT QUAL: %llX\n",
 			Vcpu->Id,
 			Vcpu->Vmx.ExitCount,
@@ -175,11 +176,25 @@ Routine Description:
 
 	VMM_EVENT_STATUS Status = sExitHandlers[Vcpu->Vmx.ExitReason.BasicExitReason](Vcpu, GuestState);
 
+	// If this VCPU was signalled to shutdown, return FALSE to make VcpuShutdownVmx
 	if (Vcpu->Mode == VCPU_MODE_SHUTDOWN)
-		Status = VMM_EVENT_ABORT;
+	{
+		// Check if this VCPU was signalled through HYPERCALL_SHUTDOWN_VCPU and handle it accordingly
+		if (Vcpu->Vmx.ExitReason.BasicExitReason == EXIT_REASON_VMCALL)
+		{
+			HYPERCALL_INFO AttemptedHypercall = {
+				.Value = GuestState->Rax
+			};
 
-	if (Status == VMM_EVENT_ABORT)
+			if (AttemptedHypercall.Id == HYPERCALL_SHUTDOWN_VCPU)
+			{
+				// Increment guest rip to skip the VMCALL instruction. It must not be re-attempted once VMX operation has shut down
+				VmxAdvanceGuestRip();
+			}
+		}
+
 		return FALSE;
+	}
 
 	GuestState->Rip = (UINT64)VcpuResume;
 
@@ -209,9 +224,10 @@ Routine Description:
 --*/
 {
 	// Handle checks for CPU virtualisation, see vcpu.asm
+	// TODO: Do this in a better way in __vmexit_entry
 	if (GuestState->Rdx == 0x441C88F24291161F)
 	{
-		GuestState->Rax = TRUE;
+		GuestState->Rsi = TRUE;
 		// Continue, not a real CPUID call (could cause issues?).
 		return VMM_EVENT_CONTINUE;
 	}
@@ -795,6 +811,7 @@ Routine Description:
 {
 	VMM_EVENT_STATUS Status = VMM_EVENT_CONTINUE;
 
+#if 0 // Move this into vmexit.asm and so it ASAP, or when launching the VMM 
 	// Check if we are measuring VM-exit latency
 	if (GuestState->Rbx == 0x1FF2C88911424416 && Vcpu->Tsc.VmExitLatency == 0)
 	{
@@ -818,11 +835,13 @@ Routine Description:
 
 		return VMM_EVENT_CONTINUE;
 	}
+#endif
 
 	PHYPERCALL_INFO Hypercall = (PHYPERCALL_INFO)&GuestState->Rax;
 
 	Status = VmHandleHypercall(Vcpu, GuestState, Hypercall);
 
+	// Store the result of this hypercall
 	Vcpu->LastHypercallResult = Hypercall->Result;
 
 	return Status;

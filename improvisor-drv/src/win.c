@@ -40,10 +40,8 @@ VMM_API
 PVOID
 WinGetCurrentThread(VOID)
 {
-	PVCPU Vcpu = VcpuGetActiveVcpu();
-
 	PVOID Thread = NULL;
-	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA_PTR(WinGetGuestGs(), gCurrentThreadOffset), sizeof(PVOID), &Thread)))
+	if (!NT_SUCCESS(MmReadGuestVirt(VmxRead(GUEST_CR3), RVA_PTR(WinGetGuestGs(), gCurrentThreadOffset), sizeof(PVOID), &Thread)))
 		return NULL;
 
 	return Thread;
@@ -108,13 +106,28 @@ WinGetProcessNameHash(
 }
 
 VMM_API
+BOOLEAN
+WinGetProcessName(
+	_In_ PVOID Process,
+	_Out_ PCHAR Buffer
+)
+{
+	PVCPU Vcpu = VcpuGetActiveVcpu();
+
+	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA_PTR(Process, gImageFileNameOffset), 15, Buffer)))
+		return FALSE;
+
+	return TRUE;
+}
+
+VMM_API
 PVOID
 WinFindProcess(
 	_In_ FNV1A ProcessName
 )
 {
 	PVOID CurrProcess = WinGetCurrentProcess();
-	
+
 	while (TRUE)
 	{
 		if (WinGetProcessNameHash(CurrProcess) == ProcessName)

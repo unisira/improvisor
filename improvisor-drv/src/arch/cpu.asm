@@ -35,7 +35,17 @@ _Xmm13 XMMWORD ?
 _Xmm14 XMMWORD ?
 _Xmm15 XMMWORD ?
 _RFlags QWORD ?
+_Cs WORD ?
+_Ss WORD ?
 CPU_STATE ENDS
+
+CPU_MACHINE_FRAME STRUCT
+_Rip	QWORD ?
+_Cs		QWORD ?
+_RFlags	QWORD ?
+_Rsp	QWORD ?
+_Ss		QWORD ?
+CPU_MACHINE_FRAME ENDS
 
 .code
 
@@ -71,8 +81,10 @@ __cpu_save_state PROC
 	movups	[rcx].CPU_STATE._Xmm13, xmm13
 	movups	[rcx].CPU_STATE._Xmm14, xmm14
 	movups	[rcx].CPU_STATE._Xmm15, xmm15
+	mov		[rcx].CPU_STATE._Cs, cs
+	mov		[rcx].CPU_STATE._Ss, ss
 	stmxcsr [rcx].CPU_STATE._MxCsr
-	lea		rax, [rsp]
+	lea		rax, [rsp + 8] 	; Skip return address on the stack
 	mov		[rcx].CPU_STATE._Rsp, rax
 	mov		rax, [rsp]
 	mov		[rcx].CPU_STATE._Rip, rax
@@ -83,9 +95,22 @@ __cpu_save_state PROC
 __cpu_save_state ENDP
 
 __cpu_restore_state PROC
-	push	[rcx].CPU_STATE._RFlags
+	sub		rsp, SIZEOF CPU_MACHINE_FRAME 
+	and 	rsp, 0FFFFFFFFFFFFFFF0h				; Align stack to 16-bytes
+
+	mov		rax, [rcx].CPU_STATE._Rip
+	mov		[rsp].CPU_MACHINE_FRAME._Rip, rax
+	movzx	rax, [rcx].CPU_STATE._Cs
+	mov		[rsp].CPU_MACHINE_FRAME._Cs, rax
+	mov		rax, [rcx].CPU_STATE._RFlags
+	mov		[rsp].CPU_MACHINE_FRAME._RFlags, rax
+	mov		rax, [rcx].CPU_STATE._Rsp
+	mov		[rsp].CPU_MACHINE_FRAME._Rsp, rax
+	movzx	rax, [rcx].CPU_STATE._Ss
+	mov		[rsp].CPU_MACHINE_FRAME._Ss, rax
+
+	mov		rax, [rcx].CPU_STATE._Rax
 	mov		rbx, [rcx].CPU_STATE._Rbx
-	mov		rcx, [rcx].CPU_STATE._Rcx
 	mov		rdx, [rcx].CPU_STATE._Rdx
 	mov		rsi, [rcx].CPU_STATE._Rsi
 	mov		rdi, [rcx].CPU_STATE._Rdi
@@ -114,16 +139,10 @@ __cpu_restore_state PROC
 	movups	xmm13, [rcx].CPU_STATE._Xmm13
 	movups	xmm14, [rcx].CPU_STATE._Xmm14
 	movups	xmm15, [rcx].CPU_STATE._Xmm15
-	ldmxcsr [rcx].CPU_STATE._MxCsr
-	popfq
-
-	mov		rsp, [rcx].CPU_STATE._Rsp
-	mov		rax, [rcx].CPU_STATE._Rip
-	mov		[rsp], rax
-	mov		rax, [rcx].CPU_STATE._Rax 
-	ret
+	mov		rcx, [rcx].CPU_STATE._Rcx
+	cli
+	iretq
 __cpu_restore_state ENDP
-
 
 __readmsr PROC
 	xor 	rax, rax
@@ -163,40 +182,80 @@ __readldt PROC
 	ret
 __readldt ENDP
 
+__writeldt PROC
+	lldt	cx
+	ret
+__writeldt ENDP
+
 __readtr PROC
 	str     ax
 	ret
 __readtr ENDP
+
+__writetr PROC
+	ltr		cx
+	ret
+__writetr ENDP
 
 __readcs PROC
 	mov     ax, cs
 	ret
 __readcs ENDP
 
+__writecs PROC
+	mov		cs, cx
+	ret
+__writecs ENDP
+
 __readss PROC
 	mov     ax, ss
 	ret
 __readss ENDP
+
+__writess PROC
+	mov		ss, cx
+	ret
+__writess ENDP
 
 __readds PROC
 	mov     ax, ds
 	ret
 __readds ENDP
 
+__writeds PROC
+	mov		ds, cx
+	ret
+__writeds ENDP
+
 __reades PROC
 	mov     ax, es
 	ret
 __reades ENDP
+
+__writees PROC
+	mov		es, cx
+	ret
+__writees ENDP
 
 __readfs PROC
 	mov     ax, fs
 	ret
 __readfs ENDP
 
+__writefs PROC
+	mov		fs, cx
+	ret
+__writefs ENDP
+
 __readgs PROC
 	mov     ax, gs
 	ret
 __readgs ENDP
+
+__writegs PROC
+	mov		gs, cx
+	ret
+__writegs ENDP
 
 __segmentar PROC
 		lar     rax, rcx 
@@ -227,19 +286,12 @@ __invd PROC
 __invd ENDP
 
 __enable PROC
-	pushfq
-	mov		rax, 0200h
-	or [	rsp], rax
-	popfq
+	sti
 	ret
 __enable ENDP
 
 __disable PROC
-	pushfq
-	mov		rax, 0200h
-	xor		rax, 0FFFFFFFFh
-	and		[rsp], rax
-	popfq
+	cli
 	ret
 __disable ENDP
 

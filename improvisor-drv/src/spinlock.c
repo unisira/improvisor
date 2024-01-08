@@ -16,6 +16,9 @@ Routine Description:
 --*/
 {
 	return (*Lock == 0 && InterlockedCompareExchange(Lock, 1, 0) == 0);
+
+	// Testing a new hook that also contains the value of how much a lock is being challenged.
+	// return InterlockedIncrement(Lock) == 1;
 }
 
 VOID

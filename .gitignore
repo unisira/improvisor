@@ -33,4 +33,8 @@ build/*
 # Kernel Module Compile Results
 *.sys
 
+# All vs-code files
 /.vs/*
+
+# Ignore all notes files
+*.md

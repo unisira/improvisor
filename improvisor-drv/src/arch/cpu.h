@@ -49,6 +49,8 @@ typedef struct _CPU_STATE
 	M128 Xmm14;
 	M128 Xmm15;
 	UINT64 RFlags;
+	UINT16 Cs;
+	UINT16 Ss;
 } CPU_STATE, *PCPU_STATE;
 
 EXTERN_C
@@ -81,32 +83,64 @@ UINT16
 __readldt(VOID);
 
 EXTERN_C
+VOID
+__writeldt(UINT16);
+
+EXTERN_C
 UINT16
 __readtr(VOID);
+
+EXTERN_C
+VOID
+__writetr(UINT16);
 
 EXTERN_C
 UINT16
 __readcs(VOID);
 
 EXTERN_C
+VOID
+__writecs(UINT16);
+
+EXTERN_C
 UINT16
 __readss(VOID);
+
+EXTERN_C
+VOID
+__writess(UINT16);
 
 EXTERN_C
 UINT16
 __readds(VOID);
 
 EXTERN_C
+VOID
+__writeds(UINT16);
+
+EXTERN_C
 UINT16
 __reades(VOID);
+
+EXTERN_C
+VOID
+__writees(UINT16);
 
 EXTERN_C
 UINT16
 __readfs(VOID);
 
 EXTERN_C
+VOID
+__writefs(UINT16);
+
+EXTERN_C
 UINT16
 __readgs(VOID);
+
+EXTERN_C
+VOID
+__writegs(UINT16);
 
 EXTERN_C
 VOID

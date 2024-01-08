@@ -1,6 +1,7 @@
 #include <improvisor.h>
 #include <arch/memory.h>
 #include <arch/cpuid.h>
+#include <arch/flags.h>
 #include <arch/msr.h>
 #include <arch/cpu.h>
 #include <arch/cr.h>
@@ -9,6 +10,7 @@
 #include <vcpu/vmexit.h>
 #include <vcpu/vcpu.h>
 #include <detour.h>
+#include <intrin.h>
 #include <macro.h>
 #include <vmm.h>
 
@@ -308,7 +310,7 @@ Routine Description:
 	VmxWrite(CONTROL_VIRTUAL_PROCESSOR_ID, 1);
 
 	EXCEPTION_BITMAP ExceptionBitmap = {
-		.BreakpointException = FALSE
+		.BreakpointException = TRUE
 	};
 
 	VmxWrite(CONTROL_EXCEPTION_BITMAP, ExceptionBitmap.Value);
@@ -464,10 +466,10 @@ Routine Description:
 
 	// Setup MSR load & store regions
 	VmxWrite(CONTROL_VMEXIT_MSR_STORE_COUNT, sizeof(sVmExitMsrStore) / sizeof(*sVmExitMsrStore));
-	//VmxWrite(CONTROL_VMENTRY_MSR_LOAD_COUNT, sizeof(sVmEntryMsrLoad) / sizeof(*sVmEntryMsrLoad));
+	// VmxWrite(CONTROL_VMENTRY_MSR_LOAD_COUNT, sizeof(sVmEntryMsrLoad) / sizeof(*sVmEntryMsrLoad));
 
 	VmxWrite(CONTROL_VMEXIT_MSR_STORE_ADDRESS, ImpGetPhysicalAddress(sVmExitMsrStore));
-	//VmxWrite(CONTROL_VMENTRY_MSR_LOAD_ADDRESS, ImpGetPhysicalAddress(sVmEntryMsrLoad));
+	// VmxWrite(CONTROL_VMENTRY_MSR_LOAD_ADDRESS, ImpGetPhysicalAddress(sVmEntryMsrLoad));
 
 	VcpuCommitVmxState(Vcpu);
 	
@@ -544,6 +546,11 @@ Routine Description:
 			__vmx_off();
 		}
 	}
+
+	// TODO: Modify `VcpuSpawn` to not use `__cpu_restore_state` and `__cpu_save_state`?
+	// I want to use these for IRETQ to user/kernel after failure when calling VcpuShutdownVmx
+
+	// TODO: Panic here, VcpuSpawn claimed it succeeded but control-flow execution wasn't restored where it was saved
 }
 
 VOID
@@ -562,11 +569,17 @@ Routine Description:
 		return;
 
 	PVCPU Vcpu = NULL;
-	if (VmShutdownVcpu(&Vcpu) != HRESULT_SUCCESS)
+	// Attempt to shutdownt he VCPU
+	VmShutdownVcpu(&Vcpu);
+	// The result of the hypercall can't be used because changes made to the guest state are 
+	// ignored if the VCPU panics, check if the VCPU pointer is present instead.
+	if (Vcpu == NULL)
 	{
-		Params->Status = STATUS_FATAL_APP_EXIT;
+		Params->Status = STATUS_ABANDONED;
 		return;
 	}
+
+	ImpDebugPrint("VCPU #%i (%p) shutdown.\n", Vcpu->Id, Vcpu);
 
 	// Free all VCPU related resources 
 	// TODO: Only do this if the hypervisor wasn't shut down in a controlled manner
@@ -590,19 +603,74 @@ Routine Description:
 	encountered a panic. It restores guest register and non-register state from the current VMCS and terminates VMX operation.
 --*/
 {
-	// Disable all interrupts (should be already disabled?)
+	// Cache the guest CR3, we will switch to it after VMX has been shutdown and CPU structures
+	// have been restored
+	UINT64 GuestCR3 = VmxRead(GUEST_CR3);
+	// Switch to the system's address space for now while we restore CPU structures
+	__writecr3(Vcpu->SystemDirectoryBase);
+
 	__disable();
 
-	// Restore control registers
 	__writecr0(VmxRead(GUEST_CR0));
 	__writecr4(VmxRead(GUEST_CR4));
+	__writedr(7, VmxRead(GUEST_DR7));
 
-	// Disable VMX operation
+	__writemsr(IA32_DEBUGCTL, VmxRead(GUEST_DEBUGCTL));
+	__writemsr(GUEST_SYSENTER_ESP, VmxRead(IA32_SYSENTER_ESP));
+	__writemsr(GUEST_SYSENTER_EIP, VmxRead(IA32_SYSENTER_EIP));
+	__writemsr(GUEST_SYSENTER_CS, VmxRead(IA32_SYSENTER_CS));
+
+	// Restore the GDT and IDT
+	X86_PSEUDO_DESCRIPTOR Gdtr = {
+		.BaseAddress = VmxRead(GUEST_GDTR_BASE),
+		.Limit = (UINT16)VmxRead(GUEST_GDTR_LIMIT)
+	};
+
+	__lgdt(&Gdtr);	
+
+	X86_PSEUDO_DESCRIPTOR Idtr = {
+		.BaseAddress = VmxRead(GUEST_IDTR_BASE),
+		.Limit = (UINT16)VmxRead(GUEST_IDTR_LIMIT)
+	};	
+
+	__lidt(&Idtr);
+
+	__writefs((VmxRead(GUEST_FS_ACCESS_RIGHTS) & (1 << 16)) ? 0 : (UINT16)VmxRead(GUEST_FS_SELECTOR));
+	__writemsr(IA32_FS_BASE, VmxRead(GUEST_FS_BASE));
+	__writegs((VmxRead(GUEST_GS_ACCESS_RIGHTS) & (1 << 16)) ? 0 : (UINT16)VmxRead(GUEST_GS_SELECTOR));
+	__writemsr(IA32_GS_BASE, VmxRead(GUEST_GS_BASE));
+
+	X86_SEGMENT_SELECTOR Selector = { 0 };
+	Selector.Value = (UINT16)VmxRead(GUEST_DS_SELECTOR);
+	__writeds(Selector.Value);
+	Selector.Value = (UINT16)VmxRead(GUEST_ES_SELECTOR);
+	__writees(Selector.Value);
+
+	Selector.Value = (UINT16)VmxRead(GUEST_TR_SELECTOR);
+	// Grab the segment selector for the TR segment and force it into a non-busy state
+	PX86_SEGMENT_DESCRIPTOR TrSelector = LookupSegmentDescriptor(Selector);
+	// The busy flag is determined through the `X86_SEGMENT_DESCRIPTOR::Type` field, it is always
+	// either 0b1001 or 0b1011, indicating the non-busy and busy states respectively as bit 2 is used 
+	// as the busy flag - have to do this in case we have exited from a 32-bit process
+	TrSelector->Type = SEGMENT_TYPE_NATURAL_TSS_AVAILABLE;
+	// Write the old TR selector
+	__writetr(Selector.Value);
+
+	Selector.Value = (UINT16)VmxRead(GUEST_LDTR_SELECTOR);
+	__writeldt(Selector.Value);
+
+	CpuState->Cs = (UINT16)VmxRead(GUEST_CS_SELECTOR);
+	CpuState->Ss = (UINT16)VmxRead(GUEST_SS_SELECTOR);
+	// Force interrupts to be enabled
+	CpuState->RFlags = VmxRead(GUEST_RFLAGS) | RFLAGS_IF;
+	CpuState->Rsp = VmxRead(GUEST_RSP);
+	CpuState->Rip = VmxRead(GUEST_RIP);
+
 	__vmx_off();
 
-	CpuState->RFlags = VmxRead(GUEST_RFLAGS);
-	CpuState->Rip = VmxRead(GUEST_RIP);
-	CpuState->Rsp = VmxRead(GUEST_RSP);
+	// Finally, Switch back to the guest's CR3
+	// TODO: Add KVAS support in case this is called due to the VCPU actually panicking 
+	__writecr3(GuestCR3);
 
 	__cpu_restore_state(CpuState);
 }
@@ -827,6 +895,7 @@ VcpuUpdateLastTscEventEntry(
 )
 {
 	// TODO: Also spoof TSC values during EPT violations, some anti-cheats/malware monitor those 
+	//       Essentially everything that exclusively causes a VM-exit should have this emulated
 	
 	// Try find a previous event to base our value off
 	PTSC_EVENT_ENTRY PrevEvent = &Vcpu->Tsc.PrevEvent; 

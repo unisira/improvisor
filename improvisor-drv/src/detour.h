@@ -27,28 +27,23 @@ typedef struct _EH_HOOK_REGISTRATION
 	UINT64 ShadowPhysAddr;
 	UINT64 GuestPhysAddr;
 	PMDL LockedTargetPage;
-} EH_HOOK_REGISTRATION, *PEH_HOOK_REGISTRATION;
+} EH_DETOUR_REGISTRATION, *PEH_DETOUR_REGISTRATION;
 
 NTSTATUS
-EhRegisterHook(
+EhRegisterDetour(
 	_In_ FNV1A Hash,
 	_In_ PVOID Target,
 	_In_ PVOID Callback
 );
 
-PEH_HOOK_REGISTRATION
-EhFindHookByHash(
-	_In_ FNV1A Hash
-);
-
 VOID
 EhDisableDetour(
-	_In_ PEH_HOOK_REGISTRATION Hook
+	_In_ PEH_DETOUR_REGISTRATION Hook
 );
 
 VOID
 EhEnableDetour(
-	_In_ PEH_HOOK_REGISTRATION Hook
+	_In_ PEH_DETOUR_REGISTRATION Hook
 );
 
 NTSTATUS

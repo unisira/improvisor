@@ -206,6 +206,13 @@ Routine Description:
 		return Status;
 	}
 
+	Status = PdbCacheOffsets();
+	if (!NT_SUCCESS(Status))
+	{
+		ImpDebugPrint("Failed to cache structure offsets... (%X)\n", Status);
+		return Status;
+	}
+	
 	VmmContext->UseUnrestrictedGuests = FALSE;
 
 #if 0
@@ -266,10 +273,10 @@ Routine Description:
 	// Install basic detours using EhInstallDetour
 	//
 
-#if 0
+#if 1
 	ImpDebugPrint("EhTargetFunction returned %llX...\n", EhTargetFunction());
 
-	Status = EhRegisterHook(FNV1A_HASH("Test"), EhTargetFunction, EhCallbackFunction);
+	Status = EhRegisterDetour(FNV1A_HASH("Test"), EhTargetFunction, EhCallbackFunction);
 	if (!NT_SUCCESS(Status))
 	{
 		ImpDebugPrint("Failed to register test hook... (%X)\n", Status);
@@ -299,12 +306,12 @@ Routine Description:
 	VmmSpawnVcpuDelegates(VcpuShutdownPerCpu, &Params);
 	if (!NT_SUCCESS(Params.Status) || Params.VmmContext == NULL)
 	{
-		ImpDebugPrint("Failed to shutdown VCPU on cores (%x)... (%x)", Params.FailedCoreMask, Params.Status);
+		ImpDebugPrint("Failed to shutdown VCPU on cores (%x)... (%x)\n", Params.FailedCoreMask, Params.Status);
 		// TODO: Panic
 		return;
 	}
 
-	VmmFreeResources(Params.VmmContext);
+	// VmmFreeResources(Params.VmmContext);
 }
 
 VOID

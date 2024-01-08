@@ -272,8 +272,6 @@ Routine Description:
 	{
 		PIMAGE_SECTION_HEADER Section = &Sections[i];
 
-		// TODO: Refactor to switch statement once conversion to C++ is done
-
 		// Match any .VMM* section name
 		if (memcmp(Section->Name, ".VMM", 4) == 0)
 		{

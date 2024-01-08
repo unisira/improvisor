@@ -30,6 +30,13 @@ WinGetCurrentThread(VOID);
 
 PVOID
 WinGetCurrentProcess(VOID);
+
+BOOLEAN
+WinGetProcessName(
+	_In_ PVOID Process,
+	_Out_ PCHAR Buffer
+);
+
 PVOID
 WinFindProcess(
 	_In_ FNV1A ProcessName

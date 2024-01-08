@@ -58,34 +58,6 @@ typedef union _HYPERCALL_GET_LOGS_EX
 	};
 } HYPERCALL_GET_LOGS_EX, *PHYPERCALL_GET_LOGS_EX;
 
-typedef enum _HYPERCALL_ID
-{
-	// Read a guest virtual address, using translations from a specified process's address space
-	HYPERCALL_READ_VIRT = 0x56504D49 /* 'IMPV' */,
-	// Read a guest virtual address, using translations from a specified process's address space
-	HYPERCALL_WRITE_VIRT,
-	// Scan for a byte signature inside of a virtual address range using translations specified
-	HYPERCALL_VIRT_SIGSCAN,
-	// Convert a physical address into a virtual address in a specific address space
-	HYPERCALL_PHYS_TO_VIRT,
-	// Lookup a process by name using a FNV1a hash, returns a handle to the process which can be used for reading/writing
-	HYPERCALL_FIND_PROCESS,
-	// Shutdown the current VCPU and free its resources
-	HYPERCALL_SHUTDOWN_VCPU,
-	// Returns the value of the system CR3 in RAX
-	HYPERCALL_GET_SYSTEM_CR3,
-	// Remap a GPA to a virtual address passed
-	HYPERCALL_EPT_REMAP_PAGES,
-	// Hide all host resource allocations from guest physical memory
-	HYPERCALL_HIDE_HOST_RESOURCES,
-	// Create a hidden translation to a given physical address
-	HYPERCALL_MAP_HIDDEN_MEMORY,
-	// Add a log record to the VMM
-	HYPERCALL_ADD_LOG_RECORD,
-	// Retrieve log records from VMM
-	HYPERCALL_GET_LOG_RECORDS
-} HYPERCALL_ID, PHYPERCALL_ID;
-
 EXTERN_C
 HYPERCALL_INFO
 __vmcall(
@@ -97,6 +69,7 @@ __vmcall(
 
 // Hypercall system overview:
 // System register  | Use
+// -----------------|-------------------------------------------------------
 // RAX              | HYPERCALL_INFO structure
 // RBX              | extended hypercall info structure, hypercall dependant 
 // RCX              | OPT: Buffer address 
@@ -332,15 +305,26 @@ VmHandleHypercall(
 	} break;
 	case HYPERCALL_FIND_PROCESS:
 	{
-		PVOID Process = NULL;
+		if (GuestState->Rdx == 0)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
+
+		// The FNV1A hash of the process we wish to find is in `GUEST_STATE::Rcx`
+		// NOTE: Testing - Just return current process to see if this ever fails
+		PVOID Process = WinGetCurrentProcess();
+
+		if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(PVOID), &Process)))
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 	} break;
 	case HYPERCALL_SHUTDOWN_VCPU:
 	{
+		if (GuestState->Rdx == 0)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
+
 		Vcpu->Mode = VCPU_MODE_SHUTDOWN;
 
 		// Write the current VCPU to GuestState->Rdx, the VCPU table are mapped as host memory,
 		// but by the time this function returns VcpuLeaveVmx will have disabled EPT
-		if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(PVCPU), Vcpu)))
+		if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(PVCPU), &Vcpu)))
 			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 	} break;
 	case HYPERCALL_GET_SYSTEM_CR3:
@@ -479,6 +463,26 @@ VmWriteSystemMemory(
 	};
 
 	Hypercall = __vmcall(Hypercall, VirtEx.Value, Src, Dst);
+
+	return Hypercall.Result;
+}
+
+HYPERCALL_RESULT
+VmOpenProcess(
+	_In_ UINT64 Name,
+	_Out_ PVOID* Handle
+)
+/*++
+Routine Description:
+	Attempts to open a process given the FNV1A hash of its name 
+--*/
+{
+	HYPERCALL_INFO Hypercall = {
+		.Id = HYPERCALL_FIND_PROCESS,
+		.Result = HRESULT_SUCCESS
+	};
+
+	Hypercall = __vmcall(Hypercall, 0, Name, Handle);
 
 	return Hypercall.Result;
 }

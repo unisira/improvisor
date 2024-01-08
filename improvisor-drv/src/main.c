@@ -15,29 +15,47 @@ LogThreadEntry(PVOID A)
     PCHAR Log = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, 'DBG');
     //DECLSPEC_ALIGN(PAGE_SIZE) CHAR Log[512] = { 0 };
 
+    // `Log` might need to be touched to ensure it is paged, IDK..... See MiSetNonPagedPoolNoSteal
+
     while (!gIsHypervisorRunning)
         _mm_pause();
 
     LARGE_INTEGER Time = {
-        .QuadPart = -5000
+        .QuadPart = -500
     };
 
-    while (TRUE)
+    while (gIsHypervisorRunning)
     {
         // Get one log from the hypervisor and print it
         HYPERCALL_RESULT HResult = VmGetLogRecords(Log, 1);
         if (HResult != HRESULT_SUCCESS)
         {
-            ImpDebugPrint("VmGetLogRecords failed: %X\n", HResult);
+            // ImpDebugPrint("VmGetLogRecords failed: %X\n", HResult);
             // Skip to the wait
             goto delay;
         }
 
         ImpDebugPrint("LOG: %s", Log);
 
+#if 0
+        PVOID Process = NULL;
+        // Try to get pointer to current process
+        HResult = VmOpenProcess(0, &Process);
+        if (HResult != HRESULT_SUCCESS)
+        {
+            ImpDebugPrint("VmOpenProcess failed: %X\n", HResult);
+            // Skip to the wait
+            continue;
+        }
+
+        ImpDebugPrint("Current process: %p\n", Process);
+#endif
+
 delay:
         KeDelayExecutionThread(KernelMode, FALSE, &Time);
     }
+
+    ImpDebugPrint("Exiting logger thread..\n");
 }
 
 VOID
@@ -47,6 +65,14 @@ DriverUnload(
 {
     if (gIsHypervisorRunning)
         VmmShutdownHypervisor();
+
+    ImpDebugPrint("Done shutting down the hypervisor, Bye\n");
+
+    LARGE_INTEGER Time = {
+        .QuadPart = -5000000
+    };
+
+    KeDelayExecutionThread(KernelMode, FALSE, &Time);
 }
 
 NTSTATUS 
@@ -71,6 +97,7 @@ DriverEntry(
         NULL,
         NULL);
 
+#if 0
     HANDLE LogThread = NULL;
     Status = PsCreateSystemThread(
         &LogThread,
@@ -87,6 +114,7 @@ DriverEntry(
         ImpDebugPrint("Failed to start log thread... (%X)\n", Status);
         return Status;
     }
+#endif
 
     Status = VmmStartHypervisor();
     if (!NT_SUCCESS(Status))
@@ -96,6 +124,18 @@ DriverEntry(
     }
 
     gIsHypervisorRunning = TRUE;
+
+    LARGE_INTEGER Time = {
+        .QuadPart = -5 * 1000 * 1000
+    };
+
+    KeDelayExecutionThread(KernelMode, FALSE, &Time);
+
+    VmmShutdownHypervisor();
+
+    ImpDebugPrint("Done shutting down the hypervisor (%i), Bye\n", __vcpu_is_virtualised());
+
+    DbgBreakPoint();
 
     // Hook PsSetLoadImageNotifyRoutine
     // Check for Gdrv.sys [LDR_PARAMS::DriverName]
