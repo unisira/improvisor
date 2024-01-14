@@ -15,7 +15,7 @@ LogThreadEntry(PVOID A)
     PCHAR Log = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, 'DBG');
     //DECLSPEC_ALIGN(PAGE_SIZE) CHAR Log[512] = { 0 };
 
-    // `Log` might need to be touched to ensure it is paged, IDK..... See MiSetNonPagedPoolNoSteal
+    // `Log` might need to be touched to ensure pages are allocated, IDK..... See MiSetNonPagedPoolNoSteal
 
     while (!gIsHypervisorRunning)
         _mm_pause();
@@ -124,18 +124,6 @@ DriverEntry(
     }
 
     gIsHypervisorRunning = TRUE;
-
-    LARGE_INTEGER Time = {
-        .QuadPart = -5 * 1000 * 1000
-    };
-
-    KeDelayExecutionThread(KernelMode, FALSE, &Time);
-
-    VmmShutdownHypervisor();
-
-    ImpDebugPrint("Done shutting down the hypervisor (%i), Bye\n", __vcpu_is_virtualised());
-
-    DbgBreakPoint();
 
     // Hook PsSetLoadImageNotifyRoutine
     // Check for Gdrv.sys [LDR_PARAMS::DriverName]

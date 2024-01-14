@@ -23,6 +23,7 @@ Routine Description:
 	Pool->MaxElements = MaxElements;
 	Pool->ElementSize = ElementSize;
 	Pool->ElementEntryOffset = ElementEntryOffset;
+	Pool->ElementsUsed = 0;
 
 	InitializeListHead(&Pool->Used);
 	InitializeListHead(&Pool->Free);

@@ -126,28 +126,37 @@ WinFindProcess(
 	_In_ FNV1A ProcessName
 )
 {
-	PVOID CurrProcess = WinGetCurrentProcess();
+	PVOID CurrProcess, It;
+	// Start iterating from the current process, maintain pointer to current process to check
+	// if the loop is complete
+	CurrProcess = It = WinGetCurrentProcess();
 
 	while (TRUE)
 	{
-		if (WinGetProcessNameHash(CurrProcess) == ProcessName)
-			return CurrProcess;
+		if (WinGetProcessNameHash(It) == ProcessName)
+			return It;
 
 		// Advance to the next active process entry
-		CurrProcess = WinGetNextProcess(CurrProcess);
+		It = WinGetNextProcess(It);
+
+		// Break if we returned to the current process
+		if (It == CurrProcess)
+			break;
 	}
+
+	return NULL;
 }
 
 VMM_API
 ULONG_PTR
-WinGetProcessPID(
+WinGetProcessID(
 	_In_ PVOID Process
 )
 {
 	PVCPU Vcpu = VcpuGetActiveVcpu();
 
 	ULONG_PTR Pid = -1;
-	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA_PTR(Process, gUniqueProcessIdOffset), sizeof(ULONG_PTR), &Pid)))
+	if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA(Process, gUniqueProcessIdOffset), sizeof(ULONG_PTR), &Pid)))
 		return -1;
 
 	return Pid;
@@ -156,17 +165,26 @@ WinGetProcessPID(
 VMM_API
 PVOID
 WinFindProcessById(
-	_In_ UINT32 ProcessId
+	_In_ ULONG_PTR ProcessId
 )
 {
-	PVOID CurrProcess = WinGetCurrentProcess();
+	PVOID CurrProcess, It;
+	// Start iterating from the current process, maintain pointer to current process to check
+	// if the loop is complete
+	CurrProcess = It = WinGetCurrentProcess();
 
 	while (TRUE)
 	{
-		if (WinGetProcessPID(CurrProcess) == ProcessId)
-			return CurrProcess;
+		if (WinGetProcessID(It) == ProcessId)
+			return It;
 
 		// Advance to the next active process entry
-		CurrProcess = WinGetNextProcess(CurrProcess);
+		It = WinGetNextProcess(It);
+
+		// Break if we returned to the current process
+		if (It == CurrProcess)
+			break;
 	}
+
+	return NULL;
 }

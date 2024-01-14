@@ -66,6 +66,20 @@ Routine Description:
 	LlFree(&sVirtualPTEPool, &Vpte->Links);
 }
 
+VMM_API
+SIZE_T
+MmGetActiveVpteCount(
+	VOID
+)
+/*++
+Routine Description:
+	Returns the amount of VPTEs currently in use
+--*/
+{
+	return sVirtualPTEPool.ElementsUsed;
+}
+
+
 VSC_API
 NTSTATUS
 MmCreateGuestMappingRange(
@@ -517,21 +531,37 @@ Routine Description:
 	if (!Pte.Present)
 		return STATUS_INVALID_PARAMETER;
 
-	Status = MmReadGuestPhys(PAGE_ADDRESS(Pte.PageFrameNumber) + sizeof(MM_PTE) * LinearAddr.PdIndex, sizeof(MM_PTE), &Pte);
-	if (!NT_SUCCESS(Status))
-		return Status;
+	if (!Pte.LargePage)
+	{
+		Status = MmReadGuestPhys(PAGE_ADDRESS(Pte.PageFrameNumber) + sizeof(MM_PTE) * LinearAddr.PdIndex, sizeof(MM_PTE), &Pte);
+		if (!NT_SUCCESS(Status))
+			return Status;
 
-	if (!Pte.Present)
-		return STATUS_INVALID_PARAMETER;
+		if (!Pte.Present)
+			return STATUS_INVALID_PARAMETER;
 
-	Status = MmReadGuestPhys(PAGE_ADDRESS(Pte.PageFrameNumber) + sizeof(MM_PTE) * LinearAddr.PtIndex, sizeof(MM_PTE), &Pte);
-	if (!NT_SUCCESS(Status))
-		return Status;
+		if (!Pte.LargePage)
+		{
+			Status = MmReadGuestPhys(PAGE_ADDRESS(Pte.PageFrameNumber) + sizeof(MM_PTE) * LinearAddr.PtIndex, sizeof(MM_PTE), &Pte);
+			if (!NT_SUCCESS(Status))
+				return Status;
 
-	if (!Pte.Present)
-		return STATUS_INVALID_PARAMETER;
+			if (!Pte.Present)
+				return STATUS_INVALID_PARAMETER;
 
-	MmMapGuestPhys(Vpte, PAGE_ADDRESS(Pte.PageFrameNumber) + PAGE_OFFSET(VirtAddr));
+			MmMapGuestPhys(Vpte, PAGE_ADDRESS(Pte.PageFrameNumber) + PAGE_OFFSET(VirtAddr));			
+		}
+		else
+		{
+			// Mapped as a large PDE, map the physical memory and take a 2MB offset from `VirtAddr`
+			MmMapGuestPhys(Vpte, PAGE_ADDRESS(Pte.PageFrameNumber) + (VirtAddr & (MB(2) - 1)));
+		}		
+	}
+	else
+	{
+		// Mapped as a large PDPTE, map the physical memory and take a 1GB offset from `VirtAddr`
+		MmMapGuestPhys(Vpte, PAGE_ADDRESS(Pte.PageFrameNumber) + (VirtAddr & (GB(1) - 1)));
+	}
 
 	return STATUS_SUCCESS;
 }

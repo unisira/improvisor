@@ -29,6 +29,8 @@ typedef struct _LINKED_LIST_POOL
 	SIZE_T ElementSize;
     // Offset to the `LIST_ENTRY` structure within the element's type
     SIZE_T ElementEntryOffset;
+	// The amount of elements used
+	SIZE_T ElementsUsed;
     // Head of the list of elements
     LIST_ENTRY Used;
 	// head of the list of unused elements
@@ -78,30 +80,6 @@ LlCreatePool(
 
 FORCEINLINE
 VOID
-LlUse(
-	_Inout_ PLINKED_LIST_POOL Pool,
-	_In_ PLIST_ENTRY Entry
-)
-/*++
-Routine Description:
-	Removes an element from the list of free elements and inserts it into the used elements list. Ideally not called directly,
-	LlAllocate should be used instead as this emulates allocating memory and is the main source of access to entries.
---*/
-{
-	// Lock the entire pool for concurrency
-	SpinLock(&Pool->Lock);
-
-	// Remove `Entry` from the list of free elements
-	// TODO: Validate state of `Entry`?
-	RemoveEntryList(Entry);
-	// Insert `Entry` as the last inserted element in the list of used elements
-	InsertTailList(&Pool->Used, Entry);
-
-	SpinUnlock(&Pool->Lock);
-}
-
-FORCEINLINE
-VOID
 LlFree(
 	_Inout_ PLINKED_LIST_POOL Pool,
 	_In_ PLIST_ENTRY Entry
@@ -119,6 +97,8 @@ Routine Description:
 	RemoveEntryList(Entry);
 	// Insert `Entry` as the last inserted element in the list of free elements
 	InsertTailList(&Pool->Free, Entry);
+
+	Pool->ElementsUsed--;
 
 	SpinUnlock(&Pool->Lock);
 }
@@ -147,39 +127,8 @@ Routine Description:
 		RemoveEntryList(Link);
 		// Insert `Entry` as the last inserted element in the list of used elements
 		InsertTailList(&Pool->Used, Link);
-	}
 
-	SpinUnlock(&Pool->Lock);
-
-	return Element;
-}
-
-FORCEINLINE
-PVOID
-LlRelease(
-	_Inout_ PLINKED_LIST_POOL Pool
-)
-/*++
-Routine Description:
-	Removes the last entry inserted in the `Used` list and removes it without inserting it 
-	into the list of free elements
-
-	TODO: Should I make this generic between both lists? Will I never need to remove an entry from `Free` without re-inserting it?
-		  That does defeat the purpose of it being called a `Free` entry, and a `Used` entry might just not be recorded...
---*/
-{
-	PVOID Element = NULL;
-	
-	SpinLock(&Pool->Lock);
-
-	if (IsListEmpty(&Pool->Used) == FALSE)
-	{
-		// Get the last inserted entry in the list of used elements
-		PLIST_ENTRY Link = Pool->Used.Blink;
-		// TODO: Validate state of `Link`?
-		Element = LlLinkToElement(Pool, Link);	
-		// Remove this element from the list
-		RemoveEntryList(Link);
+		Pool->ElementsUsed++;
 	}
 
 	SpinUnlock(&Pool->Lock);

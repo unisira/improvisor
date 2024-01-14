@@ -37,6 +37,11 @@ WinGetProcessName(
 	_Out_ PCHAR Buffer
 );
 
+ULONG_PTR
+WinGetProcessID(
+	_In_ PVOID Process
+);
+
 PVOID
 WinFindProcess(
 	_In_ FNV1A ProcessName
@@ -44,7 +49,7 @@ WinFindProcess(
 
 PVOID
 WinFindProcessById(
-	_In_ UINT32 ProcessId
+	_In_ ULONG_PTR ProcessId
 );
 
 #endif

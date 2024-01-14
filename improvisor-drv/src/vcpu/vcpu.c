@@ -211,6 +211,9 @@ Routine Description:
 	// Load HOST_EFER on VM-exit
 	VcpuSetControl(Vcpu, VMX_CTL_LOAD_EFER_ON_EXIT, TRUE);
 
+	// Save GUEST_DEBUGCTL on VM-exit
+	VcpuSetControl(Vcpu, VMX_CTL_SAVE_DEBUG_CONTROLS, TRUE);
+
 	// Temporarily disable CR3 exiting
 	VcpuSetControl(Vcpu, VMX_CTL_CR3_LOAD_EXITING, FALSE);
 	VcpuSetControl(Vcpu, VMX_CTL_CR3_STORE_EXITING, FALSE);
@@ -616,9 +619,11 @@ Routine Description:
 	__writedr(7, VmxRead(GUEST_DR7));
 
 	__writemsr(IA32_DEBUGCTL, VmxRead(GUEST_DEBUGCTL));
-	__writemsr(GUEST_SYSENTER_ESP, VmxRead(IA32_SYSENTER_ESP));
-	__writemsr(GUEST_SYSENTER_EIP, VmxRead(IA32_SYSENTER_EIP));
-	__writemsr(GUEST_SYSENTER_CS, VmxRead(IA32_SYSENTER_CS));
+	__writemsr(IA32_SYSENTER_ESP, VmxRead(GUEST_SYSENTER_ESP));
+	__writemsr(IA32_SYSENTER_EIP, VmxRead(GUEST_SYSENTER_EIP));
+	__writemsr(IA32_SYSENTER_CS, VmxRead(GUEST_SYSENTER_CS));
+	__writemsr(IA32_EFER, VmxRead(GUEST_EFER));
+	// TODO: IA32_PAT?
 
 	// Restore the GDT and IDT
 	X86_PSEUDO_DESCRIPTOR Gdtr = {

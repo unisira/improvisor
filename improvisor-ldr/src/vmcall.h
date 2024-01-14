@@ -1,17 +1,9 @@
-#ifndef IMP_VMCALL_H
-#define IMP_VMCALL_H
+#include <windows.h>
 
-#include <vcpu/vcpu.h>
-#include <hash.h>
-#include <ept.h>
-
-// System PID is always 4
-#define VM_SYSTEM_PID ((UINT16)4)
+// System PID is always 4, so no need to do vm_open on System
+#define VM_SYSTEM_PID ((VM_PID)4)
 // Current PID is aliased as -1
-#define VM_CURRENT_PID ((UINT16)-1)
-
-// Convert NTSTATUS into HRESULT value
-#define HRESULT_FROM_NTSTATUS(S) (HRESULT_MARKER | ((S) & 0xFFF))
+#define VM_CURRENT_PID ((VM_PID)-1)
 
 // This bit is set if the error was something we can handle
 #define HRESULT_MARKER (0x8000)
@@ -84,59 +76,35 @@ typedef union _HYPERCALL_INFO
 	};
 } HYPERCALL_INFO, *PHYPERCALL_INFO; 
 
-VMM_EVENT_STATUS
-VmHandleHypercall(
-	_In_ PVCPU Vcpu,
-	_In_ PGUEST_STATE GuestState,
-	_In_ PHYPERCALL_INFO Hypercall
-);
-
-//
-// Hypercall implementations
-//
-
 HYPERCALL_RESULT
-VmReadSystemMemory(
-	_In_ PVOID Src,
-	_In_ PVOID Dst,
-	_In_ SIZE_T Size
+VmGetLogRecords(
+	PVOID Dst,
+	SIZE_T Count
 );
 
 HYPERCALL_RESULT
-VmWriteSystemMemory(
-	_In_ PVOID Src,
-	_In_ PVOID Dst,
-	_In_ SIZE_T Size
+VmReadMemory(
+    VM_PID Pid,
+	PVOID Src,
+	PVOID Dst,
+	SIZE_T Size
+);
+
+HYPERCALL_RESULT
+VmWriteMemory(
+    VM_PID Pid,
+	PVOID Src,
+	PVOID Dst,
+	SIZE_T Size
 );
 
 HYPERCALL_RESULT
 VmOpenProcess(
-	_In_ UINT64 Name,
-	_Out_ PVOID* Handle
+	UINT64 Name,
+	PVM_PID Handle
 );
 
 HYPERCALL_RESULT
-VmShutdownVcpu(
-	_Out_ PVCPU* pVcpu
+VmGetActiveVpteCount(
+    PSIZE_T VpteCount
 );
-
-HYPERCALL_RESULT
-VmEptRemapPages(
-	_In_ UINT64 GuestPhysAddr,
-	_In_ UINT64 PhysAddr,
-	_In_ SIZE_T Size,
-	_In_ EPT_PAGE_PERMISSIONS Permissions
-);
-
-HYPERCALL_RESULT
-VmGetLogRecords(
-	_In_ PVOID Dst,
-	_In_ SIZE_T Count
-);
-
-HYPERCALL_RESULT
-VmAddLogRecord(
-	_In_ PVOID Src
-);
-
-#endif

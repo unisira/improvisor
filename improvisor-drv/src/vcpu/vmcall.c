@@ -10,11 +10,6 @@
 #include <vmx.h>
 #include <win.h>
 
-// The kernel's process ID
-#define SYSTEM_PID (4u)
-// PID marker for current process
-#define CURRENT_PID (-1u)
-
 // Information relevant to caching, reading or writing virtual addresses in an address space
 typedef union _HYPERCALL_VIRT_EX 
 {
@@ -22,7 +17,7 @@ typedef union _HYPERCALL_VIRT_EX
 
 	struct
 	{
-		UINT64 Pid : 16;
+		UINT64 Pid : 32;
 		UINT64 Size : 32;
 	};
 } HYPERCALL_VIRT_EX, *PHYPERCALL_VIRT_EX;
@@ -102,17 +97,21 @@ VmFindProcessDirectoryBase(
 )
 {
 	
-#if 0 // TODO: Fix this
-	// Invalid target addr...
 	if (pDirectoryBase == NULL)
 		return VMM_EVENT_ABORT;
 
-	PVOID Process = WinFindProcessById(VirtEx.Pid);
-	if (MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA(Process, gDirectoryTableBaseOffset), sizeof(ULONG_PTR), pDirectoryBase))
-		return VMM_EVENT_ABORT;
-#endif
-
-	*pDirectoryBase = Vcpu->SystemDirectoryBase;
+	switch (VirtEx.Pid)
+	{
+	case VM_SYSTEM_PID: *pDirectoryBase = Vcpu->SystemDirectoryBase; break;
+	case VM_CURRENT_PID: *pDirectoryBase = VmxRead(GUEST_CR3); break;
+	default:
+	{
+		PVOID Process = WinFindProcessById(VirtEx.Pid);
+	
+		if (!NT_SUCCESS(MmReadGuestVirt(Vcpu->SystemDirectoryBase, RVA(Process, gDirectoryTableBaseOffset), sizeof(ULONG_PTR), pDirectoryBase)))
+			return VMM_EVENT_ABORT;
+	} break;
+	}
 
 	return VMM_EVENT_CONTINUE;
 }
@@ -167,8 +166,9 @@ VmHandleHypercall(
 
 			SIZE_T SizeToRead = VirtEx.Size - SizeRead > MaxReadable ? MaxReadable : VirtEx.Size - SizeRead;
 			
-			if (!NT_SUCCESS(MmReadGuestVirt(DirBase, GuestState->Rdx + SizeRead, SizeToRead, RVA_PTR(Vpte->MappedVirtAddr, SizeRead))))
-				return VmAbortHypercall(Hypercall, HRESULT_INVALID_SIZE);
+			NTSTATUS Status = MmReadGuestVirt(DirBase, GuestState->Rdx + SizeRead, SizeToRead, RVA_PTR(Vpte->MappedVirtAddr, SizeRead));
+			if (!NT_SUCCESS(Status))
+				return VmAbortHypercall(Hypercall, HRESULT_FROM_NTSTATUS(Status));
 			
 			SizeRead += SizeToRead;
 		}
@@ -300,7 +300,7 @@ VmHandleHypercall(
 		if (Result == -1)
 			Hypercall->Result = HRESULT_INVALID_SOURCE_ADDR;
 		else
-			if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(UINT64), Result)))
+			if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(UINT64), &Result)))
 				return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 	} break;
 	case HYPERCALL_FIND_PROCESS:
@@ -309,10 +309,9 @@ VmHandleHypercall(
 			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 
 		// The FNV1A hash of the process we wish to find is in `GUEST_STATE::Rcx`
-		// NOTE: Testing - Just return current process to see if this ever fails
-		PVOID Process = WinGetCurrentProcess();
+		VM_PID ProcessPid = (VM_PID)WinGetProcessID(WinFindProcess((FNV1A)GuestState->Rcx));
 
-		if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(PVOID), &Process)))
+		if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(VM_PID), &ProcessPid)))
 			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
 	} break;
 	case HYPERCALL_SHUTDOWN_VCPU:
@@ -413,9 +412,19 @@ VmHandleHypercall(
 			Count++;
 		}
 	} break;
+	case HYPERCALL_GET_VPTE_COUNT:
+	{
+		if (GuestState->Rdx == 0)
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);
+
+		SIZE_T VpteCount = MmGetActiveVpteCount();
+
+		// Write the current VCPU to GuestState->Rdx, the VCPU table are mapped as host memory,
+		// but by the time this function returns VcpuLeaveVmx will have disabled EPT
+		if (!NT_SUCCESS(MmWriteGuestVirt(GuestCr3, GuestState->Rdx, sizeof(SIZE_T), &VpteCount)))
+			return VmAbortHypercall(Hypercall, HRESULT_INVALID_DESTINATION_ADDR);		
+	} break;
 	default:
-		// NOTE: Should we do this? Modifying register values is risky when not properly handling a hypercall
-		Hypercall->Result = HRESULT_UNKNOWN_HCID;
 		VmxInjectEvent(EXCEPTION_UNDEFINED_OPCODE, INTERRUPT_TYPE_HARDWARE_EXCEPTION, 0);
 		return VMM_EVENT_INTERRUPT;
 	}
@@ -436,7 +445,7 @@ VmReadSystemMemory(
 	};
 
 	HYPERCALL_VIRT_EX VirtEx = {
-		.Pid = SYSTEM_PID,
+		.Pid = VM_SYSTEM_PID,
 		.Size = Size
 	};
 
@@ -458,7 +467,7 @@ VmWriteSystemMemory(
 	};
 
 	HYPERCALL_VIRT_EX VirtEx = {
-		.Pid = SYSTEM_PID,
+		.Pid = VM_SYSTEM_PID,
 		.Size = Size
 	};
 

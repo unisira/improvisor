@@ -33,6 +33,11 @@ MmFreeVpte(
 	_Inout_ PMM_VPTE Vpte
 );
 
+SIZE_T
+MmGetActiveVpteCount(
+	VOID
+);
+
 VOID
 MmMapGuestPhys(
 	_Inout_ PMM_VPTE Vpte,
