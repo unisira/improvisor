@@ -10,7 +10,7 @@ StrGenerateRandomString(
 
 	SIZE_T Size = 0;
 	while (Size < Len)
-		Buffer[Size++] = sCharSet[(~((ULONG_PTR)Buffer) * Size) % ((sizeof(sCharSet) / sizeof(*sCharSet)) - 1)];
+		Buffer[Size++] = sCharSet[(~((ULONG_PTR)Buffer) ^ Size) % ((sizeof(sCharSet) / sizeof(*sCharSet)) - 1)];
 
 	Buffer[Len - sizeof(*Buffer)] = L'\0';
 }
